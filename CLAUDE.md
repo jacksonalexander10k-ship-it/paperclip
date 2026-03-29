@@ -561,6 +561,244 @@ Pricing is not finalised but the model should reflect:
 
 ---
 
+## Per-Broker WhatsApp Numbers
+
+In a real Dubai real estate agency, every broker has their own personal WhatsApp number they use with clients. The agency also has a central number used for advertising, portal leads, and branding. Aygency World must support both.
+
+### Two-tier WhatsApp architecture
+
+**Agency number (one per agency)**
+- The public-facing number shown on ads, portals, website
+- All portal leads (Property Finder, Bayut) come here first
+- Lead Agent monitors this number and processes inbound enquiries
+- Used for bulk campaigns, drip sequences, broadcast messages
+
+**Broker numbers (one per human broker)**
+- Each broker connects their own WhatsApp Business number during their profile setup
+- Once a lead is assigned to a broker, the Lead Agent uses THAT broker's number for all subsequent communication — so the client always has a consistent, personal point of contact
+- The AI drafts messages on behalf of the broker, broker approves, message sends FROM their number
+- Client never knows AI was involved
+
+### How broker WhatsApp is connected
+1. Broker receives invite to join the agency on Aygency World
+2. Broker profile setup: name, photo, areas, number
+3. WhatsApp Business API connection (same OAuth flow as agency number)
+4. Their number is stored against their broker profile
+5. When Lead Agent assigns a follow-up to that broker's number, it routes through their credentials
+
+### What this means for the AI
+The Lead Agent doesn't just have one WhatsApp identity — it can operate as any connected number in the agency. When drafting a follow-up for a lead assigned to broker Sara, it composes the message in Sara's voice (based on her tone preferences in her broker profile), queues it for Sara's approval, and sends it from Sara's number.
+
+---
+
+## Complete Lead Lifecycle — Step by Step
+
+This is the end-to-end flow of a lead from first contact to deal closed.
+
+```
+1. ENTRY
+   └─ Inbound WhatsApp / PF email / Bayut email / Instagram DM / manual
+   └─ Lead Agent creates lead record: name, phone, source, initial message
+   └─ Auto-enrichment: DLD history check, WhatsApp history search, score 0–10
+
+2. IMMEDIATE RESPONSE (< 5 minutes)
+   └─ Lead Agent drafts reply in detected language
+   └─ Approval card → Owner/Manager approves (or auto-approves if guardrail set)
+   └─ Message sent. Lead tagged "contacted"
+
+3. QUALIFICATION
+   └─ Lead Agent conducts qualification via WhatsApp conversation
+   └─ Extracts: budget, area preference, property type, timeline, financing status
+   └─ Updates lead profile. Score recalculated.
+   └─ Low score (1–4): enters nurture drip campaign
+   └─ Medium score (5–7): weekly follow-up sequence
+   └─ High score (8–10): escalation card to owner → assigned to broker
+
+4. MATCHING
+   └─ Lead Agent runs match_deal_to_leads across current inventory
+   └─ Suggests 2–3 matching projects/properties
+   └─ Content Agent generates project pitch deck (if off-plan)
+   └─ Approval card: send pitch deck / property details to lead?
+
+5. VIEWING
+   └─ Lead expresses interest in visiting
+   └─ Viewing Agent checks broker + lead availability via Google Calendar
+   └─ Proposes 3 time slots to lead via WhatsApp
+   └─ Lead confirms → Viewing Agent creates calendar event, sends confirmation
+   └─ Day before: reminder sent. Post-viewing: follow-up drafted
+
+6. NEGOTIATION / OFFER
+   └─ Human broker takes over at this stage (high-value relationship work)
+   └─ AI supports: DLD comparables for pricing, calculate_dld_fees, payment plan doc
+   └─ Content Agent generates personalised proposal if needed
+
+7. DEAL CLOSED
+   └─ Owner/broker marks deal as "closed" in dashboard
+   └─ Lead status updated to "client"
+   └─ CEO logged the conversion. Adds to monthly metrics.
+   └─ Portfolio Agent (if rental): creates landlord/tenancy records
+   └─ Content Agent: generates "just sold" Instagram post for approval
+
+8. POST-DEAL
+   └─ Lead enters post-sale nurture sequence (referral request, annual check-in)
+   └─ If rental: Portfolio Agent manages ongoing tenancy, renewals
+```
+
+---
+
+## Agent-to-Agent Communication (Technical)
+
+How does the CEO agent actually delegate to sub-agents? Paperclip handles this via its task system, but the specific implementation for Aygency World works like this:
+
+### Task delegation flow
+1. CEO agent runs its heartbeat
+2. CEO assesses agency state (via tool calls: search_leads, get_viewings, etc.)
+3. CEO creates tasks in Paperclip's task queue: `{ agent: "lead-agent", instruction: "Follow up with all leads tagged 'viewing-done' who haven't responded in 48h", priority: "high" }`
+4. Lead Agent's next heartbeat picks up the task and executes it
+5. Lead Agent posts result back as a task completion: `{ status: "done", summary: "Drafted 4 follow-up messages, 3 queued for approval, 1 lead marked unresponsive" }`
+6. CEO reads task completions in its next run and synthesises for morning brief
+
+### Direct escalation
+When an agent needs immediate owner input (not next heartbeat), it creates an **escalation** — a high-priority item that triggers an immediate push notification and bypasses the batch approval queue.
+
+Escalation triggers:
+- Lead score jumps to 9–10 (hot lead)
+- Inbound message contains keywords: "ready", "let's sign", "how do I pay"
+- Call Agent completes a call with "viewing requested" outcome
+- Portfolio Agent detects a lease expired with no renewal in place
+
+---
+
+## Integration Connection Flow (How Each OAuth Works)
+
+### WhatsApp Business (agency number)
+1. Owner enters their WhatsApp Business phone number
+2. Aygency World redirects to Meta Business OAuth
+3. Owner grants permissions: `whatsapp_business_messaging`, `whatsapp_business_management`
+4. Access token + phone number ID stored encrypted in DB
+5. Webhook registered for inbound messages
+6. Test: system sends "Your Aygency World is connected ✓" to the number
+
+### Gmail
+1. Owner clicks "Connect Gmail"
+2. Google OAuth consent screen: `gmail.readonly`, `gmail.send`, `gmail.modify`
+3. Tokens stored per agency. Refresh token used for background access.
+4. Lead Agent immediately scans for any Property Finder / Bayut / Dubizzle notification emails in the last 7 days — imports any leads found
+
+### Google Calendar
+1. Connected alongside Gmail (same OAuth flow, additional scope: `calendar.events`)
+2. Viewing Agent gets read/write access to the connected calendar
+3. Agency can specify which calendar to use (useful if owner has personal + business calendars)
+
+### Instagram
+1. Connected via Meta Business OAuth (same App as WhatsApp)
+2. Permissions: `instagram_basic`, `instagram_content_publish`, `instagram_manage_messages`
+3. Content Agent can read DMs and publish posts/carousels
+
+### Per-broker WhatsApp
+Same Meta OAuth flow as agency number, but scoped to the individual broker's account. Broker does this from their own profile settings page.
+
+---
+
+## The Skill File Format
+
+Skills are the instructions that define how each agent behaves. They live in the company template repository. This is what an actual skill file looks like:
+
+```markdown
+# lead-response.md (Lead Agent skill)
+
+## Purpose
+Draft responses to new inbound leads within 5 minutes of enquiry.
+
+## Rules
+- Always respond in the same language the lead used
+- Never send a message longer than 3 sentences for the first reply
+- Always include the agent's name (from agency context) in the sign-off
+- Never quote a specific price in the first message — always say "let me check the latest availability for you"
+- If lead asks "are you a bot?", respond: "I'm [Name] from [Agency], happy to help!"
+
+## First response template
+"Hi [Lead Name]! Thanks for reaching out about [Property/Area]. I'd love to share some options that match what you're looking for. Quick question — are you looking for [Type A] or [Type B]? — [Broker Name], [Agency Name]"
+
+## Qualification sequence
+After initial response, qualify in this order over 2–3 messages:
+1. Budget range
+2. Timeline (when are you looking to move/invest?)
+3. Financing (cash or mortgage?)
+4. Specific requirements (bedrooms, areas, floor preferences)
+
+## Escalation rule
+If lead responds positively AND has budget > AED 2M AND timeline < 3 months: create escalation card immediately.
+```
+
+Skills are plain Markdown — no code, no special syntax. The agent loads the skill as part of its system prompt on each run.
+
+---
+
+## Billing & Subscription (Stripe)
+
+### Subscription model
+Each agency has a monthly subscription that covers:
+- Platform fee (per tier: Starter / Growth / Scale / Enterprise)
+- Included agent-runs per month (e.g., Growth tier: 10,000 agent runs/month)
+- Overage rate above the included runs
+
+### What counts as an "agent run"
+One heartbeat execution = one run. Most runs cost 500–2,000 Claude tokens. A Lead Agent running every 15 minutes = ~2,880 runs/month.
+
+### Stripe integration
+- Subscription managed via Stripe Billing
+- Usage metering: agent runs reported to Stripe daily
+- Failed payment → agents pause with 3-day grace period
+- Downgrade: agents above the tier limit are paused (owner chooses which to keep)
+- Upgrade: instant, agents resume immediately
+
+### Add-on: AI Calling
+Twilio calls are billed separately as a usage add-on. Cost per minute passed through at Twilio rate + margin. Shown as a separate line item on invoice.
+
+---
+
+## Error Handling & Agent Recovery
+
+### What can go wrong
+- **API rate limit hit** (Anthropic, WhatsApp, Gmail): agent pauses, retries with exponential backoff, alerts owner if blocked for >1 hour
+- **Tool call fails** (e.g., WhatsApp rejects a message): agent logs the error, moves to next task, includes failure in next CEO brief
+- **Agent runs longer than 5 minutes**: killed, logged as timeout, CEO notified
+- **Credentials expired** (OAuth token expired): agent pauses, push notification sent to owner to reconnect, step-by-step reconnection flow in dashboard
+- **Budget cap reached**: agent pauses gracefully, saves state, owner notified with "your Lead Agent budget is used up this month — raise cap to resume"
+
+### Agent audit log
+Every agent run is logged with:
+- Start time, end time, duration
+- Tools called (in order)
+- Tokens consumed
+- Tasks completed
+- Errors encountered
+- Messages drafted (not yet sent)
+- Approvals queued
+
+Full audit log is accessible in the agent detail view. Useful for debugging unexpected behaviour and for compliance.
+
+---
+
+## Data Model (Key Tables)
+
+```
+Agency — id, name, logo, focusArea, size, tier, stripeCustomerId, createdAt
+  ↳ AgencyCredentials — agencyId, service (whatsapp|gmail|instagram), accessToken (encrypted), refreshToken
+  ↳ AgencyContext — agencyId, key, value (agency knowledge base, JSON)
+  ↳ Users — id, agencyId, role (owner|manager|broker|viewer), name, phone
+  ↳ Agents — id, agencyId, role, name, instructions, heartbeatInterval, status, budgetCap
+  ↳ AgentRuns — id, agentId, startedAt, completedAt, tokensUsed, costUsd, status, log
+  ↳ Tasks — id, agencyId, fromAgentId, toAgentId, instruction, status, result
+  ↳ Leads — id, agencyId, name, phone, email, language, score, stage, assignedBrokerId, source
+  ↳ Approvals — id, agencyId, agentId, type, payload, status (pending|approved|rejected|edited)
+  ↳ Escalations — id, agencyId, agentId, reason, leadId?, status, notifiedAt
+  ↳ Notifications — id, agencyId, userId, channel, message, sentAt, readAt
+```
+
+---
+
 ## Key Decisions Still Open
 
 - **Auth system** — use Paperclip's built-in auth or swap in NextAuth (familiar from AygentDesk)?
