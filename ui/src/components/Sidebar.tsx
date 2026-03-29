@@ -11,6 +11,7 @@ import {
   Boxes,
   Repeat,
   Settings,
+  Activity,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -108,6 +109,18 @@ export function Sidebar() {
         <SidebarAgents />
 
         <SidebarSection label="Company">
+          <button
+            onClick={() => document.dispatchEvent(new CustomEvent("toggle-activity-panel"))}
+            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors w-full text-left"
+          >
+            <Activity className="h-4 w-4 shrink-0" />
+            <span className="truncate">Live Activity</span>
+            {liveRunCount > 0 && (
+              <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500/15 px-1 text-[10px] font-medium text-green-600 dark:text-green-400">
+                {liveRunCount}
+              </span>
+            )}
+          </button>
           <SidebarNavItem to="/org" label="Org" icon={Network} />
           <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
