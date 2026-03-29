@@ -2,22 +2,33 @@
 
 ## Vision
 
-Aygency World is a multi-agent AI platform that lets anyone run a fully operational Dubai real estate agency — with or without human staff. It is built on top of [Paperclip](https://github.com/paperclipai/paperclip) (open-source agent orchestration), forked and rebranded, with a Dubai real estate company template and AygentDesk's 53 real estate tools wired in as the skill layer.
+Aygency World lets anyone run a fully operational Dubai real estate agency — with or without human staff. It is a multi-agent AI platform where autonomous agents handle lead management, content, market intelligence, viewings, portfolio management, and outbound calling around the clock. The agency owner runs everything through one interface: a CEO chat.
 
-Where **AygentDesk** is a super-powered personal assistant for individual brokers (reactive, chat-first, human drives), **Aygency World** is the agency operating system (autonomous, multi-agent, AI drives). They are complementary products:
+It is built on a fork of [Paperclip](https://github.com/paperclipai/paperclip) (open-source agent orchestration, Node.js + React), rebranded and extended with a Dubai real estate company template and AygentDesk's 53 real estate tools wired in as the skill layer.
 
-- **AygentDesk** → B2C. Each broker's personal AI assistant. They talk to it, it executes.
-- **Aygency World** → B2B. The agency owner buys it to run departments. Agents work 24/7 autonomously.
+**AygentDesk vs Aygency World — they are different products that complement each other:**
+
+| | AygentDesk | Aygency World |
+|--|--|--|
+| Who | Individual broker | Agency owner |
+| Model | Human-driven, reactive | AI-driven, autonomous |
+| Interface | Chat with one AI | CEO chat + agency dashboard |
+| Agents | 1 | 5–15+ |
+| Tools | 53, direct access | 53, role-scoped via MCP |
+| Pricing | Per user/month | Per agent/month |
+| Stack | Next.js / TypeScript / Prisma | Paperclip fork (Node.js / React / Drizzle) |
+
+**The upsell path:** Agency World owner buys the platform to run their agency operations. Their human brokers individually subscribe to AygentDesk as their personal assistant. Two products, two revenue streams, one ecosystem.
 
 ---
 
 ## Core Philosophy
 
 - **Autonomous by default.** Agents run on heartbeats — continuously, without being prompted. The agency operates while the owner sleeps.
-- **CEO as the interface.** The owner interacts with one agent: the CEO. The CEO delegates, reports, and escalates. The owner never talks directly to sub-agents.
+- **CEO as the interface.** The owner has one relationship: with the CEO agent. The CEO delegates down, reports up, and escalates when needed. The owner never talks directly to sub-agents.
 - **Approval before external action.** No WhatsApp sent, no email fired, no Instagram post published without an explicit approval card in the CEO chat. Agents prepare — humans authorise.
-- **Role-scoped tools.** Each agent has access only to the tools relevant to their role. The CEO has full visibility but delegates tool access on hire.
-- **Dubai-first.** Every default, every template, every tool is built for the Dubai off-plan and secondary real estate market. Not generic CRM. Not generic AI. Dubai real estate, specifically.
+- **Role-scoped tools.** Each agent accesses only the tools relevant to their role. The CEO has full visibility. Sub-agents get scoped subsets. A Content Agent cannot accidentally send a WhatsApp.
+- **Dubai-first.** Every default, template, and tool is built for Dubai's off-plan and secondary real estate market. Not generic CRM, not generic AI — Dubai real estate specifically.
 
 ---
 
@@ -39,418 +50,771 @@ Has capital and interest in Dubai real estate but no staff, no RERA team, no ope
 **Pitch:** "Start a Dubai real estate business this week, not in 6 months."
 
 ### 4. Enterprise Agency (50+ brokers, white-label)
-Wants to deploy AI infrastructure internally under their own brand. Private AI division rebranded and integrated. Replaces admin, marketing, analyst headcount.
+Wants to deploy AI infrastructure internally under their own brand. Private AI division rebranded and integrated. Replaces admin, marketing, analyst headcount at scale.
 
 **Pitch:** "Your private AI department, under your brand."
 
 ---
 
-## How It Works — End to End
+## How Paperclip Actually Works (Important Foundation)
 
-### Step 1: Onboarding (Hybrid Wizard + CEO Chat)
+Before architecture decisions, you need to understand exactly what Paperclip does under the hood — because it directly determines how everything is built.
 
-A short 3-step wizard captures the essentials:
+**Paperclip does NOT call the Claude API directly.** It spawns Claude Code as a local OS process:
+```
+Paperclip server → executes: claude --model claude-sonnet-4-6 --add-dir /tmp/skills/ < prompt.md
+```
+It monitors stdout, streams output to a WebSocket for live viewing in the UI, and parses token usage from Claude's output. The agent runs like a local CLI process, not an API call.
 
-1. **Agency basics** — Name, logo, focus area (Off-Plan / Rentals / Secondary / All three), size (Solo / Small 2–5 / Medium 6–15 / Large 15+)
-2. **Connect integrations** — WhatsApp number, Gmail account, Instagram (required to function; Google Calendar optional)
-3. **CEO is hired** — A CEO agent is instantiated. The wizard closes. The CEO chat opens.
+**Skills are injected via `--add-dir`.** Paperclip symlinks skill markdown files into a temp directory and passes it to Claude Code. Skills are lazy-loaded — Claude only reads a skill's full content when it decides it's relevant. This keeps prompts small.
 
-The CEO already knows the basics from step 1. It immediately begins a strategic onboarding interview in natural language:
-- "What's your biggest challenge right now — lead volume, lead quality, or conversion?"
-- "Which areas are you focused on? Which projects are you actively selling?"
-- "Do you have any existing lead database I should be aware of?"
-- "What does success look like for you in the first 30 days?"
+**Heartbeats are scheduled in-process.** A lightweight background scheduler inside the Node.js server polls for agents due to run. No external queue (like BullMQ) needed. Each heartbeat: creates a workspace, spawns Claude Code, monitors it, records cost, cleans up.
 
-Based on the conversation, the CEO proposes an agent org chart with roles, headcount per role, and rationale. The owner reviews and approves. Agents are hired.
+**Tasks flow via atomic checkout.** When CEO wants to delegate to Lead Agent, it creates an issue and assigns it. Lead Agent's heartbeat atomically claims the issue via a single SQL UPDATE. If two agents try to claim simultaneously, only one wins — conflict-free. This is how Paperclip prevents race conditions across agents.
 
-### Step 2: Agency Runs Autonomously
+**Agent sessions persist across heartbeats.** Claude Code session state is saved in `agentTaskSessions` so the agent doesn't restart cold — it resumes context from the previous run on the same task.
 
-Once agents are hired, they run on **heartbeats** — scheduled intervals:
-- Lead Agent checks for new WhatsApp/email enquiries every 15 minutes. Drafts responses. Queues approvals.
-- Market Agent pulls DLD transaction data and new Bayut listings every hour. Flags opportunities.
-- Content Agent generates and queues Instagram/LinkedIn posts daily. Awaits publish approval.
-- Viewing Agent monitors calendar, sends viewing confirmations, follows up post-viewing.
-- Portfolio Agent tracks lease renewals, flags expiring tenancies, drafts landlord communications.
+**Multi-tenancy is built in.** Every entity in Paperclip's DB has a `company_id` FK. Access checks on every route. Complete isolation between agencies.
 
-### Step 3: Owner Runs the Agency via CEO Chat
+**The UI is React 19 + Vite + Tailwind + Radix UI + TanStack Query.** Real-time updates via WebSocket (`/realtime` endpoint). The ORM is Drizzle (NOT Prisma — different from AygentDesk).
 
-The CEO chat is the owner's primary interface. It surfaces:
-- **Morning brief** — what happened overnight, what needs attention today
-- **Approval cards** — pending outbound actions queued by agents
-- **Escalations** — anything an agent flagged as requiring owner decision
-- **Reports** — weekly pipeline, lead quality summary, content performance
+**What Paperclip does NOT have out of the box:**
+- Webhook receivers for inbound events (WhatsApp, portal leads)
+- A proper chat interface (it has an issues board, not a CEO chat)
+- Per-tenant OAuth credential storage
+- Approval card components
+- An onboarding wizard
+- Mobile-responsive views
 
-Owner gives direction to the CEO in natural language:
-> "Focus the lead agent on JVC under 2M this week."
-> "We just listed a new property in Business Bay — tell the content agent to create a campaign."
-> "How many leads did we convert last month?"
-
-CEO translates direction into agent tasks and reports back.
+These are exactly what we build on top.
 
 ---
 
-## Tech Stack
+## Deployment Architecture
 
-| Layer | Technology | Notes |
-|-------|-----------|-------|
-| Base | [Paperclip](https://github.com/paperclipai/paperclip) fork | Node.js server + React UI. Forked, rebranded. |
-| Agent runtime | Claude Code via Anthropic API | Agents run Claude Sonnet 4 with role-specific skill sets |
-| Skills | AygentDesk MCP server | All 53 AygentDesk tools exposed as MCP tools |
-| Database | PostgreSQL (embedded in Paperclip, or external for prod) | Agents, orgs, tasks, goals, audit log |
-| Queue | Built into Paperclip (heartbeats + task queue) | Per-agent scheduled runs |
-| Frontend | React (Paperclip's UI, rebranded + extended) | Dashboard + CEO chat + approval cards |
-| Auth | To be determined (Paperclip's auth or NextAuth) | Multi-tenant: each agency is isolated |
-| Deployment | Docker / VPS | Same infra as AygentDesk |
-
----
-
-## Lead Ingestion — How Leads Enter the System
-
-This is the most critical operational piece. Without leads flowing in, the Lead Agent has nothing to work with. Aygency World must support all the ways Dubai agents currently receive enquiries:
-
-### Inbound Channels
-
-| Source | How it works |
-|--------|-------------|
-| **WhatsApp (inbound)** | Agency's WhatsApp Business number connected via Cloud API. Every inbound message is captured, sender identified as new or existing lead, Lead Agent processes. |
-| **Property Finder** | PF sends lead notifications via email (standard for all Dubai agencies). Lead Agent's email watcher parses PF notification emails and auto-creates leads with name, phone, property interest. |
-| **Bayut** | Same — Bayut sends email notifications per enquiry. Auto-parsed into leads. |
-| **Dubizzle** | Same pattern — email notification parsing. |
-| **Instagram DMs** | Meta Graph API. Lead Agent monitors DMs, identifies property enquiries, creates leads. |
-| **Website / Landing Page** | AygentDesk's `generate_landing_page` creates pages with a lead capture form. Form submissions POST directly to the Lead Agent's queue. |
-| **Manual entry** | Owner or broker adds a lead manually via dashboard form. |
-| **CSV import** | Bulk import existing lead database during onboarding. |
-
-### Lead Enrichment on Entry
-When a new lead is created from any source, the Lead Agent automatically:
-1. Searches WhatsApp history for prior conversations
-2. Checks DLD transactions for prior purchases (high-intent signal)
-3. Assigns initial score (0–10) based on budget, source, prior activity
-4. Tags by source, area interest, property type
-5. Routes to the appropriate follow-up sequence
-
----
-
-## Multi-Tenant Credential Architecture
-
-Each agency in Aygency World has its own WhatsApp number, Gmail account, Instagram, and Google Calendar. The MCP server must route all tool calls through the correct agency's credentials.
-
-### How it works
-
-Every agent run is scoped to an `agencyId`. The MCP server receives the `agencyId` in the request context and resolves the correct credentials from the database before executing any tool call.
+Two separate services on the same VPS, plus two lightweight supporting services:
 
 ```
-Agent (Claude Code) → MCP Server
-  Request: { tool: "send_whatsapp", agencyId: "agency_123", params: {...} }
-
-MCP Server:
-  1. Looks up agency_123 credentials in DB
-  2. Loads WhatsApp token, phone number ID for that agency
-  3. Executes tool call with agency-specific credentials
-  4. Returns result
+VPS (76.13.246.21)
+│
+├── AygentDesk (Next.js, port 3000)     ← unchanged, continues to run
+├── Aygency World (Paperclip fork, port 3001)  ← new, main product
+├── Tool Bridge / MCP Server (port 3002)       ← thin service, routes tool calls
+├── Webhook Receiver (port 3003)               ← handles inbound events
+│
+└── Nginx
+    ├── aygentdesk.com → :3000
+    └── aygencyworld.com → :3001
 ```
 
-**Credentials stored per agency (encrypted at rest):**
-- `whatsapp_access_token`, `whatsapp_phone_number_id`
-- `gmail_access_token`, `gmail_refresh_token`
-- `instagram_access_token`, `instagram_user_id`
-- `google_calendar_access_token`, `google_calendar_refresh_token`
+**Why not combine AygentDesk and Aygency World?**
+Different stacks (Next.js vs Node.js/Express), different databases (Prisma vs Drizzle), different deployment models. They share tools via the Tool Bridge — not code. Keep them separate.
 
-**Isolation guarantee:** No cross-agency data leakage. An agent in Agency A can never access Agency B's credentials, leads, or messages.
-
----
-
-## Agency Context & Memory System
-
-Each agency's agents need to know specifics about THAT agency — not just generic Dubai real estate knowledge. This is seeded during onboarding and maintained throughout.
-
-### What gets stored as agency context
-
-```
-Agency Knowledge Base (persisted in DB, loaded into each agent run):
-├── Identity: name, logo, RERA licence number, areas of focus
-├── Inventory: active projects they sell, developer relationships, exclusive listings
-├── Team: human broker names, their areas, their WhatsApp numbers (for handoff)
-├── Tone: formal/casual, language preference, emoji use, response style
-├── Pricing: typical deal sizes, commission rates, preferred payment plans
-├── Guardrails: areas/projects to never mention, competitor blacklist
-└── Goals: current month targets, priority leads, active campaigns
+**Docker Compose (prod):**
+```yaml
+services:
+  aygency-world:     # Paperclip fork
+  tool-bridge:       # MCP/tool routing service
+  webhook-receiver:  # Inbound event handler
+  postgres:          # Shared DB
+  nginx:             # Reverse proxy
 ```
 
-### How it's maintained
-- Seeded by the CEO onboarding interview (CEO extracts structured data from the conversation)
-- Updated via CEO chat ("we just added DAMAC Hills 2 to our portfolio")
-- Automatically updated when agents observe patterns (Lead Agent notices 80% of leads are asking about JVC → flags to CEO)
-- The `remember` tool writes to this context store
+---
+
+## Tool Integration — Options & Decision
+
+The 53 AygentDesk tools need to be accessible to Aygency World agents. There are four ways to do this. We use Option B for the demo, then evolve to Option A for production.
+
+### Option A — MCP Server (production architecture) ✅ LONG-TERM
+
+Build a proper MCP (Model Context Protocol) server that exposes all 53 tools. Claude Code has native MCP support — configure each agent's Claude Code process to connect to it on startup.
+
+```
+Paperclip → spawns Claude Code
+Claude Code → connects to MCP server (configured in claude_mcp_config.json)
+MCP server → receives tool call + agencyId + role
+MCP server → loads agency credentials from DB
+MCP server → executes tool against AygentDesk API
+MCP server → returns result to Claude Code
+```
+
+**Why this is right long-term:**
+- Claude Code supports MCP natively and first-class
+- Role-scoping is clean: the MCP server returns only the tools for that agent's role
+- Any new tool added to AygentDesk automatically appears in Aygency World
+- Debugging is clean — structured tool call logs
+- The MCP server itself is ~200 lines of Node.js
+
+### Option B — Markdown skills with bash/curl (demo architecture) ✅ DAY 1
+
+Write skills as markdown files that instruct Claude to make HTTP calls to AygentDesk's existing API. Claude Code is excellent at running bash. Zero new infrastructure required.
+
+```markdown
+# search-leads.md
+To search for leads, run this command:
+curl -X POST $AYGENTDESK_URL/api/tools/search_leads \
+  -H "Authorization: Bearer $AGENCY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{{query}}", "agencyId": "$AGENCY_ID"}'
+Parse the JSON response and use the leads array.
+```
+
+**Why to start here:** Zero infrastructure. AygentDesk already exists and is running. Demo-ready in hours, not days. Build the proper MCP server in Phase 2 while the demo is already running.
+
+### Option C — Shared npm package (not recommended now)
+Extract tools into `@aygent/tools` package shared by both products. Requires significant AygentDesk refactoring — tools are tightly coupled to Next.js/Prisma. Worth doing in v2 but not now.
+
+### Option D — Use Paperclip as-is via plugin (rejected)
+Can't change the UI, onboarding, or branding. Kills the product vision entirely.
 
 ---
 
-## AI Calling Agent
+## The Tool Bridge / MCP Server
 
-AygentDesk ships Twilio + Gemini 2.0 Flash Live for real-time AI voice calls. This is a natural 7th agent in Aygency World.
+The Tool Bridge is a lightweight Node.js/Express service that acts as the bridge between Paperclip's Claude Code agents and AygentDesk's tool implementations.
 
-### Call Agent
-**Purpose:** Inbound call handling, outbound follow-up calls, voicemail drops.
-**Tools:** `make_call`, inbound call webhook handler, voicemail transcription
-**Heartbeat:** Reactive (triggered by inbound call) + scheduled (outbound call list at 10am and 3pm)
+### What it does
+1. Receives a tool call: `{ tool: "send_whatsapp", agencyId: "uuid", role: "lead-agent", params: {...} }`
+2. Verifies the calling agent's role is allowed to use this tool
+3. Loads the agency's credentials from the DB (WhatsApp token, Gmail token, etc.)
+4. Calls AygentDesk's internal API with those credentials
+5. Returns the result
 
-**What it does:**
-- **Inbound:** Answers calls to the agency number in real-time. Qualifies the lead (budget, area, timeline), books a viewing or schedules a callback with a human broker. Transcript + summary stored against the lead.
-- **Outbound follow-up:** Calls leads who haven't responded to WhatsApp/email after 48 hours. Speaks naturally, re-engages, updates lead score.
-- **Voicemail drop:** Leaves a pre-approved voicemail for cold leads without waiting for answer.
-
-**Approval model:** Outbound call lists are queued for approval before dialling begins. Individual call transcripts are logged but not approval-gated (they already happened).
-
----
-
-## Human Broker Handoff Flow
-
-For established agencies with human brokers, the AI agents and human team must work together seamlessly.
-
-### When AI escalates to human
-
-The Lead Agent escalates a lead to a human broker when:
-- Lead score reaches 8+ (highly qualified, high intent)
-- Lead explicitly asks to speak to a person
-- Lead has viewed 3+ properties and hasn't committed (needs human relationship)
-- Lead budget > AED 5M (premium buyer, requires human touch)
-- Call Agent flags "ready to view" from a live call
-
-### The handoff
-1. Lead Agent creates an escalation card in the CEO chat: lead summary, score, conversation history, suggested broker to assign
-2. CEO (or owner) approves and assigns to a specific human broker
-3. Assigned broker receives a WhatsApp notification: lead name, phone, summary, full context link
-4. Lead is tagged "assigned: [broker name]" — Lead Agent stops auto-following up
-5. If broker doesn't contact within 2 hours, Lead Agent escalates back to CEO
-
-### Human action sync
-When a human broker takes action outside the platform (sends a WhatsApp manually, books a viewing), the system captures it:
-- WhatsApp Cloud API logs ALL messages on the agency number — human-sent and AI-drafted both flow through
-- Google Calendar sync captures manually-booked viewings
-- Broker can log manual actions via a simple "What did you do?" input in their broker view
+### Role-to-tool mapping (enforced at the bridge)
+```
+CEO:           all 53 tools (read-heavy, write-gated)
+Lead Agent:    search_leads, update_lead, send_whatsapp, send_email, bulk_follow_up, tag_lead, match_deal_to_leads, get_follow_ups, reactivate_stale_leads
+Content Agent: generate_social_content, post_to_instagram, generate_pitch_deck, generate_pitch_presentation, generate_landing_page, launch_campaign, create_drip_campaign, enroll_lead_in_campaign
+Market Agent:  search_dld_transactions, search_listings, watch_listings, get_news, web_search, analyze_investment, search_projects, get_project_details, calculate_dld_fees
+Viewing Agent: schedule_viewing, get_viewings, get_calendar, create_event, check_availability, send_whatsapp, send_email
+Portfolio Agent: manage_landlord, manage_property, manage_tenancy, calculate_rera_rent, list_documents, create_portal, get_portal_activity, send_email
+Call Agent:    make_call, inbound call handler, voicemail transcription
+Social Agent:  search_instagram_dms, post_to_instagram, generate_social_content
+```
 
 ---
 
-## Owner Notification System
+## The Webhook Receiver Service
 
-The owner is not always on the dashboard. They need to know when something requires attention.
+Paperclip has no built-in webhook receivers. This is a separate lightweight Express service that handles all inbound real-world events and translates them into Paperclip issues.
 
-### Notification channels
-- **Push notification (PWA)** — approval pending, escalation raised, morning brief ready
-- **WhatsApp to owner's personal number** — daily morning brief summary, urgent escalations only (not routine approvals)
-- **Email digest** — weekly performance summary, cost report
+### What it handles
 
-### Notification rules
-| Event | Channel | Timing |
-|-------|---------|--------|
-| Approval pending (routine) | Push | Batch at 9am, 1pm, 6pm |
-| Urgent escalation (hot lead) | WhatsApp + Push | Immediate |
-| Morning brief ready | Push | 8am daily |
-| Agent error / failure | Push | Immediate |
-| Monthly cost approaching budget | Push + Email | At 80% of budget |
-| Weekly report | Email | Monday 8am |
+**WhatsApp inbound messages**
+- Meta Cloud API sends a webhook POST for every inbound message to the agency number
+- Receiver authenticates the signature, parses the message
+- Creates a Paperclip issue: `{ title: "WhatsApp from Ahmed Al Hashimi", description: "...message...", projectId: "lead-inbox" }`
+- Paperclip scheduler wakes Lead Agent on next heartbeat
 
----
+**Property Finder / Bayut / Dubizzle leads**
+- These portals email lead notifications to the agency's Gmail
+- Gmail Push Notifications (not polling) deliver in real-time via webhook
+- Receiver parses the structured email format from each portal
+- Creates a lead record + Paperclip issue
+- Lead Agent processes it immediately on next heartbeat (every 15 min)
 
-## Demo Mode & First Wow Moment
+**Landing page form submissions**
+- AygentDesk generates landing pages with lead capture forms
+- Form POST hits the webhook receiver
+- Creates lead record + Paperclip issue
 
-New users must experience value within the first 10 minutes. A cold empty dashboard kills conversion.
+**Per-broker WhatsApp**
+- Same pattern — each broker's connected number has its own webhook subscription
 
-### Demo Agency (pre-loaded on signup)
-Every new signup gets a **pre-populated demo agency** running in the background:
-- 12 fake leads in various pipeline stages
-- A week of agent activity already logged (Lead Agent followed up 8 leads, Content Agent generated 3 posts, Market Agent flagged 2 DLD deals)
-- 3 pending approval cards waiting in the CEO chat (a WhatsApp draft, an Instagram post, a pitch deck)
-- A morning brief from the CEO summarising the demo agency's week
-
-The user's first experience is seeing a fully-running agency — not an empty state. They read the morning brief, approve a WhatsApp, see the agent run log. Then the onboarding wizard asks: "Ready to connect your real agency?"
-
-### First real win
-Designed first milestone after connecting real credentials:
-1. Lead Agent detects first real inbound WhatsApp enquiry
-2. Lead Agent drafts a response
-3. Approval card appears in CEO chat
-4. Owner approves → message sent in under 60 seconds of enquiry
-5. CEO chat: "Your Lead Agent just responded to Ahmed Al Hashimi's enquiry about JVC. That's your first AI-assisted lead response."
+### Why a separate service?
+Keeps inbound event handling fully decoupled from Paperclip. The receiver is dumb — it just translates external events into Paperclip tasks. If Paperclip is slow or restarting, events queue up in the receiver and retry. Clean separation of concerns.
 
 ---
 
-## Multilingual Support
+## Database Architecture
 
-Dubai's buyer pool is internationally diverse. Arabic, Russian, Chinese, and English are all active in the market. Agents communicating only in English lose significant volume.
+Paperclip's embedded PostgreSQL + additional tables for Aygency World extensions. Uses Drizzle ORM (NOT Prisma).
 
-### Language detection
-- Lead Agent detects the language of every inbound message
-- Responds in the same language by default
-- Language is stored on the lead profile
-- Approval cards show message in detected language with English translation toggle
+### Paperclip's built-in tables (don't touch)
+- `companies` — each agency is a company
+- `agents` — each AI agent in the org chart
+- `issues` — tasks/assignments between agents
+- `heartbeat_runs` — log of every agent execution
+- `cost_events` — token usage and dollar cost per run
+- `activity_log` — immutable audit trail
+- `agent_task_sessions` — persisted Claude session state
 
-### Supported languages at launch
-Arabic, English, Russian — these three cover the majority of Dubai's buyer market. Chinese (Mandarin) as Phase 2.
+### Additional tables (Aygency World extensions)
+```sql
+-- Per-agency OAuth credentials (encrypted at rest)
+agency_credentials (
+  id, company_id, service (whatsapp|gmail|instagram|google_calendar),
+  access_token (encrypted), refresh_token (encrypted),
+  phone_number_id, expires_at, created_at
+)
 
-### Tone adaptation
-- Arabic: formal, respectful, titles used ("Mr. Ahmed", "Ustaz")
-- Russian: direct, metrics-first (price per sqft, ROI percentage)
-- English: varies — adapt to cues from the lead's writing style
+-- Agency knowledge base (CEO interview results + ongoing updates)
+agency_context (
+  id, company_id, key, value (jsonb), updated_at
+)
+
+-- Human brokers and their connected WhatsApp numbers
+brokers (
+  id, company_id, user_id, name, phone, whatsapp_phone_number_id,
+  areas_focus, tone_preference, status (active|inactive)
+)
+
+-- Lead records
+leads (
+  id, company_id, name, phone, email, source, language,
+  score (0-10), stage, assigned_broker_id,
+  budget_min, budget_max, area_preference, property_type,
+  timeline, financing_status, created_at, last_contact_at
+)
+
+-- Pending approvals queue
+approvals (
+  id, company_id, agent_id, type, payload (jsonb),
+  status (pending|approved|rejected|edited),
+  created_at, resolved_at, resolved_by
+)
+
+-- Escalations (high-priority, immediate notification)
+escalations (
+  id, company_id, agent_id, reason, lead_id,
+  status (pending|resolved), notified_at, resolved_at
+)
+
+-- Inbound webhook events log
+webhook_events (
+  id, company_id, source, raw_payload (jsonb),
+  processed (bool), issue_id, created_at
+)
+
+-- Notification log
+notifications (
+  id, company_id, user_id, channel (push|whatsapp|email),
+  message, sent_at, read_at
+)
+```
 
 ---
 
-## Dubai Compliance & Legal Guardrails
+## Authentication & Multi-Tenancy
 
-### RERA advertising rules
-- No guaranteed rental yield figures without official RERA data source
-- Off-plan projects must be RERA-registered before marketing
-- Agent must hold valid RERA card number (stored in agency context, appended to relevant comms)
-- Lead Agent skill set includes a compliance check before generating any marketing claim
-
-### UAE Personal Data Protection Act (PDPA)
-- All lead data encrypted at rest
-- No cross-agency data sharing
-- Data deletion API: agency can request full data wipe on cancellation
-- WhatsApp opt-out: if lead replies "STOP", Lead Agent tags them as opted-out and never contacts again
-
-### Financial promotions
-- Investment analysis outputs include a standard disclaimer (configurable per agency)
-- No price guarantees in any automated communication
-- Capital appreciation claims require a DLD source citation
-
----
-
-## Team Access & Permissions
-
-For established agencies, human brokers need visibility into AI agent activity without having full owner-level control.
+### Auth system: better-auth (Paperclip's built-in)
+Do NOT swap in NextAuth from AygentDesk. Different stack, different session model. Paperclip's `better-auth` handles agency owner accounts, sessions, and API keys natively.
 
 ### Roles
+| Role | Access |
+|------|--------|
+| **Owner** | Full control — billing, agent management, all approvals, all leads |
+| **Manager** | All agents, all leads, all approvals — but no billing |
+| **Broker** | Their assigned leads only — view history, log actions, request CEO help |
+| **Viewer** | Dashboard metrics only — read-only |
 
-| Role | What they can see | What they can do |
-|------|------------------|-----------------|
-| **Owner** | Everything | Full control, billing, hire/fire agents |
-| **Manager** | All agents, all leads, all approvals | Approve actions, assign leads, adjust agent instructions |
-| **Broker** | Their assigned leads only | View lead history, log manual actions, request CEO assistance |
-| **Viewer** | Dashboard metrics only | Read-only, no actions |
-
-### Broker view
-Brokers get a simplified mobile-first view showing:
-- Their assigned leads and conversation history
-- Viewing schedule for today
-- Quick log: "I called Ahmed — no answer", "Viewing confirmed for Thursday"
-- Request help from CEO: "I need a pitch deck for this lead"
+### Multi-tenancy
+Every entity in the DB has `company_id`. Paperclip enforces this on every route. Agent API keys are scoped to `(agent_id, company_id)` — an agent in Agency A cannot access Agency B's data. Built in, not bolted on.
 
 ---
 
-## Cost Tracking & Budget Controls
+## Onboarding Flow (Hybrid Wizard + CEO Interview)
 
-Every agent run consumes Claude API tokens. Owners need visibility and control.
+### Step 1 — Agency Basics (wizard, 60 seconds)
+- Agency name + logo upload
+- Focus area: Off-Plan / Rentals / Secondary / All
+- Size: Solo / Small (2–5) / Medium (6–15) / Large (15+)
+- Stored immediately in `agency_context`
 
-### Per-agent cost tracking
-- Every heartbeat run logs: tokens in, tokens out, tools called, duration, cost in USD
-- Dashboard agent cards show: cost today / cost this month
-- Monthly cost projection based on current run rate
+### Step 2 — Connect Integrations (OAuth, 2 minutes)
+- **WhatsApp** (required): Meta Business OAuth → `whatsapp_business_messaging` permission → token + phone number ID stored
+- **Gmail** (required): Google OAuth → `gmail.readonly`, `gmail.send`, `gmail.modify` → tokens stored. On connection, immediately scans last 7 days for PF/Bayut/Dubizzle notification emails and imports any leads found.
+- **Instagram** (optional): Meta OAuth (same App as WhatsApp) → `instagram_content_publish`, `instagram_manage_messages`
+- **Google Calendar** (optional): same OAuth as Gmail → `calendar.events`
 
-### Budget controls
-- Per-agent monthly budget cap (e.g., Lead Agent: $50/month max)
-- Agency-wide monthly budget cap
-- At 80% of budget: owner notified
-- At 100%: agent pauses, owner must top up or raise cap
-- Emergency pause: one-click pause all agents from dashboard
-
-### Cost visibility
-Owner sees a clear breakdown: "This month your agency has cost $127. Lead Agent: $62, Content Agent: $31, Market Agent: $18, CEO: $16."
-
----
-
-## Property Finder & Dubizzle Integration
-
-Property Finder is Dubai's #1 listing portal. Most agencies receive the majority of their leads via PF email notifications.
-
-### Email-based lead parsing
-PF, Bayut, and Dubizzle all send lead notification emails in structured formats. The Lead Agent's email watcher:
-1. Monitors Gmail for emails from `@notification.propertyfinder.ae`, `@bayut.com`, `@dubizzle.com`
-2. Parses name, phone, email, property enquired about, message
-3. Creates lead record with source tagged
-4. Triggers immediate follow-up sequence
-
-### Portal-specific context
-- Property Finder leads often come with the specific listing URL — stored on lead, used by Lead Agent to provide contextual follow-up
-- Bayut leads may include the lead's other saved properties — intelligence for the Lead Agent
-- Response SLA: PF and Bayut rank agents by response speed — Lead Agent targets sub-5-minute response to all portal leads
-
----
-
-## The AygentDesk MCP Server (Tool Layer)
-
-AygentDesk's 53 tools are the skill layer for Aygency World agents. They are exposed via an **MCP (Model Context Protocol) server** that Paperclip agents connect to via Claude Code.
-
-This means:
-- No rewriting tools — they already exist and are tested
-- Each agent gets a filtered view (Lead Agent can't accidentally post to Instagram)
-- New tools added to AygentDesk automatically become available in Aygency World
-
-### MCP Server Architecture
+### Step 3 — CEO Is Hired
+- CEO agent instantiated in Paperclip as a company
+- Wizard closes. CEO Chat opens.
+- CEO already knows the basics from step 1.
+- CEO runs first heartbeat immediately — begins strategic onboarding interview:
 
 ```
-Aygency World (Paperclip fork)
-  └── Agent (Claude Code instance)
-        └── connects to: AygentDesk MCP Server
-              └── exposes: 53 tools scoped by agent role
+CEO: "Hi, I've reviewed your agency setup. Before I recommend a team, I have a few quick questions.
+
+What's your biggest challenge right now — generating leads, converting the ones you have, or managing existing landlord/tenant relationships?"
+
+[Owner responds in chat]
+
+CEO: "Got it. Which areas are you currently focused on, and which projects are you actively selling?"
+
+[...]
+
+CEO: "Based on what you've told me, here's the team I recommend:
+- Lead Agent — handles all inbound enquiries, follow-ups, pipeline management
+- Content Agent — daily Instagram posts, pitch decks, landing pages
+- Market Intel Agent — monitors DLD, Bayut listings, flags opportunities
+
+Shall I hire these three to get started?"
+
+[Owner approves → agents created in Paperclip]
 ```
 
-The MCP server reads the agent's role from the connection context and returns only the tools for that role. CEO gets all tools (read-only on most). Sub-agents get role-scoped subsets.
+### Demo Mode (for users who skip OAuth)
+Users who don't connect real credentials in step 2 enter Demo Mode:
+- Pre-populated fake agency: 12 leads in pipeline, a week of agent activity already logged, 3 pending approval cards waiting
+- Morning brief from the CEO summarising the demo agency's week
+- First experience is a running agency — not an empty state
+- Prominent CTA: "Connect your real agency to go live"
+
+---
+
+## The CEO Chat Interface
+
+This is the most important UI addition. Paperclip's default UI is an issues board — not suitable. We build a proper chat interface on top of Paperclip's existing comment API.
+
+### How it works technically
+- One persistent Paperclip issue per agency: "CEO Chat" — never closed, never completed
+- CEO agent writes all its responses as comments on this issue
+- Owner's messages are also comments (role: "board")
+- The CEO Chat React component renders these comments as a chat thread
+
+### What it looks like
+- Chat bubbles: owner messages left, CEO messages right
+- Morning brief pinned as a card at the top of each day's section
+- Inline approval cards rendered from structured JSON in comment bodies (see Approval System)
+- Quick action shortcuts: "Brief me", "What's pending?", "Weekly report", "Pause all agents"
+- Unread indicator badge in the nav
+
+### The structured comment format
+When CEO or a sub-agent writes a comment that contains an action, it includes a JSON block:
+
+```json
+{
+  "type": "approval_required",
+  "action": "send_whatsapp",
+  "to": "Ahmed Al Hashimi",
+  "phone": "+971501234567",
+  "message": "Hi Ahmed! Following up on your interest in Binghatti Hills JVC...",
+  "lead_id": "uuid",
+  "lead_score": 7,
+  "context": "Lead enquired 48h ago via Property Finder. No response to first message."
+}
+```
+
+The CEO Chat component detects this JSON block and renders an approval card instead of raw text. The rest of the comment is rendered as normal markdown above the card.
+
+---
+
+## Approval System
+
+Every outbound action requires an approval card in the CEO Chat. Agents never execute external actions unilaterally.
+
+### Approval Card Types
+
+| Type | Triggered by | Card shows |
+|------|-------------|------------|
+| WhatsApp Send | Lead Agent | Message preview, recipient name + number, lead score, lead context, conversation history button |
+| Email Send | Lead/Portfolio Agent | Subject, body preview, recipient, any attachments |
+| Instagram Post | Content Agent | Image preview, caption, hashtags, best time to post suggestion |
+| Pitch Deck | Content Agent | PDF preview link, which lead to send to, personalisation notes |
+| Viewing Confirmation | Viewing Agent | Date/time, property address, broker assigned, attendees |
+| Campaign Launch | Content Agent | Sequence preview (all messages), enrolment list, schedule |
+| Outbound Call List | Call Agent | List of leads to call, scripts used, estimated time |
+| Lead Escalation | Lead Agent | Lead summary, score, why escalated, suggested broker to assign |
+
+### Batch approvals
+Routine approvals (WhatsApp follow-ups, content posts) batch up in the CEO Chat. Owner can bulk-approve all pending items or review individually. Urgent escalations (hot leads) appear immediately with push notification — not batched.
+
+### Edit before approve
+Owner can edit the message content directly in the approval card before approving. The edited version is what gets sent. Useful for personalisation or tone adjustments.
+
+### Auto-approve rules (owner can configure)
+For trusted routine actions, owner can set auto-approve guardrails:
+- "Auto-approve WhatsApp follow-ups to leads with score < 6" (boilerplate nurture)
+- "Auto-approve Instagram posts to queue, but require approval before publishing"
+- "Auto-approve viewing confirmations when broker is assigned"
 
 ---
 
 ## Agent Roles & Tool Mapping
 
 ### CEO Agent
-**Purpose:** Strategy, delegation, owner communication, morning briefs, escalation handling.
-**Tools:** All 53 (read access on everything, write access to task creation and memory)
-**Heartbeat:** Every 4 hours — reviews agency state, generates brief, escalates blockers
+**Purpose:** Strategy, delegation, owner communication, morning briefs, escalation handling, agency-wide reporting.
+**Heartbeat:** Every 4 hours — reviews agency state, synthesises brief, escalates blockers, adjusts sub-agent priorities based on owner instructions
+**Delegates to:** All sub-agents via Paperclip's issue task system
+**Tools:** All 53 (read access on everything; write access gated by approvals)
 
 ### Lead Agent
-**Purpose:** Inbound lead capture, scoring, follow-up, pipeline management.
-**Tools:** `search_leads`, `update_lead`, `get_lead_activity`, `search_whatsapp`, `send_whatsapp`, `search_email`, `send_email`, `bulk_follow_up`, `reactivate_stale_leads`, `tag_lead`, `create_tag`, `match_deal_to_leads`, `get_follow_ups`
-**Heartbeat:** Every 15 minutes — checks new inbound, drafts follow-ups, queues approvals
+**Purpose:** Inbound lead capture, scoring, enrichment, follow-up sequences, pipeline management, lead-to-broker handoff.
+**Heartbeat:** Every 15 minutes — highest frequency agent
+**Tools:** `search_leads`, `update_lead`, `get_lead_activity`, `search_whatsapp`, `send_whatsapp`, `search_email`, `send_email`, `bulk_follow_up`, `reactivate_stale_leads`, `tag_lead`, `create_tag`, `match_deal_to_leads`, `get_follow_ups`, `set_guardrails`
 
 ### Content Agent
-**Purpose:** Social media, pitch decks, landing pages, campaign management.
+**Purpose:** Social media content, pitch decks, landing pages, drip campaign management.
+**Heartbeat:** Daily at 9am — generates the day's content queue
 **Tools:** `generate_social_content`, `post_to_instagram`, `generate_pitch_deck`, `generate_pitch_presentation`, `generate_landing_page`, `generate_content`, `launch_campaign`, `create_drip_campaign`, `enroll_lead_in_campaign`
-**Heartbeat:** Daily at 9am — generates content queue for the day
 
 ### Market Intelligence Agent
-**Purpose:** DLD transaction monitoring, listing surveillance, news, investment analysis.
+**Purpose:** DLD transaction monitoring, listing surveillance, news aggregation, investment analysis, competitor tracking.
+**Heartbeat:** Every hour
 **Tools:** `search_dld_transactions`, `search_listings`, `watch_listings`, `get_news`, `web_search`, `analyze_investment`, `search_projects`, `get_project_details`, `calculate_dld_fees`
-**Heartbeat:** Every hour — scans DLD, flags new deals, monitors watched listings
 
 ### Viewing Agent
-**Purpose:** Calendar management, viewing scheduling, confirmation and follow-up.
+**Purpose:** Viewing scheduling, calendar management, confirmation messages, post-viewing follow-up.
+**Heartbeat:** Every 30 minutes
 **Tools:** `schedule_viewing`, `get_viewings`, `get_calendar`, `create_event`, `check_availability`, `send_whatsapp`, `send_email`
-**Heartbeat:** Every 30 minutes — checks upcoming viewings, sends reminders, follows up after viewings
 
-### Portfolio Agent (Rental/Property Management)
-**Purpose:** Landlord management, tenancy renewals, rent tracking, document management.
+### Portfolio Agent
+**Purpose:** Landlord management, tenancy renewals, rent tracking, vacancy management, RERA rent calculations.
+**Heartbeat:** Daily at 8am
 **Tools:** `manage_landlord`, `manage_property`, `manage_tenancy`, `calculate_rera_rent`, `list_documents`, `create_portal`, `get_portal_activity`, `send_email`, `send_whatsapp`
-**Heartbeat:** Daily at 8am — checks expiring leases, flags renewals due, chases overdue rent
 
-### Social Media Agent (optional, larger agencies)
+### Call Agent
+**Purpose:** Inbound call handling (Twilio + Gemini 2.0 Flash Live), outbound follow-up calls, voicemail drops.
+**Heartbeat:** Reactive (inbound call trigger) + scheduled (outbound call list at 10am and 3pm)
+**Tools:** `make_call`, inbound call webhook handler, voicemail transcription
+**Notes:** AygentDesk already ships Twilio + Gemini Live AI calling. This is the same infrastructure. Inbound calls are answered in real-time by Gemini, transcript + summary stored against lead. Outbound call lists are batched and queued for owner approval before dialling.
+
+### Social Media Agent (larger agencies, optional)
 **Purpose:** Dedicated Instagram/LinkedIn DM monitoring and engagement.
+**Heartbeat:** Every hour during business hours (8am–8pm Dubai)
 **Tools:** `search_instagram_dms`, `post_to_instagram`, `generate_social_content`, `search_whatsapp`
-**Heartbeat:** Every hour during business hours
+
+---
+
+## Agent-to-Agent Communication
+
+### Delegation flow (CEO → sub-agent)
+1. CEO heartbeat runs, reviews agency state
+2. CEO decides Lead Agent needs to follow up with 10 leads who haven't responded in 48h
+3. CEO creates a Paperclip issue: `{ assignee: "lead-agent", title: "48h follow-up batch", description: "Follow up with these 10 leads: [...IDs...]. Draft WhatsApp messages in their detected language. Queue for approval." }`
+4. Lead Agent's next heartbeat atomically claims the issue (single SQL UPDATE — conflict-free)
+5. Lead Agent executes, writes result as a comment: `{ status: "done", drafted: 8, queued_for_approval: 8, unresponsive: 2 }`
+6. CEO reads the result on its next heartbeat, includes in morning brief
+
+### Escalation flow (sub-agent → owner, bypassing CEO)
+When a sub-agent detects something requiring immediate owner attention:
+1. Creates an escalation record in `escalations` table
+2. Webhook receiver pushes immediate notification to owner (push + WhatsApp to owner's personal number)
+3. Escalation card appears at top of CEO Chat immediately
+4. Owner responds in CEO Chat → CEO translates into instructions for the sub-agent
+
+### Escalation triggers
+- Lead score jumps to 9–10 after qualification
+- Lead message contains: "ready to sign", "let's proceed", "how do I pay", "I want this"
+- Call Agent completes a call with "viewing requested" outcome
+- Portfolio Agent detects expired lease with no renewal in progress
+- Budget cap at 80% for any agent
+
+---
+
+## Lead Ingestion — How Leads Enter the System
+
+### Inbound channels
+
+| Source | Mechanism |
+|--------|-----------|
+| **WhatsApp inbound** | Meta Cloud API webhook → Webhook Receiver → Paperclip issue → Lead Agent |
+| **Property Finder** | Gmail Push Notification (real-time) → Webhook Receiver parses PF email format → lead record + issue |
+| **Bayut** | Same — Bayut email notification parsing |
+| **Dubizzle** | Same pattern |
+| **Instagram DMs** | Meta Graph API webhook → Webhook Receiver → Lead Agent |
+| **Landing page forms** | AygentDesk-generated pages POST to Webhook Receiver → lead + issue |
+| **Manual entry** | Owner/broker adds via dashboard form |
+| **CSV import** | Bulk import during onboarding — Lead Agent enriches each record |
+
+### Lead enrichment on entry
+When a new lead is created from any source, Lead Agent automatically:
+1. Searches WhatsApp history for prior conversations (was this person a lead before?)
+2. Checks DLD transactions for prior Dubai property purchases (high-intent signal)
+3. Assigns initial score 0–10 based on: source quality, budget indicators, prior activity
+4. Tags by source, area interest, property type, language detected
+5. Determines which follow-up sequence to enter
+
+### Portal response SLA
+Property Finder and Bayut rank agents by response speed. Lead Agent targets **sub-5-minute response** to all portal leads. This is a significant competitive advantage — most agencies take hours.
+
+---
+
+## Per-Broker WhatsApp
+
+Every human broker has their own WhatsApp number they use with clients. The system supports both the agency number and individual broker numbers.
+
+### Two-tier WhatsApp
+- **Agency number:** Public-facing. Used in ads, portals, branding. Lead Agent monitors and responds. Used for bulk campaigns.
+- **Broker numbers:** Personal numbers each broker connects individually. Once a lead is assigned to a broker, ALL subsequent messages send FROM that broker's number — maintaining a personal relationship.
+
+### How broker WhatsApp connects
+1. Broker receives email invite to join the agency
+2. Sets up profile: name, photo, areas, language preference
+3. Connects WhatsApp via Meta OAuth (same flow as agency number)
+4. Number stored against broker profile in `brokers` table
+5. Lead Agent uses broker's credentials when drafting messages for that broker's assigned leads
+
+### AI as the broker's ghostwriter
+When a lead is assigned to broker Sara:
+- Lead Agent drafts messages in Sara's voice (based on her tone preference in profile)
+- Queues for Sara's approval (in her broker view, not the agency approval queue)
+- Sara approves → message sends FROM Sara's number
+- Client has a consistent human relationship. AI handles the volume.
+
+---
+
+## Full Lead Lifecycle
+
+```
+1. ENTRY
+   WhatsApp / PF email / Bayut email / Instagram DM / form / manual
+   → Lead created: name, phone, source, initial message
+   → Auto-enrichment: DLD history, WhatsApp history, initial score
+
+2. IMMEDIATE RESPONSE (target: < 5 minutes)
+   Lead Agent drafts reply in detected language
+   → Approval card in CEO Chat (or auto-approve if configured)
+   → Message sent. Lead tagged "contacted"
+
+3. QUALIFICATION (days 1–7)
+   Lead Agent qualifies via WhatsApp conversation
+   → Extracts: budget, area, property type, timeline, financing
+   → Score updated. Route determined:
+      Score 1–4: Nurture drip campaign (monthly touch)
+      Score 5–7: Weekly follow-up sequence
+      Score 8–10: Escalation → broker assignment
+
+4. MATCHING
+   Lead Agent runs match_deal_to_leads against current inventory
+   → Suggests 2–3 matching projects/properties
+   → Content Agent generates pitch deck if off-plan
+   → Approval card: send pitch deck to lead?
+
+5. VIEWING
+   Lead expresses interest in visiting
+   → Viewing Agent checks broker + lead availability
+   → Proposes 3 time slots to lead via WhatsApp
+   → Lead confirms → calendar event created, confirmation sent
+   → Day before: reminder. Post-viewing: follow-up drafted.
+
+6. NEGOTIATION / OFFER
+   Human broker takes over (high-value relationship work)
+   AI supports: DLD comparables, DLD fee calculation, payment plan doc
+   Content Agent generates personalised proposal on request
+
+7. DEAL CLOSED
+   Broker marks deal as "closed" in dashboard
+   → Lead status → "client"
+   → CEO logs conversion in monthly metrics
+   → If rental: Portfolio Agent creates landlord/tenancy records
+   → Content Agent generates "just sold" Instagram post for approval
+
+8. POST-DEAL
+   Lead enters post-sale nurture (referral request, annual check-in)
+   If rental: Portfolio Agent manages ongoing tenancy + renewals
+```
+
+---
+
+## Human Broker Handoff Flow
+
+### When AI escalates to human
+Lead Agent escalates when:
+- Lead score reaches 8+
+- Lead explicitly asks to speak to a person
+- Lead has been engaged 3+ weeks without committing
+- Lead budget > AED 5M (premium buyer, requires human relationship)
+- Call Agent flags "ready to view" from a live call
+
+### The handoff
+1. Lead Agent creates escalation card: lead summary, score, full conversation history, suggested broker
+2. Owner approves in CEO Chat, assigns to broker
+3. Assigned broker receives WhatsApp notification: lead name, phone, summary, context link
+4. Lead tagged `assigned: sara`. Lead Agent stops auto-following up.
+5. If broker doesn't contact within 2 hours → Lead Agent escalates back to CEO
+
+### Human action sync (keeping the system current)
+When a human broker takes action outside the platform:
+- WhatsApp Cloud API logs ALL messages on the agency number — human and AI-drafted both flow through
+- Google Calendar sync captures manually-booked viewings
+- Broker logs manual actions via their broker view: "Called Ahmed — going to view Thursday"
+
+---
+
+## Multilingual Support
+
+Dubai's buyer pool is international. Arabic, Russian, Chinese, and English are the dominant languages.
+
+### Language detection
+- Lead Agent detects language of every inbound message
+- Responds in the same language by default
+- Language stored on lead profile
+- Approval cards show message in detected language with English translation toggle
+
+### Launch languages
+- Arabic, English, Russian (covers majority of Dubai market)
+- Mandarin Chinese as Phase 2
+
+### Tone by language
+- **Arabic:** Formal, respectful, use titles ("Mr. Ahmed", "Ustaz")
+- **Russian:** Direct, metrics-first (AED price, price per sqft, ROI %)
+- **English:** Adapt to lead's tone — formal or casual based on their writing style
+- **Chinese:** Formal, relationship-first, avoid aggressive sales language
+
+---
+
+## Owner Notification System
+
+The owner is not always on the dashboard. Critical events must reach them on their phone.
+
+### Channels
+- **Push notification (PWA):** For approval batches, escalations, brief ready
+- **WhatsApp to owner's personal number:** Urgent escalations only — hot leads, deal-ready signals
+- **Email digest:** Weekly report, monthly cost summary
+
+### Notification schedule
+| Event | Channel | Timing |
+|-------|---------|--------|
+| Approval batch ready | Push | 9am, 1pm, 6pm |
+| Hot lead escalation | WhatsApp + Push | Immediate |
+| Morning brief ready | Push | 8am daily |
+| Agent error or failure | Push | Immediate |
+| Budget at 80% | Push + Email | Immediate |
+| Weekly report | Email | Monday 8am |
+
+---
+
+## Agency Context & Memory System
+
+Agents need to know specifics about THIS agency — not just generic Dubai knowledge.
+
+### What gets stored
+```
+Agency Knowledge Base (agency_context table):
+├── identity:    name, logo, RERA licence, areas of focus, established date
+├── inventory:   active projects, developer relationships, exclusive listings
+├── team:        human broker names, areas, WhatsApp numbers (for handoff routing)
+├── tone:        formal/casual, language preference, emoji use, sign-off style
+├── pricing:     typical deal sizes, commission rates, preferred payment plans
+├── guardrails:  areas/projects never to mention, competitor blacklist
+└── goals:       current month targets, priority leads, active campaigns
+```
+
+### How it's maintained
+- **Seeded** by CEO onboarding interview (CEO extracts structured context from conversation)
+- **Updated** via CEO Chat ("we just signed with DAMAC Hills 2 as an exclusive")
+- **Auto-updated** when agents observe patterns (Lead Agent notices 80% of inbound is JVC → flags to CEO)
+- **Accessed** by every agent on each heartbeat — injected into the Claude Code system prompt
+
+---
+
+## Dubai Compliance & Legal Guardrails
+
+### RERA advertising rules
+- No guaranteed rental yield figures without official RERA source
+- Off-plan projects must be RERA-registered before marketing
+- Agency RERA licence number stored in `agency_context`, appended to relevant outbound comms
+- Lead Agent skill includes a compliance check: never quote prices as guaranteed, always use "starting from" or "from approximately"
+
+### UAE Personal Data Protection Act (PDPA)
+- All lead data encrypted at rest (`agency_credentials` encrypted, lead phone numbers hashed in logs)
+- No cross-agency data sharing
+- Data deletion: agency can request full wipe on cancellation
+- WhatsApp opt-out: if lead replies "STOP", Lead Agent tags as opted-out and never contacts again
+
+### Financial promotions
+- Investment analysis outputs include configurable disclaimer
+- No capital appreciation guarantees in automated communication
+- All yield claims cite DLD source
+
+---
+
+## Cost Tracking & Budget Controls
+
+Every agent heartbeat consumes Claude API tokens and costs real money. Owners need full visibility and hard controls.
+
+### Per-agent tracking
+- Every heartbeat logs: tokens in, tokens out, tools called, duration, cost USD
+- Dashboard shows per-agent: cost today / cost this month / projected month-end
+- Breakdown visible in agent detail view
+
+### Budget controls
+- **Per-agent monthly cap:** Set per agent (e.g., Lead Agent: $50/month)
+- **Agency-wide monthly cap:** Hard ceiling across all agents
+- **80% warning:** Push notification when approaching limit
+- **100% hit:** Agent pauses gracefully, owner must raise cap to resume
+- **Emergency pause:** One-click pause all agents from dashboard or via CEO Chat
+
+### Cost transparency in CEO Chat
+Morning brief always includes: "Your agency spent $14.20 yesterday. Lead Agent: $8.40, Content Agent: $3.20, Market Agent: $2.60."
+
+---
+
+## Skill File Format
+
+Skills are the instruction sets that define agent behaviour. Plain markdown — no code, no special syntax. An actual skill looks like:
+
+```markdown
+---
+name: lead-response
+description: >
+  Draft responses to new inbound leads within 5 minutes of enquiry.
+  Use when: a new lead has just come in via WhatsApp, portal, or form.
+  Don't use when: the lead is already qualified and assigned to a broker.
+---
+
+# Lead Response Skill
+
+## Rules
+- Respond in the same language the lead used
+- First reply: max 3 sentences, never quote a specific price
+- Always include the broker's name (from agency_context.team) in sign-off
+- If lead asks "are you a bot?": "I'm [Name] from [Agency], happy to help!"
+- Never send a second message before the lead replies to the first
+
+## First response template
+"Hi [Lead Name]! Thanks for reaching out about [property/area]. I'd love to find
+you something that fits perfectly. Quick question — are you looking for
+[Type A] or [Type B]? — [Broker Name], [Agency]"
+
+## Qualification sequence (across 2–3 messages)
+1. Budget range
+2. Timeline (when are you looking to move or invest?)
+3. Financing (cash or mortgage?)
+
+## Escalation rule
+If budget > AED 2M AND timeline < 3 months AND positive response:
+→ Create escalation immediately (do not continue qualifying yourself)
+```
+
+Skills live in the company template repo and are symlinked into each agent's Claude Code session.
 
 ---
 
 ## The Company Template
 
-The Dubai Real Estate Agency template lives in a fork of `paperclipai/companies`. It is a fully configured, importable company package:
+The Dubai Real Estate Agency template is a fully configured, importable company package:
 
 ```
 dubai-real-estate-agency/
-├── company.json          # Org chart: CEO + 5 default agents, goals, governance
+├── COMPANY.md                    # Org chart, goals, governance, requirements
+├── agents/
+│   ├── ceo/
+│   │   ├── AGENTS.md             # CEO role definition
+│   │   ├── HEARTBEAT.md          # What CEO does each heartbeat
+│   │   └── SOUL.md               # CEO personality and communication style
+│   ├── lead-agent/
+│   ├── content-agent/
+│   ├── market-agent/
+│   ├── viewing-agent/
+│   ├── portfolio-agent/
+│   └── call-agent/
 ├── skills/
-│   ├── lead-management/  # Instructions for lead agent behaviour
-│   ├── content/          # Content guidelines, tone of voice, brand rules
-│   ├── market-intel/     # DLD monitoring patterns, what to flag
-│   ├── viewings/         # Viewing etiquette, confirmation templates
-│   └── portfolio/        # Tenancy management workflows
+│   ├── lead-response.md
+│   ├── lead-qualification.md
+│   ├── lead-handoff.md
+│   ├── content-instagram.md
+│   ├── content-pitch-deck.md
+│   ├── market-dld-monitoring.md
+│   ├── viewing-scheduling.md
+│   ├── portfolio-tenancy.md
+│   ├── call-inbound.md
+│   ├── dubai-compliance.md       # RERA and PDPA rules
+│   └── multilingual.md           # Language detection and tone rules
+├── .paperclip.yaml               # Paperclip-specific metadata
 └── README.md
 ```
 
@@ -461,352 +825,203 @@ npx companies.sh add aygencyworld/companies/dubai-real-estate-agency
 
 ---
 
-## Approval System
-
-Every outbound action is gated by an approval card in the CEO chat. Agents never send anything without authorisation.
-
-### Approval Card Types
-
-| Type | Triggered by | What it shows |
-|------|-------------|---------------|
-| WhatsApp Send | Lead Agent | Message preview, recipient, lead context, send / edit / reject |
-| Email Send | Lead/Portfolio Agent | Subject, body preview, recipient, send / edit / reject |
-| Instagram Post | Content Agent | Image preview, caption, hashtags, post / edit / reject |
-| Pitch Deck | Content Agent | PDF preview link, send to lead / download / reject |
-| Viewing Confirmation | Viewing Agent | Time, location, attendees, send / edit / reject |
-| Campaign Launch | Content Agent | Sequence preview, enrolment list, launch / edit / reject |
-
-Approvals batch up in the CEO chat as a morning queue. Owner can bulk-approve routine items or individually review edge cases.
-
----
-
 ## The Dashboard (Paperclip UI — Rebranded + Extended)
 
-The Paperclip dashboard is the "office floor" view. Rebranded to Aygency World visual identity.
+Paperclip's React/Vite UI is the base. Rebranded to Aygency World visual identity. Key pages added or modified:
 
-### Key Views
+### Agency Overview (home)
+- Live agent status grid (running / idle / waiting for approval / paused)
+- Today's activity feed (real-time via WebSocket)
+- Pending approvals badge count
+- Key metrics: leads today, messages sent, viewings booked, cost today
 
-**Agency Overview (home)**
-- Live agent status (running / idle / waiting for approval)
-- Today's activity feed
-- Pending approvals count (badge)
-- Key metrics: leads today, messages sent, viewings booked
-
-**CEO Chat**
-- Full conversation history with CEO agent
+### CEO Chat (new — biggest build)
+- Full chat thread between owner and CEO
 - Inline approval cards
-- Morning brief pinned at top of each day
-- Quick action bar: "Brief me", "What's pending?", "Weekly report"
+- Morning brief pinned per day
+- Quick action bar
+- Unread message indicator
 
-**Agent Cards (org chart view)**
-- Each agent shown as a card: name, role, last run time, tasks completed today, cost today
-- Click into any agent: full run history, tool calls made, decisions taken, cost breakdown
-- Hire new agent / pause agent / adjust instructions
+### Agent Cards / Org Chart
+- Visual org chart (CEO at top, sub-agents below)
+- Each agent: name, role, status, last run, cost today, tasks done today
+- Click into agent: full run history, every tool call made, decisions taken, cost breakdown
+- Hire / pause / resume / adjust instructions
 
-**Approvals Queue**
-- Standalone view of all pending outbound actions
-- Filter by agent, type, lead
+### Approvals Queue
+- All pending outbound actions across all agents
+- Filter by: agent, type, lead, urgency
 - Bulk approve / reject
 
-**Analytics**
-- Lead pipeline velocity
-- Response time metrics
-- Content performance
-- Agent cost vs. output
+### Leads
+- Full lead database with pipeline view
+- Lead detail: full conversation history, score, all agent activity on this lead
+- Manual stage updates, broker assignment
+
+### Analytics
+- Lead pipeline velocity (time from entry to each stage)
+- Response time metrics (actual vs target)
+- Agent cost vs output (cost per lead, cost per viewing booked)
+- Content performance (engagement per post)
+- Conversion rate by source
+
+### Broker View (simplified, mobile-first)
+- Their assigned leads only
+- Quick log: "Called Ahmed", "Viewing confirmed Thursday"
+- Request from CEO: "I need a pitch deck for this lead"
 
 ---
 
-## Pricing Philosophy (To Be Finalised)
-
-Pricing is not finalised but the model should reflect:
-- **Per-agent pricing** — pay for the agents you run. Small agency = 3 agents. Large = 10+.
-- **Usage component** — API calls (Claude, WhatsApp messages sent) pass through at cost + margin
-- **Tiers aligned to segments:**
-  - Starter (Solo) — CEO + 2 agents
-  - Growth (Small agency) — CEO + 5 agents
-  - Scale (Medium agency) — CEO + 10 agents + priority support
-  - Enterprise — custom, white-label, dedicated infra
-
----
-
-## Relationship to AygentDesk
-
-| | AygentDesk | Aygency World |
-|--|--|--|
-| Who | Individual broker | Agency owner |
-| Model | Human-driven, reactive | AI-driven, autonomous |
-| Interface | Chat with one AI | CEO chat + dashboard |
-| Agents | 1 | 5–15+ |
-| Tools | 53, direct access | 53, role-scoped via MCP |
-| Pricing | Per user/month | Per agent/month |
-| Stack | Next.js / TypeScript / Prisma | Paperclip fork (Node.js / React) + AygentDesk MCP |
-
-**The upsell path:** Agency World owner buys the platform. Their human brokers individually subscribe to AygentDesk. Two products, two revenue streams, one ecosystem.
-
----
-
-## Build Sequence (Rough)
-
-1. **Fork Paperclip** — clone repo, set up dev environment, verify it runs
-2. **Build AygentDesk MCP Server** — expose 53 tools as MCP endpoints, role-scoped
-3. **Create Dubai Real Estate Agency company template** — org chart, agent configs, skill sets
-4. **Wire CEO chat** — extend Paperclip's chat UI, approval card components
-5. **Onboarding wizard** — 3-step wizard + CEO interview flow
-6. **Heartbeat configs** — per-agent schedules and trigger logic
-7. **Rebrand UI** — Aygency World visual identity, replace Paperclip branding
-8. **Approval system** — card components, queue view, bulk approve
-9. **Dashboard extensions** — metrics, agent cards, analytics
-10. **Auth + multi-tenancy** — each agency isolated, invite team members
-11. **Deployment** — Docker, domain, production environment
-
----
-
-## Per-Broker WhatsApp Numbers
-
-In a real Dubai real estate agency, every broker has their own personal WhatsApp number they use with clients. The agency also has a central number used for advertising, portal leads, and branding. Aygency World must support both.
-
-### Two-tier WhatsApp architecture
-
-**Agency number (one per agency)**
-- The public-facing number shown on ads, portals, website
-- All portal leads (Property Finder, Bayut) come here first
-- Lead Agent monitors this number and processes inbound enquiries
-- Used for bulk campaigns, drip sequences, broadcast messages
-
-**Broker numbers (one per human broker)**
-- Each broker connects their own WhatsApp Business number during their profile setup
-- Once a lead is assigned to a broker, the Lead Agent uses THAT broker's number for all subsequent communication — so the client always has a consistent, personal point of contact
-- The AI drafts messages on behalf of the broker, broker approves, message sends FROM their number
-- Client never knows AI was involved
-
-### How broker WhatsApp is connected
-1. Broker receives invite to join the agency on Aygency World
-2. Broker profile setup: name, photo, areas, number
-3. WhatsApp Business API connection (same OAuth flow as agency number)
-4. Their number is stored against their broker profile
-5. When Lead Agent assigns a follow-up to that broker's number, it routes through their credentials
-
-### What this means for the AI
-The Lead Agent doesn't just have one WhatsApp identity — it can operate as any connected number in the agency. When drafting a follow-up for a lead assigned to broker Sara, it composes the message in Sara's voice (based on her tone preferences in her broker profile), queues it for Sara's approval, and sends it from Sara's number.
-
----
-
-## Complete Lead Lifecycle — Step by Step
-
-This is the end-to-end flow of a lead from first contact to deal closed.
-
-```
-1. ENTRY
-   └─ Inbound WhatsApp / PF email / Bayut email / Instagram DM / manual
-   └─ Lead Agent creates lead record: name, phone, source, initial message
-   └─ Auto-enrichment: DLD history check, WhatsApp history search, score 0–10
-
-2. IMMEDIATE RESPONSE (< 5 minutes)
-   └─ Lead Agent drafts reply in detected language
-   └─ Approval card → Owner/Manager approves (or auto-approves if guardrail set)
-   └─ Message sent. Lead tagged "contacted"
-
-3. QUALIFICATION
-   └─ Lead Agent conducts qualification via WhatsApp conversation
-   └─ Extracts: budget, area preference, property type, timeline, financing status
-   └─ Updates lead profile. Score recalculated.
-   └─ Low score (1–4): enters nurture drip campaign
-   └─ Medium score (5–7): weekly follow-up sequence
-   └─ High score (8–10): escalation card to owner → assigned to broker
-
-4. MATCHING
-   └─ Lead Agent runs match_deal_to_leads across current inventory
-   └─ Suggests 2–3 matching projects/properties
-   └─ Content Agent generates project pitch deck (if off-plan)
-   └─ Approval card: send pitch deck / property details to lead?
-
-5. VIEWING
-   └─ Lead expresses interest in visiting
-   └─ Viewing Agent checks broker + lead availability via Google Calendar
-   └─ Proposes 3 time slots to lead via WhatsApp
-   └─ Lead confirms → Viewing Agent creates calendar event, sends confirmation
-   └─ Day before: reminder sent. Post-viewing: follow-up drafted
-
-6. NEGOTIATION / OFFER
-   └─ Human broker takes over at this stage (high-value relationship work)
-   └─ AI supports: DLD comparables for pricing, calculate_dld_fees, payment plan doc
-   └─ Content Agent generates personalised proposal if needed
-
-7. DEAL CLOSED
-   └─ Owner/broker marks deal as "closed" in dashboard
-   └─ Lead status updated to "client"
-   └─ CEO logged the conversion. Adds to monthly metrics.
-   └─ Portfolio Agent (if rental): creates landlord/tenancy records
-   └─ Content Agent: generates "just sold" Instagram post for approval
-
-8. POST-DEAL
-   └─ Lead enters post-sale nurture sequence (referral request, annual check-in)
-   └─ If rental: Portfolio Agent manages ongoing tenancy, renewals
-```
-
----
-
-## Agent-to-Agent Communication (Technical)
-
-How does the CEO agent actually delegate to sub-agents? Paperclip handles this via its task system, but the specific implementation for Aygency World works like this:
-
-### Task delegation flow
-1. CEO agent runs its heartbeat
-2. CEO assesses agency state (via tool calls: search_leads, get_viewings, etc.)
-3. CEO creates tasks in Paperclip's task queue: `{ agent: "lead-agent", instruction: "Follow up with all leads tagged 'viewing-done' who haven't responded in 48h", priority: "high" }`
-4. Lead Agent's next heartbeat picks up the task and executes it
-5. Lead Agent posts result back as a task completion: `{ status: "done", summary: "Drafted 4 follow-up messages, 3 queued for approval, 1 lead marked unresponsive" }`
-6. CEO reads task completions in its next run and synthesises for morning brief
-
-### Direct escalation
-When an agent needs immediate owner input (not next heartbeat), it creates an **escalation** — a high-priority item that triggers an immediate push notification and bypasses the batch approval queue.
-
-Escalation triggers:
-- Lead score jumps to 9–10 (hot lead)
-- Inbound message contains keywords: "ready", "let's sign", "how do I pay"
-- Call Agent completes a call with "viewing requested" outcome
-- Portfolio Agent detects a lease expired with no renewal in place
-
----
-
-## Integration Connection Flow (How Each OAuth Works)
+## Integration Connection Flows
 
 ### WhatsApp Business (agency number)
-1. Owner enters their WhatsApp Business phone number
-2. Aygency World redirects to Meta Business OAuth
-3. Owner grants permissions: `whatsapp_business_messaging`, `whatsapp_business_management`
-4. Access token + phone number ID stored encrypted in DB
+1. Owner enters phone number
+2. Redirect to Meta Business OAuth
+3. Grant: `whatsapp_business_messaging`, `whatsapp_business_management`
+4. Token + phone number ID stored encrypted in `agency_credentials`
 5. Webhook registered for inbound messages
-6. Test: system sends "Your Aygency World is connected ✓" to the number
+6. System sends "Your Aygency World is connected ✓" to the number
 
 ### Gmail
-1. Owner clicks "Connect Gmail"
-2. Google OAuth consent screen: `gmail.readonly`, `gmail.send`, `gmail.modify`
-3. Tokens stored per agency. Refresh token used for background access.
-4. Lead Agent immediately scans for any Property Finder / Bayut / Dubizzle notification emails in the last 7 days — imports any leads found
+1. Google OAuth: `gmail.readonly`, `gmail.send`, `gmail.modify`
+2. Tokens stored, refresh token for background access
+3. Immediately scans last 7 days for portal notification emails → imports leads found
+4. Gmail Push Notifications (Pub/Sub) registered for real-time inbound lead emails
 
 ### Google Calendar
-1. Connected alongside Gmail (same OAuth flow, additional scope: `calendar.events`)
-2. Viewing Agent gets read/write access to the connected calendar
-3. Agency can specify which calendar to use (useful if owner has personal + business calendars)
+1. Same OAuth as Gmail + `calendar.events` scope
+2. Owner specifies which calendar to use
+3. Viewing Agent gets read/write to that calendar
 
 ### Instagram
-1. Connected via Meta Business OAuth (same App as WhatsApp)
-2. Permissions: `instagram_basic`, `instagram_content_publish`, `instagram_manage_messages`
-3. Content Agent can read DMs and publish posts/carousels
+1. Meta OAuth (same App as WhatsApp): `instagram_basic`, `instagram_content_publish`, `instagram_manage_messages`
 
 ### Per-broker WhatsApp
-Same Meta OAuth flow as agency number, but scoped to the individual broker's account. Broker does this from their own profile settings page.
-
----
-
-## The Skill File Format
-
-Skills are the instructions that define how each agent behaves. They live in the company template repository. This is what an actual skill file looks like:
-
-```markdown
-# lead-response.md (Lead Agent skill)
-
-## Purpose
-Draft responses to new inbound leads within 5 minutes of enquiry.
-
-## Rules
-- Always respond in the same language the lead used
-- Never send a message longer than 3 sentences for the first reply
-- Always include the agent's name (from agency context) in the sign-off
-- Never quote a specific price in the first message — always say "let me check the latest availability for you"
-- If lead asks "are you a bot?", respond: "I'm [Name] from [Agency], happy to help!"
-
-## First response template
-"Hi [Lead Name]! Thanks for reaching out about [Property/Area]. I'd love to share some options that match what you're looking for. Quick question — are you looking for [Type A] or [Type B]? — [Broker Name], [Agency Name]"
-
-## Qualification sequence
-After initial response, qualify in this order over 2–3 messages:
-1. Budget range
-2. Timeline (when are you looking to move/invest?)
-3. Financing (cash or mortgage?)
-4. Specific requirements (bedrooms, areas, floor preferences)
-
-## Escalation rule
-If lead responds positively AND has budget > AED 2M AND timeline < 3 months: create escalation card immediately.
-```
-
-Skills are plain Markdown — no code, no special syntax. The agent loads the skill as part of its system prompt on each run.
+Same Meta OAuth flow as agency number, done from broker's profile settings page.
 
 ---
 
 ## Billing & Subscription (Stripe)
 
-### Subscription model
-Each agency has a monthly subscription that covers:
-- Platform fee (per tier: Starter / Growth / Scale / Enterprise)
-- Included agent-runs per month (e.g., Growth tier: 10,000 agent runs/month)
-- Overage rate above the included runs
+### Tiers
+| Tier | Included | Price (draft) |
+|------|---------|------|
+| Starter | CEO + 2 agents | TBD |
+| Growth | CEO + 5 agents | TBD |
+| Scale | CEO + 10 agents | TBD |
+| Enterprise | Unlimited + white-label | Custom |
 
-### What counts as an "agent run"
-One heartbeat execution = one run. Most runs cost 500–2,000 Claude tokens. A Lead Agent running every 15 minutes = ~2,880 runs/month.
+### What counts as usage
+Each agent heartbeat = one run. Agent runs are metered and reported to Stripe daily for usage-based billing above the tier's included run count.
+
+### AI Calling add-on
+Twilio calls billed separately as usage add-on. Per-minute rate passed through at cost + margin. Shown as separate line on invoice.
 
 ### Stripe integration
-- Subscription managed via Stripe Billing
-- Usage metering: agent runs reported to Stripe daily
-- Failed payment → agents pause with 3-day grace period
-- Downgrade: agents above the tier limit are paused (owner chooses which to keep)
-- Upgrade: instant, agents resume immediately
-
-### Add-on: AI Calling
-Twilio calls are billed separately as a usage add-on. Cost per minute passed through at Twilio rate + margin. Shown as a separate line item on invoice.
+- Subscription lifecycle: create, upgrade, downgrade, cancel
+- Failed payment → 3-day grace period → agents pause
+- Usage metering via Stripe Meters API
+- Customer portal for self-service billing management
 
 ---
 
 ## Error Handling & Agent Recovery
 
-### What can go wrong
-- **API rate limit hit** (Anthropic, WhatsApp, Gmail): agent pauses, retries with exponential backoff, alerts owner if blocked for >1 hour
-- **Tool call fails** (e.g., WhatsApp rejects a message): agent logs the error, moves to next task, includes failure in next CEO brief
-- **Agent runs longer than 5 minutes**: killed, logged as timeout, CEO notified
-- **Credentials expired** (OAuth token expired): agent pauses, push notification sent to owner to reconnect, step-by-step reconnection flow in dashboard
-- **Budget cap reached**: agent pauses gracefully, saves state, owner notified with "your Lead Agent budget is used up this month — raise cap to resume"
+| Failure type | Behaviour |
+|-------------|-----------|
+| Anthropic rate limit | Exponential backoff, retry up to 3x, alert owner if blocked > 1 hour |
+| Tool call fails (e.g., WhatsApp rejects) | Log error, move to next task, include failure in CEO brief |
+| Agent run > 5 minutes | Kill, log as timeout, CEO notified |
+| OAuth token expired | Agent pauses, push notification sent, step-by-step reconnection flow shown |
+| Budget cap reached | Agent pauses gracefully, owner notified |
+| Paperclip process crash | Docker restart policy, CEO notified on recovery |
 
 ### Agent audit log
-Every agent run is logged with:
-- Start time, end time, duration
-- Tools called (in order)
-- Tokens consumed
-- Tasks completed
-- Errors encountered
-- Messages drafted (not yet sent)
-- Approvals queued
-
-Full audit log is accessible in the agent detail view. Useful for debugging unexpected behaviour and for compliance.
+Every run logged: start/end time, tools called (in order), tokens consumed, cost, tasks completed, errors, approvals queued. Accessible in agent detail view. Used for debugging and compliance.
 
 ---
 
-## Data Model (Key Tables)
+## Tech Stack Summary
 
-```
-Agency — id, name, logo, focusArea, size, tier, stripeCustomerId, createdAt
-  ↳ AgencyCredentials — agencyId, service (whatsapp|gmail|instagram), accessToken (encrypted), refreshToken
-  ↳ AgencyContext — agencyId, key, value (agency knowledge base, JSON)
-  ↳ Users — id, agencyId, role (owner|manager|broker|viewer), name, phone
-  ↳ Agents — id, agencyId, role, name, instructions, heartbeatInterval, status, budgetCap
-  ↳ AgentRuns — id, agentId, startedAt, completedAt, tokensUsed, costUsd, status, log
-  ↳ Tasks — id, agencyId, fromAgentId, toAgentId, instruction, status, result
-  ↳ Leads — id, agencyId, name, phone, email, language, score, stage, assignedBrokerId, source
-  ↳ Approvals — id, agencyId, agentId, type, payload, status (pending|approved|rejected|edited)
-  ↳ Escalations — id, agencyId, agentId, reason, leadId?, status, notifiedAt
-  ↳ Notifications — id, agencyId, userId, channel, message, sentAt, readAt
-```
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Base framework | [Paperclip](https://github.com/paperclipai/paperclip) fork | Node.js 20 + Express 5 + React 19 + Vite 6 |
+| Agent runtime | Claude Code (local process) | Spawned by Paperclip's heartbeat scheduler |
+| ORM | Drizzle 0.38 | NOT Prisma. Different from AygentDesk. |
+| Database | PostgreSQL 17 | Embedded PGlite in dev, external in prod |
+| UI components | Radix UI + Tailwind CSS 4 + Lucide | Paperclip's component library |
+| State management | TanStack React Query 5 | Data fetching + caching |
+| Real-time | WebSocket (`ws` package) | Live agent run streaming |
+| Auth | better-auth 1.4 | Paperclip's built-in. NOT NextAuth. |
+| Tool integration (demo) | Markdown skills + bash/curl | Claude Code calls AygentDesk API directly |
+| Tool integration (prod) | MCP Server (port 3002) | Proper role-scoped tool routing |
+| Webhook receiver | Express (port 3003) | Inbound WhatsApp, portal leads, form submissions |
+| AI Calling | Twilio + Gemini 2.0 Flash Live | Already built in AygentDesk, reused here |
+| Package manager | pnpm | Paperclip uses pnpm workspaces |
+| Testing | Vitest + Playwright | Paperclip's existing test setup |
+| Deployment | Docker + Nginx | Same VPS as AygentDesk |
 
 ---
 
-## Key Decisions Still Open
+## Build Sequence — Phased
 
-- **Auth system** — use Paperclip's built-in auth or swap in NextAuth (familiar from AygentDesk)?
-- **Database** — keep Paperclip's embedded Postgres or connect to a shared managed DB?
-- **MCP server hosting** — standalone service alongside AygentDesk API, or embedded?
-- **White-label for enterprise** — how deep? Custom domain, custom branding, custom agent names?
-- **Mobile** — Paperclip is desktop-only. Do we add a mobile-responsive CEO chat view?
-- **Pricing** — per-agent, flat monthly, usage-based, or hybrid?
+### Phase 1 — Demo (2–3 days)
+Goal: something impressive to show. Doesn't need to be multi-tenant.
+
+1. Fork Paperclip, run it locally, verify it runs
+2. Create Dubai Real Estate Agency COMPANY.md + CEO + Lead Agent
+3. Write 3 skills as markdown with curl calls to AygentDesk API (hardcoded credentials, one agency)
+4. Configure CEO heartbeat: assess state → delegate to Lead Agent
+5. Configure Lead Agent heartbeat: check for new leads → draft responses → queue approvals
+6. Manually trigger a lead → watch agents respond end-to-end
+7. Rebrand Paperclip UI to Aygency World (logo, colours, product name)
+
+**Demo narrative:** "Here's a lead that just came in. Watch the Lead Agent respond in Arabic in under 5 minutes, score the lead, and queue a WhatsApp for your approval — all while you were on another call."
+
+### Phase 2 — Alpha (1–2 weeks)
+Goal: real agency can use it.
+
+1. CEO Chat React component (custom chat UI on top of Paperclip's comment API)
+2. Approval card components (WhatsApp, email, Instagram, pitch deck)
+3. Webhook receiver service (WhatsApp inbound, Gmail PF/Bayut parsing)
+4. Onboarding wizard (3 steps) + CEO interview flow
+5. Multi-tenant credential storage (each agency connects their own integrations)
+6. Demo mode with pre-populated fake agency data
+7. Push notifications (PWA service worker)
+8. WhatsApp to owner's personal number for escalations
+
+### Phase 3 — Beta (2–4 weeks)
+Goal: production-ready.
+
+1. MCP Server (replacing bash/curl skills, proper role-scoped tool routing)
+2. All 6+ agent roles with complete skill sets
+3. Per-broker WhatsApp (broker profile + OAuth)
+4. Human broker handoff flow + broker view
+5. Stripe billing integration
+6. Full analytics dashboard
+7. Cost tracking and budget controls
+8. Multilingual support (Arabic, Russian)
+9. Dubai compliance guardrails in skill files
+10. Mobile-responsive CEO Chat view
+
+### Phase 4 — Production features (ongoing)
+1. AI Calling Agent (Twilio + Gemini Live — reuse AygentDesk's implementation)
+2. Property Finder / Bayut email parsing (real-time lead ingestion from portals)
+3. White-label enterprise tier
+4. `agency_context` auto-learning (agents update knowledge base from observations)
+5. Gemini Embedding 2 for semantic lead-to-project matching
+6. AygentDesk ↔ Aygency World shared lead DB (unified view across both products)
+
+---
+
+## Key Open Decisions
+
+- **Domain:** aygencyworld.com or agencyworld.ai or similar — TBD
+- **Pricing:** Final numbers not set. Model is per-agent + usage overage.
+- **Mobile app:** CEO Chat needs a mobile-responsive view minimum. Full native app is Phase 5+.
+- **Shared DB:** Long-term, do AygentDesk and Aygency World share a lead/contact database? Probably yes — but complex to implement cleanly.
+- **White-label depth:** Custom domain + branding? Custom agent names? Custom skill sets? Scoped to Enterprise tier.
+- **AygentDesk tool extraction:** When to refactor AygentDesk's `tools.ts` into a shared `@aygent/tools` package that both products import cleanly. Probably v2.
 
 ---
 
@@ -814,32 +1029,46 @@ Agency — id, name, logo, focusArea, size, tier, stripeCustomerId, createdAt
 
 - **Product name:** Aygency World
 - **Tagline (draft):** "Your AI agency. Always working."
-- **Visual identity:** TBD — but should feel distinct from AygentDesk while sharing the "Aygent" brand family
+- **Brand family:** Part of the "Aygent" ecosystem (AygentDesk + Aygency World)
+- **Visual identity:** TBD — distinct from AygentDesk but shares the brand DNA
 - **Domain:** TBD
 
 ---
 
-## Environment Variables (Expected)
+## Environment Variables
 
-```
-# Core
-DATABASE_URL=
-REDIS_URL= (if added)
-
-# AI
-ANTHROPIC_API_KEY=         # All agents run on Claude via Anthropic API
-GEMINI_API_KEY=            # Optional: Gemini Embedding 2 for semantic search
-
-# AygentDesk MCP Server
-AYGENTDESK_MCP_URL=        # URL of the AygentDesk MCP server
-AYGENTDESK_MCP_SECRET=     # Shared secret for MCP auth
-
-# Integrations (per-agency, stored in DB)
-# WhatsApp, Gmail, Google Calendar, Instagram — OAuth tokens stored per agency
+```bash
+# Server
+NODE_ENV=production
+PORT=3001
+DATABASE_URL=postgresql://...
 
 # Auth
-NEXTAUTH_SECRET=
-NEXTAUTH_URL=
+BETTER_AUTH_SECRET=
+BETTER_AUTH_URL=https://aygencyworld.com
+
+# AI
+ANTHROPIC_API_KEY=          # All Claude Code agent runs
+GEMINI_API_KEY=              # Gemini Embedding 2 for semantic search (Phase 4)
+
+# AygentDesk Tool Bridge
+AYGENTDESK_URL=https://aygentdesk.com
+AYGENTDESK_INTERNAL_SECRET= # Shared secret for internal API calls
+
+# Webhook Receiver
+WEBHOOK_SECRET=              # Meta webhook verification token
+GMAIL_PUBSUB_TOKEN=          # Google Pub/Sub push subscription token
+
+# Push Notifications
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+
+# Stripe
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+# Per-agency integrations (stored encrypted in DB, not env vars)
+# WhatsApp tokens, Gmail OAuth, Instagram tokens all stored in agency_credentials table
 ```
 
 ---
@@ -848,12 +1077,42 @@ NEXTAUTH_URL=
 
 ```bash
 # Development
-pnpm dev                   # Start Paperclip fork (API + UI, watch mode)
-pnpm build                 # Production build
+pnpm dev              # Start Paperclip fork (API + UI, watch mode, port 3001)
+pnpm dev:bridge       # Start Tool Bridge / MCP server (port 3002)
+pnpm dev:webhook      # Start Webhook Receiver (port 3003)
+pnpm build            # Production build
+
+# Database
+pnpm db:generate      # Generate Drizzle migrations
+pnpm db:migrate       # Run migrations
+pnpm db:studio        # Open Drizzle Studio
 
 # Company templates
 npx companies.sh add aygencyworld/companies/dubai-real-estate-agency
 
+# Testing
+pnpm test             # Vitest unit tests
+pnpm test:e2e         # Playwright E2E
+
 # Docker (prod)
-docker-compose up -d       # Full stack
+docker-compose up -d  # Full stack: app + bridge + webhook + postgres + nginx
 ```
+
+---
+
+## Relationship to AygentDesk — The Full Picture
+
+AygentDesk and Aygency World are different products that become more powerful together.
+
+**AygentDesk** is what a broker uses personally — it's their AI assistant for their own deals. They talk to it in natural language and it helps them work faster.
+
+**Aygency World** is what an agency owner buys to run the agency itself — autonomous agents operating departments 24/7, CEO chat for direction, approval cards for control.
+
+**Where they connect:**
+- The 53 AygentDesk tools become Aygency World's skill layer (via Tool Bridge / MCP)
+- Long-term: shared lead database so an AygentDesk broker and an Aygency World agent don't work the same lead in isolation
+- The upsell: agency owner buys Aygency World, then each of their human brokers subscribes to AygentDesk individually
+
+**Two revenue streams from one Dubai real estate agency:**
+1. Aygency World subscription (agency-level, owner pays)
+2. AygentDesk subscriptions × number of human brokers
