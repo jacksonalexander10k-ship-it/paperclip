@@ -14,7 +14,7 @@ export const aygentLeads = pgTable(
   "aygent_leads",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
     assignedBrokerId: uuid("assigned_broker_id"),
     name: text("name").notNull(),

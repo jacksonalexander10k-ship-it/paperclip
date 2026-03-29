@@ -14,7 +14,7 @@ export const aygentTags = pgTable(
   "aygent_tags",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     color: text("color"),
     behavior: jsonb("behavior").$type<Record<string, unknown>>(),

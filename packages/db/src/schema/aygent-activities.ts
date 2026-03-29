@@ -13,7 +13,7 @@ export const aygentActivities = pgTable(
   "aygent_activities",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     leadId: uuid("lead_id").notNull().references(() => aygentLeads.id, { onDelete: "cascade" }),
     agentId: uuid("agent_id"),
     type: text("type").notNull(),
