@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, Send, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { issuesApi } from "../api/issues";
@@ -137,7 +137,6 @@ function InlineApprovalCard({ payload }: { payload: ApprovalPayload }) {
 // ── Chat message bubble ────────────────────────────────────────────────────────
 
 function ChatBubble({ comment }: { comment: IssueComment }) {
-  // Owner messages come from a user (authorUserId set), CEO/agent messages from an agent
   const isOwner = comment.authorUserId !== null && comment.authorAgentId === null;
   const parsed = !isOwner ? parseApprovalBlock(comment.body) : null;
 
@@ -165,6 +164,37 @@ function ChatBubble({ comment }: { comment: IssueComment }) {
   );
 }
 
+// ── Streaming bubble ───────────────────────────────────────────────────────────
+
+function StreamingBubble({ text }: { text: string }) {
+  return (
+    <div className="flex justify-start mb-3">
+      <div className="max-w-[80%] items-start flex flex-col">
+        <div className="rounded-2xl rounded-tl-sm bg-zinc-800 text-zinc-100 border border-zinc-700 px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+          {text}
+          <span className="inline-block w-0.5 h-3.5 bg-zinc-400 ml-0.5 animate-pulse align-middle" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Typing indicator ───────────────────────────────────────────────────────────
+
+function TypingIndicator() {
+  return (
+    <div className="flex justify-start mb-3">
+      <div className="rounded-2xl rounded-tl-sm bg-zinc-800 border border-zinc-700 px-4 py-3">
+        <div className="flex gap-1 items-center h-4">
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Quick actions bar ──────────────────────────────────────────────────────────
 
 const QUICK_ACTIONS = [
@@ -181,6 +211,13 @@ export function CeoChat() {
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
+
+  // Streaming state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
+  // Text buffer for smooth drip-feed
+  const textBufferRef = useRef("");
+  const drainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "CEO Chat" }]);
@@ -199,23 +236,25 @@ export function CeoChat() {
     mutationFn: () =>
       issuesApi.create(selectedCompanyId!, {
         title: CEO_CHAT_TITLE,
-        status: "open",
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!) });
     },
   });
 
+  const createIssueMutate = createIssueMutation.mutate;
+  const createIssuePending = createIssueMutation.isPending;
+  const createIssueSuccess = createIssueMutation.isSuccess;
   useEffect(() => {
     if (!selectedCompanyId || issues === undefined) return;
-    if (!ceoChatIssue && !createIssueMutation.isPending && !createIssueMutation.isSuccess) {
-      createIssueMutation.mutate();
+    if (!ceoChatIssue && !createIssuePending && !createIssueSuccess) {
+      createIssueMutate();
     }
-  }, [selectedCompanyId, issues, ceoChatIssue, createIssueMutation]);
+  }, [selectedCompanyId, issues, ceoChatIssue, createIssuePending, createIssueSuccess, createIssueMutate]);
 
   const issueId = ceoChatIssue?.id ?? null;
 
-  // ── Load comments, poll every 15s ───────────────────────────────────────────
+  // ── Load comments — background poll for other-agent updates ─────────────────
   const { data: comments = [], isLoading: commentsLoading } = useQuery({
     queryKey: issueId ? queryKeys.issues.comments(issueId) : [],
     queryFn: () => issuesApi.listComments(issueId!),
@@ -232,35 +271,136 @@ export function CeoChat() {
   });
   const ceoAgent = agents?.find((a) => a.role === "ceo") ?? null;
 
-  // ── Send message ─────────────────────────────────────────────────────────────
-  const sendMutation = useMutation({
-    mutationFn: (body: string) => issuesApi.addComment(issueId!, body),
-    onSuccess: () => {
-      setInput("");
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId!) });
-    },
-  });
+  // ── Smooth drip-feed drain ───────────────────────────────────────────────────
+  const startDraining = useCallback(() => {
+    if (drainTimerRef.current) return;
 
-  function handleSend(message?: string) {
-    const body = (message ?? input).trim();
-    if (!body || !issueId) return;
-    sendMutation.mutate(body);
-  }
+    function drain() {
+      drainTimerRef.current = null;
+      const bufLen = textBufferRef.current.length;
+      if (bufLen === 0) return;
+
+      let chunkSize: number;
+      if (bufLen > 100) chunkSize = 20 + Math.floor(Math.random() * 20);
+      else if (bufLen > 20) chunkSize = 5 + Math.floor(Math.random() * 10);
+      else chunkSize = 2 + Math.floor(Math.random() * 3);
+
+      // Try to break at word boundary
+      if (chunkSize < bufLen) {
+        const nextSpace = textBufferRef.current.indexOf(" ", chunkSize);
+        if (nextSpace !== -1 && nextSpace < chunkSize + 10) chunkSize = nextSpace + 1;
+      }
+
+      const chunk = textBufferRef.current.slice(0, chunkSize);
+      textBufferRef.current = textBufferRef.current.slice(chunkSize);
+
+      setStreamingText((prev) => prev + chunk);
+
+      if (textBufferRef.current.length > 0) {
+        drainTimerRef.current = setTimeout(drain, 30);
+      }
+    }
+
+    drainTimerRef.current = setTimeout(drain, 30);
+  }, []);
+
+  // ── Send message via streaming SSE ──────────────────────────────────────────
+  const handleSend = useCallback(
+    async (message?: string) => {
+      const body = (message ?? input).trim();
+      if (!body || !issueId || !selectedCompanyId || isStreaming) return;
+
+      setInput("");
+      setIsStreaming(true);
+      setStreamingText("");
+      textBufferRef.current = "";
+
+      // Optimistically add owner message to local view immediately
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
+
+      try {
+        const res = await fetch(`/api/companies/${selectedCompanyId}/ceo-chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: body }),
+        });
+
+        if (!res.ok || !res.body) {
+          throw new Error(`Request failed: ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            let event: Record<string, unknown>;
+            try {
+              event = JSON.parse(line.slice(6)) as Record<string, unknown>;
+            } catch {
+              continue;
+            }
+
+            if (event.type === "text") {
+              textBufferRef.current += event.text as string;
+              startDraining();
+            }
+
+            if (event.type === "done") {
+              // Drain any remaining buffer instantly
+              if (textBufferRef.current.length > 0) {
+                setStreamingText((prev) => prev + textBufferRef.current);
+                textBufferRef.current = "";
+              }
+            }
+
+            if (event.type === "error") {
+              console.error("CEO chat stream error:", event.message);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("CEO chat fetch error:", err);
+      } finally {
+        // Clear streaming state and refresh persisted comments
+        setIsStreaming(false);
+        setStreamingText("");
+        textBufferRef.current = "";
+        if (drainTimerRef.current) {
+          clearTimeout(drainTimerRef.current);
+          drainTimerRef.current = null;
+        }
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
+      }
+    },
+    [input, issueId, selectedCompanyId, isStreaming, queryClient, startDraining],
+  );
 
   // ── Auto-scroll to bottom ────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [comments]);
+  }, [comments, streamingText, isStreaming]);
 
-  const statusColor =
-    ceoAgent?.status === "active"
+  const statusColor = isStreaming
+    ? "bg-blue-400 animate-pulse"
+    : ceoAgent?.status === "active"
       ? "bg-green-500"
       : ceoAgent?.status === "paused"
         ? "bg-yellow-500"
         : "bg-zinc-500";
 
-  const statusLabel =
-    ceoAgent?.status === "active"
+  const statusLabel = isStreaming
+    ? "Responding..."
+    : ceoAgent?.status === "active"
       ? "Running"
       : ceoAgent?.status === "paused"
         ? "Paused"
@@ -290,11 +430,11 @@ export function CeoChat() {
           </div>
         )}
 
-        {!commentsLoading && comments.length === 0 && (
+        {!commentsLoading && comments.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
             <MessageSquare className="h-10 w-10 text-zinc-600" />
             <p className="text-sm text-muted-foreground max-w-xs">
-              Your CEO agent is getting ready. First message incoming shortly...
+              Send a message to start talking with your CEO.
             </p>
           </div>
         )}
@@ -302,6 +442,13 @@ export function CeoChat() {
         {comments.map((comment: IssueComment) => (
           <ChatBubble key={comment.id} comment={comment} />
         ))}
+
+        {/* Typing indicator — shown while waiting for first streaming token */}
+        {isStreaming && streamingText === "" && <TypingIndicator />}
+
+        {/* Streaming bubble — fills in character by character */}
+        {streamingText !== "" && <StreamingBubble text={streamingText} />}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -310,8 +457,8 @@ export function CeoChat() {
         {QUICK_ACTIONS.map((action) => (
           <button
             key={action.label}
-            onClick={() => handleSend(action.message)}
-            disabled={!issueId || sendMutation.isPending}
+            onClick={() => { void handleSend(action.message); }}
+            disabled={!issueId || isStreaming}
             className="rounded-full border border-zinc-700 bg-zinc-800/50 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {action.label}
@@ -328,21 +475,21 @@ export function CeoChat() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                handleSend();
+                void handleSend();
               }
             }}
             placeholder={issueId ? "Message the CEO..." : "Setting up CEO Chat..."}
-            disabled={!issueId || sendMutation.isPending}
+            disabled={!issueId || isStreaming}
             rows={2}
             className="flex-1 resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder-muted-foreground focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-50"
           />
           <Button
-            onClick={() => handleSend()}
-            disabled={!input.trim() || !issueId || sendMutation.isPending}
+            onClick={() => { void handleSend(); }}
+            disabled={!input.trim() || !issueId || isStreaming}
             size="icon"
             className="h-11 w-11 rounded-xl bg-blue-500 hover:bg-blue-600 text-white shrink-0"
           >
-            {sendMutation.isPending ? (
+            {isStreaming ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
