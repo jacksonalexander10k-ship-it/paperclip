@@ -640,53 +640,107 @@ If refresh fails (user revoked access, permissions changed):
 
 ---
 
-## Meta Tech Provider — What It Is and What You Need
+## Meta WhatsApp — The Full Strategy
 
-### What it is
-Currently, to connect a WhatsApp Business number to Aygency World, the agency has to manually create their own Meta Business App, navigate Meta's developer portal, copy their API credentials, and paste them in. This is doable but takes 30+ minutes and is confusing for non-technical users.
+### The tiered system
 
-**Embedded Signup** is Meta's solution for platforms. Instead of all that manual setup, the agency clicks one button in Aygency World, goes through a guided Meta OAuth flow, and their number is connected in under 2 minutes. Aygency World gets permission to manage their number. This requires Aygency World to be a registered **Meta Tech Provider** (also called a Meta Business Partner).
+You do not go directly to Meta to get WhatsApp integration capability. Meta operates a three-tier system:
 
-### What you need to apply
+```
+Meta
+  ↓
+BSP (Business Solution Provider) — e.g. 360dialog, Twilio, Bird
+  ↓
+ISV (Independent Software Vendor) — that's Aygency World
+  ↓
+End customers — the agencies connecting their numbers
+```
 
-**1. A registered legal business entity**
-Meta requires a real company — not a personal account. You need:
-- A trade license (Dubai mainland via DED, or a free zone license)
-- A business bank account
-- A business address
+Aygency World sits in the ISV tier. You partner with a BSP who already has Meta's trust and tech provider status. You piggyback on theirs. This means you can launch with full Embedded Signup capability — no waiting for Meta's own approval process.
 
-In Dubai, the fastest routes:
-- **Free zone license** (IFZA, Meydan, Shams, Fujairah Creative City) — can be done in 3–7 days, AED 5,000–12,000/year
-- **Mainland DED license** — takes 2–4 weeks, more expensive but more credibility
+---
 
-**2. A verified Meta Business Manager account**
-- business.facebook.com account with business verified (upload trade license, passport)
-- Meta verification takes 3–5 business days
+### The right BSP: 360dialog
 
-**3. A live business website**
-- Must have Privacy Policy and Terms of Service pages
-- Must clearly describe what the platform does
-- aygencyworld.com needs to be live, not a coming soon page
+**360dialog** is the best option for Aygency World. They are an official WhatsApp BSP with a dedicated partner program built specifically for SaaS platforms.
 
-**4. Apply to the Meta Tech Provider program**
-- Application at developers.facebook.com/micro_site/url/partner-program
-- Review takes 2–6 weeks typically
-- You'll need to demonstrate how you're using the WhatsApp Business API responsibly
+**What you get as a 360dialog ISV partner:**
+- Their Embedded Signup flow — agencies connect their WhatsApp number in under 2 minutes inside Aygency World's UI. No manual credential pasting.
+- You own the customer relationship — Aygency World controls the product experience. 360dialog is invisible to end users.
+- Multi-Partner Solution setup — Aygency World (ISV) + 360dialog (BSP) + Agency (customer) share WABA management. You create and manage WABAs for your customers.
+- No need for a registered business to start the partner conversation
 
-### The workaround while waiting for approval
+**Cost:** 360dialog charges ~$5–10/month per connected number on top of Meta's per-conversation fees. Pass this through in your agency subscription pricing.
 
-Don't block the launch on this. While the Meta Tech Provider application is in progress:
+**Sign up:** [360dialog.com/partners](https://360dialog.com/partners)
 
-**Phase 1 (now):** Agencies paste their credentials manually. We provide a clear step-by-step guide in the app: "How to get your WhatsApp API credentials — takes 30 minutes." This works fine for early adopters and technical users.
+---
 
-**Phase 2 (after approval):** Replace the manual form with the Embedded Signup button. Existing agencies can re-connect with one click. New agencies get the smooth flow from day one.
+### The progression path
 
-### Summary of what to do now
-1. Register a legal entity (free zone is fastest — can be done this week)
-2. Set up Meta Business Manager + get business verified
-3. Build the paste-credentials flow for launch (don't wait for Tech Provider)
-4. Apply for Meta Tech Provider once the website is live and you have a few real agencies using the platform
-5. Switch to Embedded Signup once approved
+| Stage | Requirements | What you get |
+|---|---|---|
+| **ISV via 360dialog** (launch) | Sign up as 360dialog partner | Full Embedded Signup, can onboard agencies immediately |
+| **Meta Tech Provider** (scale) | 10+ customers + 2,500 avg daily conversations | Your own embedded signup, direct Meta relationship, listed in Meta Partner Directory |
+
+Launch as a 360dialog ISV. Graduate to direct Meta Tech Provider as you scale. No blocked launch, no 2–6 week approval wait.
+
+---
+
+### What Embedded Signup looks like for the agency
+
+When an agency connects an agent's WhatsApp number in Aygency World:
+
+1. They click "Connect WhatsApp" on the agent setup screen
+2. A Meta OAuth popup opens (hosted by 360dialog, branded as Aygency World)
+3. They log into their Meta Business account, select their WhatsApp Business number
+4. Done — number connected in under 2 minutes
+5. Aygency World stores the access token + phone number ID in `agent_credentials`
+6. Webhook registered automatically for that number
+
+No Meta developer portal. No API credentials to copy. No confusion.
+
+---
+
+### What this means technically
+
+Instead of building against Meta's Graph API directly for the connection flow, Aygency World builds against 360dialog's API for onboarding. Once connected, the actual send/receive message calls can go direct to Meta's Graph API (using the access token obtained through 360dialog's flow) or via 360dialog's API — either works.
+
+**AygentDesk** currently uses Meta's API directly (single-tenant). **Aygency World** uses 360dialog's partner API for the multi-tenant connection flow.
+
+---
+
+### Direct Meta Tech Provider (future)
+
+Once you have 10+ agencies and meaningful message volume, apply for direct Meta Tech Provider status. Requirements at that point:
+
+**1. Registered legal business entity**
+- Free zone license (IFZA, Meydan, Shams) — 3–7 days, AED 5,000–12,000/year
+- Or mainland DED license — 2–4 weeks, more expensive
+
+**2. Verified Meta Business Manager**
+- Upload trade license + passport
+- Verification: 3–5 business days
+
+**3. Live website with Privacy Policy + Terms of Service**
+- aygencyworld.com must be live and describe the platform clearly
+
+**4. Application**
+- developers.facebook.com partner program
+- Review: 2–6 weeks
+- Benefits: own Embedded Signup, Meta Partner Directory listing, incentive programs
+
+---
+
+### Summary — what to do and when
+
+| Action | When | Why |
+|---|---|---|
+| Sign up as 360dialog ISV partner | This week | Unlocks Embedded Signup immediately, no business registration needed |
+| Build agent WhatsApp connect flow using 360dialog | Phase 2 | Smooth onboarding for agencies |
+| Build paste-credentials fallback | Phase 1 | Backup for agencies who prefer manual setup |
+| Register legal entity (free zone) | Before scaling | Needed for Meta Tech Provider application later |
+| Apply for direct Meta Tech Provider | When at 10+ agencies | Graduate from 360dialog dependency |
 
 ---
 
