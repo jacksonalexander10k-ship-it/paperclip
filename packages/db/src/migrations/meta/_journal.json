@@ -337,6 +337,13 @@
       "when": 1774791765925,
       "tag": "0047_complete_plazm",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1774791961080,
+      "tag": "0048_free_silver_sable",
+      "breakpoints": true
     }
   ]
 }
