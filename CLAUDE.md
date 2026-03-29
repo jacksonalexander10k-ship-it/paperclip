@@ -104,6 +104,279 @@ CEO translates direction into agent tasks and reports back.
 
 ---
 
+## Lead Ingestion — How Leads Enter the System
+
+This is the most critical operational piece. Without leads flowing in, the Lead Agent has nothing to work with. Aygency World must support all the ways Dubai agents currently receive enquiries:
+
+### Inbound Channels
+
+| Source | How it works |
+|--------|-------------|
+| **WhatsApp (inbound)** | Agency's WhatsApp Business number connected via Cloud API. Every inbound message is captured, sender identified as new or existing lead, Lead Agent processes. |
+| **Property Finder** | PF sends lead notifications via email (standard for all Dubai agencies). Lead Agent's email watcher parses PF notification emails and auto-creates leads with name, phone, property interest. |
+| **Bayut** | Same — Bayut sends email notifications per enquiry. Auto-parsed into leads. |
+| **Dubizzle** | Same pattern — email notification parsing. |
+| **Instagram DMs** | Meta Graph API. Lead Agent monitors DMs, identifies property enquiries, creates leads. |
+| **Website / Landing Page** | AygentDesk's `generate_landing_page` creates pages with a lead capture form. Form submissions POST directly to the Lead Agent's queue. |
+| **Manual entry** | Owner or broker adds a lead manually via dashboard form. |
+| **CSV import** | Bulk import existing lead database during onboarding. |
+
+### Lead Enrichment on Entry
+When a new lead is created from any source, the Lead Agent automatically:
+1. Searches WhatsApp history for prior conversations
+2. Checks DLD transactions for prior purchases (high-intent signal)
+3. Assigns initial score (0–10) based on budget, source, prior activity
+4. Tags by source, area interest, property type
+5. Routes to the appropriate follow-up sequence
+
+---
+
+## Multi-Tenant Credential Architecture
+
+Each agency in Aygency World has its own WhatsApp number, Gmail account, Instagram, and Google Calendar. The MCP server must route all tool calls through the correct agency's credentials.
+
+### How it works
+
+Every agent run is scoped to an `agencyId`. The MCP server receives the `agencyId` in the request context and resolves the correct credentials from the database before executing any tool call.
+
+```
+Agent (Claude Code) → MCP Server
+  Request: { tool: "send_whatsapp", agencyId: "agency_123", params: {...} }
+
+MCP Server:
+  1. Looks up agency_123 credentials in DB
+  2. Loads WhatsApp token, phone number ID for that agency
+  3. Executes tool call with agency-specific credentials
+  4. Returns result
+```
+
+**Credentials stored per agency (encrypted at rest):**
+- `whatsapp_access_token`, `whatsapp_phone_number_id`
+- `gmail_access_token`, `gmail_refresh_token`
+- `instagram_access_token`, `instagram_user_id`
+- `google_calendar_access_token`, `google_calendar_refresh_token`
+
+**Isolation guarantee:** No cross-agency data leakage. An agent in Agency A can never access Agency B's credentials, leads, or messages.
+
+---
+
+## Agency Context & Memory System
+
+Each agency's agents need to know specifics about THAT agency — not just generic Dubai real estate knowledge. This is seeded during onboarding and maintained throughout.
+
+### What gets stored as agency context
+
+```
+Agency Knowledge Base (persisted in DB, loaded into each agent run):
+├── Identity: name, logo, RERA licence number, areas of focus
+├── Inventory: active projects they sell, developer relationships, exclusive listings
+├── Team: human broker names, their areas, their WhatsApp numbers (for handoff)
+├── Tone: formal/casual, language preference, emoji use, response style
+├── Pricing: typical deal sizes, commission rates, preferred payment plans
+├── Guardrails: areas/projects to never mention, competitor blacklist
+└── Goals: current month targets, priority leads, active campaigns
+```
+
+### How it's maintained
+- Seeded by the CEO onboarding interview (CEO extracts structured data from the conversation)
+- Updated via CEO chat ("we just added DAMAC Hills 2 to our portfolio")
+- Automatically updated when agents observe patterns (Lead Agent notices 80% of leads are asking about JVC → flags to CEO)
+- The `remember` tool writes to this context store
+
+---
+
+## AI Calling Agent
+
+AygentDesk ships Twilio + Gemini 2.0 Flash Live for real-time AI voice calls. This is a natural 7th agent in Aygency World.
+
+### Call Agent
+**Purpose:** Inbound call handling, outbound follow-up calls, voicemail drops.
+**Tools:** `make_call`, inbound call webhook handler, voicemail transcription
+**Heartbeat:** Reactive (triggered by inbound call) + scheduled (outbound call list at 10am and 3pm)
+
+**What it does:**
+- **Inbound:** Answers calls to the agency number in real-time. Qualifies the lead (budget, area, timeline), books a viewing or schedules a callback with a human broker. Transcript + summary stored against the lead.
+- **Outbound follow-up:** Calls leads who haven't responded to WhatsApp/email after 48 hours. Speaks naturally, re-engages, updates lead score.
+- **Voicemail drop:** Leaves a pre-approved voicemail for cold leads without waiting for answer.
+
+**Approval model:** Outbound call lists are queued for approval before dialling begins. Individual call transcripts are logged but not approval-gated (they already happened).
+
+---
+
+## Human Broker Handoff Flow
+
+For established agencies with human brokers, the AI agents and human team must work together seamlessly.
+
+### When AI escalates to human
+
+The Lead Agent escalates a lead to a human broker when:
+- Lead score reaches 8+ (highly qualified, high intent)
+- Lead explicitly asks to speak to a person
+- Lead has viewed 3+ properties and hasn't committed (needs human relationship)
+- Lead budget > AED 5M (premium buyer, requires human touch)
+- Call Agent flags "ready to view" from a live call
+
+### The handoff
+1. Lead Agent creates an escalation card in the CEO chat: lead summary, score, conversation history, suggested broker to assign
+2. CEO (or owner) approves and assigns to a specific human broker
+3. Assigned broker receives a WhatsApp notification: lead name, phone, summary, full context link
+4. Lead is tagged "assigned: [broker name]" — Lead Agent stops auto-following up
+5. If broker doesn't contact within 2 hours, Lead Agent escalates back to CEO
+
+### Human action sync
+When a human broker takes action outside the platform (sends a WhatsApp manually, books a viewing), the system captures it:
+- WhatsApp Cloud API logs ALL messages on the agency number — human-sent and AI-drafted both flow through
+- Google Calendar sync captures manually-booked viewings
+- Broker can log manual actions via a simple "What did you do?" input in their broker view
+
+---
+
+## Owner Notification System
+
+The owner is not always on the dashboard. They need to know when something requires attention.
+
+### Notification channels
+- **Push notification (PWA)** — approval pending, escalation raised, morning brief ready
+- **WhatsApp to owner's personal number** — daily morning brief summary, urgent escalations only (not routine approvals)
+- **Email digest** — weekly performance summary, cost report
+
+### Notification rules
+| Event | Channel | Timing |
+|-------|---------|--------|
+| Approval pending (routine) | Push | Batch at 9am, 1pm, 6pm |
+| Urgent escalation (hot lead) | WhatsApp + Push | Immediate |
+| Morning brief ready | Push | 8am daily |
+| Agent error / failure | Push | Immediate |
+| Monthly cost approaching budget | Push + Email | At 80% of budget |
+| Weekly report | Email | Monday 8am |
+
+---
+
+## Demo Mode & First Wow Moment
+
+New users must experience value within the first 10 minutes. A cold empty dashboard kills conversion.
+
+### Demo Agency (pre-loaded on signup)
+Every new signup gets a **pre-populated demo agency** running in the background:
+- 12 fake leads in various pipeline stages
+- A week of agent activity already logged (Lead Agent followed up 8 leads, Content Agent generated 3 posts, Market Agent flagged 2 DLD deals)
+- 3 pending approval cards waiting in the CEO chat (a WhatsApp draft, an Instagram post, a pitch deck)
+- A morning brief from the CEO summarising the demo agency's week
+
+The user's first experience is seeing a fully-running agency — not an empty state. They read the morning brief, approve a WhatsApp, see the agent run log. Then the onboarding wizard asks: "Ready to connect your real agency?"
+
+### First real win
+Designed first milestone after connecting real credentials:
+1. Lead Agent detects first real inbound WhatsApp enquiry
+2. Lead Agent drafts a response
+3. Approval card appears in CEO chat
+4. Owner approves → message sent in under 60 seconds of enquiry
+5. CEO chat: "Your Lead Agent just responded to Ahmed Al Hashimi's enquiry about JVC. That's your first AI-assisted lead response."
+
+---
+
+## Multilingual Support
+
+Dubai's buyer pool is internationally diverse. Arabic, Russian, Chinese, and English are all active in the market. Agents communicating only in English lose significant volume.
+
+### Language detection
+- Lead Agent detects the language of every inbound message
+- Responds in the same language by default
+- Language is stored on the lead profile
+- Approval cards show message in detected language with English translation toggle
+
+### Supported languages at launch
+Arabic, English, Russian — these three cover the majority of Dubai's buyer market. Chinese (Mandarin) as Phase 2.
+
+### Tone adaptation
+- Arabic: formal, respectful, titles used ("Mr. Ahmed", "Ustaz")
+- Russian: direct, metrics-first (price per sqft, ROI percentage)
+- English: varies — adapt to cues from the lead's writing style
+
+---
+
+## Dubai Compliance & Legal Guardrails
+
+### RERA advertising rules
+- No guaranteed rental yield figures without official RERA data source
+- Off-plan projects must be RERA-registered before marketing
+- Agent must hold valid RERA card number (stored in agency context, appended to relevant comms)
+- Lead Agent skill set includes a compliance check before generating any marketing claim
+
+### UAE Personal Data Protection Act (PDPA)
+- All lead data encrypted at rest
+- No cross-agency data sharing
+- Data deletion API: agency can request full data wipe on cancellation
+- WhatsApp opt-out: if lead replies "STOP", Lead Agent tags them as opted-out and never contacts again
+
+### Financial promotions
+- Investment analysis outputs include a standard disclaimer (configurable per agency)
+- No price guarantees in any automated communication
+- Capital appreciation claims require a DLD source citation
+
+---
+
+## Team Access & Permissions
+
+For established agencies, human brokers need visibility into AI agent activity without having full owner-level control.
+
+### Roles
+
+| Role | What they can see | What they can do |
+|------|------------------|-----------------|
+| **Owner** | Everything | Full control, billing, hire/fire agents |
+| **Manager** | All agents, all leads, all approvals | Approve actions, assign leads, adjust agent instructions |
+| **Broker** | Their assigned leads only | View lead history, log manual actions, request CEO assistance |
+| **Viewer** | Dashboard metrics only | Read-only, no actions |
+
+### Broker view
+Brokers get a simplified mobile-first view showing:
+- Their assigned leads and conversation history
+- Viewing schedule for today
+- Quick log: "I called Ahmed — no answer", "Viewing confirmed for Thursday"
+- Request help from CEO: "I need a pitch deck for this lead"
+
+---
+
+## Cost Tracking & Budget Controls
+
+Every agent run consumes Claude API tokens. Owners need visibility and control.
+
+### Per-agent cost tracking
+- Every heartbeat run logs: tokens in, tokens out, tools called, duration, cost in USD
+- Dashboard agent cards show: cost today / cost this month
+- Monthly cost projection based on current run rate
+
+### Budget controls
+- Per-agent monthly budget cap (e.g., Lead Agent: $50/month max)
+- Agency-wide monthly budget cap
+- At 80% of budget: owner notified
+- At 100%: agent pauses, owner must top up or raise cap
+- Emergency pause: one-click pause all agents from dashboard
+
+### Cost visibility
+Owner sees a clear breakdown: "This month your agency has cost $127. Lead Agent: $62, Content Agent: $31, Market Agent: $18, CEO: $16."
+
+---
+
+## Property Finder & Dubizzle Integration
+
+Property Finder is Dubai's #1 listing portal. Most agencies receive the majority of their leads via PF email notifications.
+
+### Email-based lead parsing
+PF, Bayut, and Dubizzle all send lead notification emails in structured formats. The Lead Agent's email watcher:
+1. Monitors Gmail for emails from `@notification.propertyfinder.ae`, `@bayut.com`, `@dubizzle.com`
+2. Parses name, phone, email, property enquired about, message
+3. Creates lead record with source tagged
+4. Triggers immediate follow-up sequence
+
+### Portal-specific context
+- Property Finder leads often come with the specific listing URL — stored on lead, used by Lead Agent to provide contextual follow-up
+- Bayut leads may include the lead's other saved properties — intelligence for the Lead Agent
+- Response SLA: PF and Bayut rank agents by response speed — Lead Agent targets sub-5-minute response to all portal leads
+
+---
+
 ## The AygentDesk MCP Server (Tool Layer)
 
 AygentDesk's 53 tools are the skill layer for Aygency World agents. They are exposed via an **MCP (Model Context Protocol) server** that Paperclip agents connect to via Claude Code.
