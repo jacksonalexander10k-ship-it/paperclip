@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
+import { AygencyOnboardingWizard } from "./components/AygencyOnboardingWizard";
 import { authApi } from "./api/auth";
 import { healthApi } from "./api/health";
 import { Dashboard } from "./pages/Dashboard";
@@ -37,6 +39,7 @@ import { PluginPage } from "./pages/PluginPage";
 import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
+import { CeoChat } from "./pages/CeoChat";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
@@ -119,6 +122,7 @@ function boardRoutes() {
   return (
     <>
       <Route index element={<Navigate to="dashboard" replace />} />
+      <Route path="ceo-chat" element={<CeoChat />} />
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="onboarding" element={<OnboardingRoutePage />} />
       <Route path="companies" element={<Companies />} />
@@ -298,6 +302,17 @@ function NoCompaniesStartPage() {
   );
 }
 
+function AygencyOnboardingGate() {
+  const { companies, loading } = useCompany();
+  const [dismissed, setDismissed] = useState(false);
+
+  const isComplete = localStorage.getItem("aygency_onboarding_complete") === "true";
+
+  if (loading || isComplete || dismissed || companies.length > 0) return null;
+
+  return <AygencyOnboardingWizard onComplete={() => setDismissed(true)} />;
+}
+
 export function App() {
   return (
     <>
@@ -319,6 +334,7 @@ export function App() {
             <Route path="plugins" element={<PluginManager />} />
             <Route path="plugins/:pluginId" element={<PluginSettings />} />
           </Route>
+          <Route path="ceo-chat" element={<UnprefixedBoardRedirect />} />
           <Route path="companies" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
@@ -346,6 +362,7 @@ export function App() {
         </Route>
       </Routes>
       <OnboardingWizard />
+      <AygencyOnboardingGate />
     </>
   );
 }

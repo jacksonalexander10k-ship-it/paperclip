@@ -12,6 +12,7 @@ import {
   Repeat,
   Settings,
   Activity,
+  MessageSquare,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -72,6 +73,7 @@ export function Sidebar() {
 
       <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col gap-4 px-3 py-2">
         <div className="flex flex-col gap-0.5">
+          <SidebarNavItem to="/ceo-chat" label="CEO Chat" icon={MessageSquare} />
           {/* New Issue button aligned with nav items */}
           <button
             onClick={() => openNewIssue()}
