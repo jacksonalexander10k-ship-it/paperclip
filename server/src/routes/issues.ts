@@ -19,6 +19,7 @@ import { validate } from "../middleware/validate.js";
 import {
   accessService,
   agentService,
+  ceoCommandService,
   executionWorkspaceService,
   goalService,
   heartbeatService,
@@ -52,6 +53,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   const workProductsSvc = workProductService(db);
   const documentsSvc = documentService(db);
   const routinesSvc = routineService(db);
+  const ceoCommands = ceoCommandService(db);
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
@@ -1415,6 +1417,26 @@ export function issueRoutes(db: Db, storage: StorageService) {
         ...(interruptedRunId ? { interruptedRunId } : {}),
       },
     });
+
+    // Process CEO commands embedded in the comment (fire-and-forget).
+    if (actor.actorType === "agent" && actor.agentId) {
+      const agentId = actor.agentId;
+      void (async () => {
+        try {
+          const result = await ceoCommands.processComment(
+            currentIssue.companyId,
+            req.body.body,
+            agentId,
+          );
+          if (result) {
+            // Add a system comment with the command execution result
+            await svc.addComment(id, `**Command executed:**\n\n${result}`, {});
+          }
+        } catch (err) {
+          logger.warn({ err, issueId: id }, "ceo-commands: failed to process comment commands");
+        }
+      })();
+    }
 
     // Merge all wakeups from this comment into one enqueue per agent to avoid duplicate runs.
     void (async () => {

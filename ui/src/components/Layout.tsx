@@ -7,6 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { InstanceSidebar } from "./InstanceSidebar";
 import { BreadcrumbBar } from "./BreadcrumbBar";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { LiveActivityPanel } from "./LiveActivityPanel";
 import { CommandPalette } from "./CommandPalette";
 import { NewIssueDialog } from "./NewIssueDialog";
 import { NewProjectDialog } from "./NewProjectDialog";
@@ -36,6 +37,16 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
+const ACTIVITY_PANEL_STORAGE_KEY = "aygency:activity-panel-visible";
+
+function readActivityPanelPreference(): boolean {
+  try {
+    const raw = localStorage.getItem(ACTIVITY_PANEL_STORAGE_KEY);
+    return raw === null ? false : raw === "true";
+  } catch {
+    return false;
+  }
+}
 
 function readRememberedInstanceSettingsPath(): string {
   if (typeof window === "undefined") return DEFAULT_INSTANCE_SETTINGS_PATH;
@@ -67,6 +78,14 @@ export function Layout() {
   const lastMainScrollTop = useRef(0);
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [instanceSettingsTarget, setInstanceSettingsTarget] = useState<string>(() => readRememberedInstanceSettingsPath());
+  const [activityPanelOpen, setActivityPanelOpen] = useState(readActivityPanelPreference);
+  const toggleActivityPanel = useCallback(() => {
+    setActivityPanelOpen((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(ACTIVITY_PANEL_STORAGE_KEY, String(next)); } catch {}
+      return next;
+    });
+  }, []);
   const nextTheme = theme === "dark" ? "light" : "dark";
   const matchedCompany = useMemo(() => {
     if (!companyPrefix) return null;
@@ -242,6 +261,13 @@ export function Layout() {
       document.body.style.overflow = previousOverflow;
     };
   }, [isMobile]);
+
+  // Listen for sidebar toggle event
+  useEffect(() => {
+    const handler = () => toggleActivityPanel();
+    document.addEventListener("toggle-activity-panel", handler);
+    return () => document.removeEventListener("toggle-activity-panel", handler);
+  }, [toggleActivityPanel]);
 
   useEffect(() => {
     if (!location.pathname.startsWith("/instance/settings/")) return;
@@ -426,6 +452,9 @@ export function Layout() {
               )}
             </main>
             <PropertiesPanel />
+            {!isMobile && activityPanelOpen && !isInstanceSettingsRoute && (
+              <LiveActivityPanel className="hidden md:flex h-full" />
+            )}
           </div>
         </div>
       </div>

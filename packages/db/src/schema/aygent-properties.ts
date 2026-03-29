@@ -1,0 +1,46 @@
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  real,
+  timestamp,
+  jsonb,
+  index,
+} from "drizzle-orm/pg-core";
+import { companies } from "./companies.js";
+import { aygentLandlords } from "./aygent-landlords.js";
+
+export const aygentProperties = pgTable(
+  "aygent_properties",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    landlordId: uuid("landlord_id").references(() => aygentLandlords.id, { onDelete: "cascade" }),
+    unit: text("unit"),
+    buildingName: text("building_name"),
+    streetAddress: text("street_address"),
+    area: text("area"),
+    propertyType: text("property_type"),
+    bedrooms: integer("bedrooms"),
+    bathrooms: integer("bathrooms"),
+    sqft: real("sqft"),
+    floor: text("floor"),
+    viewType: text("view_type"),
+    parkingSpaces: integer("parking_spaces"),
+    titleDeedNo: text("title_deed_no"),
+    photos: jsonb("photos").$type<string[]>().default([]),
+    saleValue: real("sale_value"),
+    purchasePrice: real("purchase_price"),
+    serviceCharge: real("service_charge"),
+    status: text("status").default("vacant"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    companyIdx: index("aygent_properties_company_idx").on(table.companyId),
+    companyStatusIdx: index("aygent_properties_company_status_idx").on(table.companyId, table.status),
+    landlordIdx: index("aygent_properties_landlord_idx").on(table.landlordId),
+  }),
+);
