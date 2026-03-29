@@ -10,6 +10,8 @@ The design is **complete**. CLAUDE.md contains the full product spec (58KB). DEC
 
 Read CLAUDE.md for the full spec. Read ROADMAP.md for what to do next.
 
+**CRITICAL for the CEO chat:** Read `docs/architecture/CEO-CHAT.md` before touching anything related to the CEO interface. The CEO chat is a streaming Anthropic API call — NOT a Paperclip subprocess. The live reference implementation is at `/Users/alexanderjackson/AgentDXB/src/app/api/chat/route.ts`. Copy that pattern exactly.
+
 ---
 
 ## What this project is
