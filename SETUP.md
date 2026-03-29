@@ -4,6 +4,18 @@ First-time setup for Aygency World. Follow this in order.
 
 ---
 
+## Quick start (already forked and cloned)
+
+```bash
+pnpm install
+cp .env.example .env        # then open .env and fill in ANTHROPIC_API_KEY + DATABASE_URL
+docker-compose up -d        # starts PostgreSQL + Redis
+pnpm db:migrate
+pnpm dev                    # app runs at http://localhost:3001
+```
+
+---
+
 ## Prerequisites
 
 Make sure you have these installed before starting:
