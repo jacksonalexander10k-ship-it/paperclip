@@ -40,13 +40,137 @@ import {
   mergeLeadsExecutor,
 } from "./leads.js";
 
+// Communication tools
+import {
+  searchWhatsappDefinition,
+  searchWhatsappExecutor,
+  sendWhatsappDefinition,
+  sendWhatsappExecutor,
+  searchEmailDefinition,
+  searchEmailExecutor,
+  sendEmailDefinition,
+  sendEmailExecutor,
+  searchInstagramDmsDefinition,
+  searchInstagramDmsExecutor,
+  sendInstagramDmDefinition,
+  sendInstagramDmExecutor,
+  postToInstagramDefinition,
+  postToInstagramExecutor,
+  listWhatsappTemplatesDefinition,
+  listWhatsappTemplatesExecutor,
+  useWhatsappTemplateDefinition,
+  useWhatsappTemplateExecutor,
+  makeCallDefinition,
+  makeCallExecutor,
+} from "./communication.js";
+
+// Calendar tools
+import {
+  getCalendarDefinition,
+  getCalendarExecutor,
+  createEventDefinition,
+  createEventExecutor,
+  checkAvailabilityDefinition,
+  checkAvailabilityExecutor,
+  scheduleViewingDefinition,
+  scheduleViewingExecutor,
+  getViewingsDefinition,
+  getViewingsExecutor,
+} from "./calendar.js";
+
+// Content tools
+import {
+  generatePitchDeckDefinition,
+  generatePitchDeckExecutor,
+  generatePitchPresentationDefinition,
+  generatePitchPresentationExecutor,
+  generateLandingPageDefinition,
+  generateLandingPageExecutor,
+  generateSocialContentDefinition,
+  generateSocialContentExecutor,
+  generateContentDefinition,
+  generateContentExecutor,
+  generateMarketReportDefinition,
+  generateMarketReportExecutor,
+  launchCampaignDefinition,
+  launchCampaignExecutor,
+  createDripCampaignDefinition,
+  createDripCampaignExecutor,
+  enrollLeadInCampaignDefinition,
+  enrollLeadInCampaignExecutor,
+} from "./content.js";
+
+// Market tools
+import {
+  searchDldTransactionsDefinition,
+  searchDldTransactionsExecutor,
+  scrapeDxbTransactionsDefinition,
+  scrapeDxbTransactionsExecutor,
+  getBuildingAnalysisDefinition,
+  getBuildingAnalysisExecutor,
+  searchListingsDefinition,
+  searchListingsExecutor,
+  watchListingsDefinition,
+  watchListingsExecutor,
+  analyzeInvestmentDefinition,
+  analyzeInvestmentExecutor,
+  webSearchDefinition,
+  webSearchExecutor,
+} from "./market.js";
+
+// Portfolio tools
+import {
+  manageLandlordDefinition,
+  manageLandlordExecutor,
+  managePropertyDefinition,
+  managePropertyExecutor,
+  manageTenancyDefinition,
+  manageTenancyExecutor,
+  calculateReraRentDefinition,
+  calculateReraRentExecutor,
+  calculateDldFeesDefinition,
+  calculateDldFeesExecutor,
+} from "./portfolio.js";
+
+// Portal tools
+import {
+  createPortalDefinition,
+  createPortalExecutor,
+  getPortalActivityDefinition,
+  getPortalActivityExecutor,
+} from "./portals.js";
+
+// Document tools
+import {
+  listDocumentsDefinition,
+  listDocumentsExecutor,
+  extractDocumentDataDefinition,
+  extractDocumentDataExecutor,
+  scrapeUrlDefinition,
+  scrapeUrlExecutor,
+} from "./documents.js";
+
+// Admin tools
+import {
+  createTaskDefinition,
+  createTaskExecutor,
+  rememberDefinition,
+  rememberExecutor,
+  setGuardrailsDefinition,
+  setGuardrailsExecutor,
+  getNewsDefinition,
+  getNewsExecutor,
+  getCampaignStatsDefinition,
+  getCampaignStatsExecutor,
+} from "./admin.js";
+
 export type { ToolDefinition, ToolExecutor, ToolContext };
 
 const allDefinitions: ToolDefinition[] = [
-  // Projects
+  // Projects (2)
   searchProjectsDefinition,
   getProjectDetailsDefinition,
-  // Leads
+  // Leads (14)
   searchLeadsDefinition,
   updateLeadDefinition,
   getLeadActivityDefinition,
@@ -61,6 +185,60 @@ const allDefinitions: ToolDefinition[] = [
   reactivateStaleLeadsDefinition,
   deduplicateLeadsDefinition,
   mergeLeadsDefinition,
+  // Communication (10)
+  searchWhatsappDefinition,
+  sendWhatsappDefinition,
+  searchEmailDefinition,
+  sendEmailDefinition,
+  searchInstagramDmsDefinition,
+  sendInstagramDmDefinition,
+  postToInstagramDefinition,
+  listWhatsappTemplatesDefinition,
+  useWhatsappTemplateDefinition,
+  makeCallDefinition,
+  // Calendar (5)
+  getCalendarDefinition,
+  createEventDefinition,
+  checkAvailabilityDefinition,
+  scheduleViewingDefinition,
+  getViewingsDefinition,
+  // Content (9)
+  generatePitchDeckDefinition,
+  generatePitchPresentationDefinition,
+  generateLandingPageDefinition,
+  generateSocialContentDefinition,
+  generateContentDefinition,
+  generateMarketReportDefinition,
+  launchCampaignDefinition,
+  createDripCampaignDefinition,
+  enrollLeadInCampaignDefinition,
+  // Market (7)
+  searchDldTransactionsDefinition,
+  scrapeDxbTransactionsDefinition,
+  getBuildingAnalysisDefinition,
+  searchListingsDefinition,
+  watchListingsDefinition,
+  analyzeInvestmentDefinition,
+  webSearchDefinition,
+  // Portfolio (5)
+  manageLandlordDefinition,
+  managePropertyDefinition,
+  manageTenancyDefinition,
+  calculateReraRentDefinition,
+  calculateDldFeesDefinition,
+  // Portals (2)
+  createPortalDefinition,
+  getPortalActivityDefinition,
+  // Documents (3)
+  listDocumentsDefinition,
+  extractDocumentDataDefinition,
+  scrapeUrlDefinition,
+  // Admin (5)
+  createTaskDefinition,
+  rememberDefinition,
+  setGuardrailsDefinition,
+  getNewsDefinition,
+  getCampaignStatsDefinition,
 ];
 
 const allExecutors: Record<string, ToolExecutor> = {
@@ -82,6 +260,60 @@ const allExecutors: Record<string, ToolExecutor> = {
   reactivate_stale_leads: reactivateStaleLeadsExecutor,
   deduplicate_leads: deduplicateLeadsExecutor,
   merge_leads: mergeLeadsExecutor,
+  // Communication
+  search_whatsapp: searchWhatsappExecutor,
+  send_whatsapp: sendWhatsappExecutor,
+  search_email: searchEmailExecutor,
+  send_email: sendEmailExecutor,
+  search_instagram_dms: searchInstagramDmsExecutor,
+  send_instagram_dm: sendInstagramDmExecutor,
+  post_to_instagram: postToInstagramExecutor,
+  list_whatsapp_templates: listWhatsappTemplatesExecutor,
+  use_whatsapp_template: useWhatsappTemplateExecutor,
+  make_call: makeCallExecutor,
+  // Calendar
+  get_calendar: getCalendarExecutor,
+  create_event: createEventExecutor,
+  check_availability: checkAvailabilityExecutor,
+  schedule_viewing: scheduleViewingExecutor,
+  get_viewings: getViewingsExecutor,
+  // Content
+  generate_pitch_deck: generatePitchDeckExecutor,
+  generate_pitch_presentation: generatePitchPresentationExecutor,
+  generate_landing_page: generateLandingPageExecutor,
+  generate_social_content: generateSocialContentExecutor,
+  generate_content: generateContentExecutor,
+  generate_market_report: generateMarketReportExecutor,
+  launch_campaign: launchCampaignExecutor,
+  create_drip_campaign: createDripCampaignExecutor,
+  enroll_lead_in_campaign: enrollLeadInCampaignExecutor,
+  // Market
+  search_dld_transactions: searchDldTransactionsExecutor,
+  scrape_dxb_transactions: scrapeDxbTransactionsExecutor,
+  get_building_analysis: getBuildingAnalysisExecutor,
+  search_listings: searchListingsExecutor,
+  watch_listings: watchListingsExecutor,
+  analyze_investment: analyzeInvestmentExecutor,
+  web_search: webSearchExecutor,
+  // Portfolio
+  manage_landlord: manageLandlordExecutor,
+  manage_property: managePropertyExecutor,
+  manage_tenancy: manageTenancyExecutor,
+  calculate_rera_rent: calculateReraRentExecutor,
+  calculate_dld_fees: calculateDldFeesExecutor,
+  // Portals
+  create_portal: createPortalExecutor,
+  get_portal_activity: getPortalActivityExecutor,
+  // Documents
+  list_documents: listDocumentsExecutor,
+  extract_document_data: extractDocumentDataExecutor,
+  scrape_url: scrapeUrlExecutor,
+  // Admin
+  create_task: createTaskExecutor,
+  remember: rememberExecutor,
+  set_guardrails: setGuardrailsExecutor,
+  get_news: getNewsExecutor,
+  get_campaign_stats: getCampaignStatsExecutor,
 };
 
 export function createToolRegistry() {
