@@ -2,7 +2,13 @@
 
 You are working on **Aygency World** — a fork of [Paperclip](https://github.com/paperclipai/paperclip) rebranded and extended into an AI-powered real estate agency operating system for Dubai.
 
-Read CLAUDE.md first. It contains the full product spec, architecture, and all decisions already made.
+## IMPORTANT — Skip brainstorming and design phases entirely
+
+The design is **complete**. CLAUDE.md contains the full product spec (58KB). DECISIONS.md has 18 locked architectural decisions. ROADMAP.md has the phased build checklist. Do NOT run any brainstorming, design, or spec-writing workflows. Do NOT ask clarifying questions about what to build — it is already decided.
+
+**When the user says "start" or "let's build", go directly to ROADMAP.md, find the first unchecked task in the current phase, and start implementing it.** No pre-planning, no design docs, no approval loops for scope — just build.
+
+Read CLAUDE.md for the full spec. Read ROADMAP.md for what to do next.
 
 ---
 
