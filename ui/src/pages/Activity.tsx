@@ -27,7 +27,7 @@ export function Activity() {
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Activity" }]);
+    setBreadcrumbs([{ label: "Log" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({
@@ -82,7 +82,7 @@ export function Activity() {
   }, [issues]);
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={History} message="Select a company to view activity." />;
+    return <EmptyState icon={History} message="Select a company to view the activity log." />;
   }
 
   if (isLoading) {
@@ -98,15 +98,48 @@ export function Activity() {
     ? [...new Set(data.map((e) => e.entityType))].sort()
     : [];
 
+  // Group events by day label
+  function getDayLabel(dateStr: string): string {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 86400000);
+    const eventDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    if (eventDay.getTime() === today.getTime()) return "Today";
+    if (eventDay.getTime() === yesterday.getTime()) return "Yesterday";
+    return date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
+  }
+
+  const grouped: { label: string; events: typeof filtered }[] = [];
+  if (filtered) {
+    for (const event of filtered) {
+      const label = getDayLabel(typeof event.createdAt === "string" ? event.createdAt : new Date(event.createdAt as unknown as string).toISOString());
+      const last = grouped[grouped.length - 1];
+      if (last && last.label === label) {
+        last.events!.push(event);
+      } else {
+        grouped.push({ label, events: [event] });
+      }
+    }
+  }
+
   return (
     <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Log</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          A full record of everything your agents have done.
+        </p>
+      </div>
+
       <div className="flex items-center justify-end">
+        <label className="text-xs text-muted-foreground mr-2">Filter by agent</label>
         <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[140px] h-8 text-xs">
-            <SelectValue placeholder="Filter by type" />
+          <SelectTrigger className="w-[160px] h-8 text-xs">
+            <SelectValue placeholder="All activity" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="all">All activity</SelectItem>
             {entityTypes.map((type) => (
               <SelectItem key={type} value={type}>
                 {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -119,22 +152,27 @@ export function Activity() {
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {filtered && filtered.length === 0 && (
-        <EmptyState icon={History} message="No activity yet." />
+        <EmptyState icon={History} message="No activity yet. This log fills up as your agents start working." />
       )}
 
-      {filtered && filtered.length > 0 && (
-        <div className="border border-border divide-y divide-border">
-          {filtered.map((event) => (
-            <ActivityRow
-              key={event.id}
-              event={event}
-              agentMap={agentMap}
-              entityNameMap={entityNameMap}
-              entityTitleMap={entityTitleMap}
-            />
-          ))}
+      {grouped.map((group) => (
+        <div key={group.label}>
+          <div className="px-1 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            {group.label}
+          </div>
+          <div className="border border-border divide-y divide-border">
+            {group.events!.map((event) => (
+              <ActivityRow
+                key={event.id}
+                event={event}
+                agentMap={agentMap}
+                entityNameMap={entityNameMap}
+                entityTitleMap={entityTitleMap}
+              />
+            ))}
+          </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }

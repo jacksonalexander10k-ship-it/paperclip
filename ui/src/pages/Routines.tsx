@@ -234,7 +234,7 @@ export function Routines() {
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">Beta</span>
           </h1>
           <p className="text-sm text-muted-foreground">
-            Recurring work definitions that materialize into auditable execution issues.
+            Automated schedules that keep your agents running around the clock.
           </p>
         </div>
         <Button onClick={() => setComposerOpen(true)}>
@@ -502,7 +502,7 @@ export function Routines() {
           <div className="py-12">
             <EmptyState
               icon={Repeat}
-              message="No routines yet. Use Create routine to define the first recurring workflow."
+              message="No routines set up. Routines are created automatically when you hire agents."
             />
           </div>
         ) : (
@@ -514,7 +514,7 @@ export function Routines() {
                   <th className="px-3 py-2 font-medium">Project</th>
                   <th className="px-3 py-2 font-medium">Agent</th>
                   <th className="px-3 py-2 font-medium">Last run</th>
-                  <th className="px-3 py-2 font-medium">Enabled</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
                   <th className="w-12 px-3 py-2" />
                 </tr>
               </thead>
@@ -601,7 +601,7 @@ export function Routines() {
                             />
                           </button>
                           <span className="text-xs text-muted-foreground">
-                            {isArchived ? "Archived" : enabled ? "On" : "Off"}
+                            {isArchived ? "Archived" : enabled ? "Active" : "Paused"}
                           </span>
                         </div>
                       </td>

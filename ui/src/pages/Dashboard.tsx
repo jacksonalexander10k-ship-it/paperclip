@@ -168,7 +168,7 @@ export function Dashboard() {
       return (
         <EmptyState
           icon={LayoutDashboard}
-          message="Welcome to Paperclip. Set up your first company and agent to get started."
+          message="Welcome to Aygency World. Set up your agency and hire your first agents to get started."
           action="Get Started"
           onAction={openOnboarding}
         />
@@ -189,19 +189,26 @@ export function Dashboard() {
     <div className="space-y-6">
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          What is happening across your agency right now.
+        </p>
+      </div>
+
       {hasNoAgents && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-500/25 dark:bg-amber-950/60">
           <div className="flex items-center gap-2.5">
             <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <p className="text-sm text-amber-900 dark:text-amber-100">
-              You have no agents.
+              You have no agents yet. Hire your first team to get started.
             </p>
           </div>
           <button
             onClick={() => openOnboarding({ initialStep: 2, companyId: selectedCompanyId! })}
             className="text-sm font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline underline-offset-2 shrink-0"
           >
-            Create one here
+            Hire agents
           </button>
         </div>
       )}
@@ -233,20 +240,20 @@ export function Dashboard() {
             <MetricCard
               icon={Bot}
               value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-              label="Agents Enabled"
+              label="Agents Running"
               to="/agents"
               description={
                 <span>
-                  {data.agents.running} running{", "}
+                  {data.agents.running} active{", "}
                   {data.agents.paused} paused{", "}
-                  {data.agents.error} errors
+                  {data.agents.error} with errors
                 </span>
               }
             />
             <MetricCard
               icon={CircleDot}
               value={data.tasks.inProgress}
-              label="Tasks In Progress"
+              label="Tasks in Progress"
               to="/issues"
               description={
                 <span>
@@ -258,39 +265,39 @@ export function Dashboard() {
             <MetricCard
               icon={DollarSign}
               value={formatCents(data.costs.monthSpendCents)}
-              label="Month Spend"
+              label="Spent This Month"
               to="/costs"
               description={
                 <span>
                   {data.costs.monthBudgetCents > 0
                     ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
-                    : "Unlimited budget"}
+                    : "No spending limit set"}
                 </span>
               }
             />
             <MetricCard
               icon={ShieldCheck}
               value={data.pendingApprovals + data.budgets.pendingApprovals}
-              label="Pending Approvals"
+              label="Awaiting Approval"
               to="/approvals"
               description={
                 <span>
                   {data.budgets.pendingApprovals > 0
-                    ? `${data.budgets.pendingApprovals} budget overrides awaiting board review`
-                    : "Awaiting board review"}
+                    ? `${data.budgets.pendingApprovals} budget actions need your sign-off`
+                    : "Actions queued for your review"}
                 </span>
               }
             />
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <ChartCard title="Run Activity" subtitle="Last 14 days">
+            <ChartCard title="Agent Activity" subtitle="Last 14 days">
               <RunActivityChart runs={runs ?? []} />
             </ChartCard>
-            <ChartCard title="Issues by Priority" subtitle="Last 14 days">
+            <ChartCard title="Tasks by Priority" subtitle="Last 14 days">
               <PriorityChart issues={issues ?? []} />
             </ChartCard>
-            <ChartCard title="Issues by Status" subtitle="Last 14 days">
+            <ChartCard title="Tasks by Status" subtitle="Last 14 days">
               <IssueStatusChart issues={issues ?? []} />
             </ChartCard>
             <ChartCard title="Success Rate" subtitle="Last 14 days">
@@ -310,7 +317,7 @@ export function Dashboard() {
             {recentActivity.length > 0 && (
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Recent Activity
+                  What's happening now
                 </h3>
                 <div className="border border-border divide-y divide-border overflow-hidden">
                   {recentActivity.map((event) => (
@@ -332,6 +339,7 @@ export function Dashboard() {
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                 Recent Tasks
               </h3>
+
               {recentIssues.length === 0 ? (
                 <div className="border border-border p-4">
                   <p className="text-sm text-muted-foreground">No tasks yet.</p>

@@ -75,7 +75,7 @@ export function Issues() {
   );
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Issues" }]);
+    setBreadcrumbs([{ label: "Tasks" }]);
   }, [setBreadcrumbs]);
 
   const { data: issues, isLoading, error } = useQuery({
@@ -93,24 +93,32 @@ export function Issues() {
   });
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={CircleDot} message="Select a company to view issues." />;
+    return <EmptyState icon={CircleDot} message="Select a company to view tasks." />;
   }
 
   return (
-    <IssuesList
-      issues={issues ?? []}
-      isLoading={isLoading}
-      error={error as Error | null}
-      agents={agents}
-      projects={projects}
-      liveIssueIds={liveIssueIds}
-      viewStateKey="paperclip:issues-view"
-      issueLinkState={issueLinkState}
-      initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
-      initialSearch={initialSearch}
-      onSearchChange={handleSearchChange}
-      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
-      searchFilters={participantAgentId ? { participantAgentId } : undefined}
-    />
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Everything your agents are working on — past and present.
+        </p>
+      </div>
+      <IssuesList
+        issues={issues ?? []}
+        isLoading={isLoading}
+        error={error as Error | null}
+        agents={agents}
+        projects={projects}
+        liveIssueIds={liveIssueIds}
+        viewStateKey="paperclip:issues-view"
+        issueLinkState={issueLinkState}
+        initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
+        initialSearch={initialSearch}
+        onSearchChange={handleSearchChange}
+        onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+        searchFilters={participantAgentId ? { participantAgentId } : undefined}
+      />
+    </div>
   );
 }

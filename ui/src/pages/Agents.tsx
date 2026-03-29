@@ -135,6 +135,12 @@ export function Agents() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Your Team</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          All the AI agents running your agency. Click an agent to see what they are doing.
+        </p>
+      </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={tab} onValueChange={(v) => navigate(`/agents/${v}`)}>
           <PageTabBar
@@ -204,7 +210,7 @@ export function Agents() {
           )}
           <Button size="sm" variant="outline" onClick={openNewAgent}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />
-            New Agent
+            Hire Agent
           </Button>
         </div>
       </div>
@@ -218,8 +224,8 @@ export function Agents() {
       {agents && agents.length === 0 && (
         <EmptyState
           icon={Bot}
-          message="Create your first agent to get started."
-          action="New Agent"
+          message="No agents hired yet. Go to CEO Chat and ask the CEO to hire your first team."
+          action="Hire Agent"
           onAction={openNewAgent}
         />
       )}
@@ -262,7 +268,7 @@ export function Agents() {
                           liveCount={liveRunByAgent.get(agent.id)!.liveCount}
                         />
                       )}
-                      <span className="text-xs text-muted-foreground font-mono w-14 text-right">
+                      <span className="text-xs text-muted-foreground font-mono w-14 text-right" title="AI Model">
                         {adapterLabels[agent.adapterType] ?? agent.adapterType}
                       </span>
                       <span className="text-xs text-muted-foreground w-16 text-right">

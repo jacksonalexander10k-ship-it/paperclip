@@ -652,7 +652,7 @@ export function IssuesList({
       {!isLoading && filtered.length === 0 && viewState.viewMode === "list" && (
         <EmptyState
           icon={CircleDot}
-          message="No issues match the current filters or search."
+          message="No tasks yet. Your agents will create tasks here as they work."
           action="Create Issue"
           onAction={() => openNewIssue(newIssueDefaults())}
         />

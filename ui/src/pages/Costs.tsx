@@ -111,9 +111,9 @@ function FinanceSummaryCard({
   return (
     <Card>
       <CardHeader className="px-5 pt-5 pb-2">
-        <CardTitle className="text-base">Finance ledger</CardTitle>
+        <CardTitle className="text-base">Billing Summary</CardTitle>
         <CardDescription>
-          Account-level charges that do not map to a single inference request.
+          Platform charges, credits, and account-level fees for the selected period.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 px-5 pb-5 pt-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -138,7 +138,7 @@ function FinanceSummaryCard({
         <MetricTile
           label="Estimated"
           value={formatCents(estimatedDebitCents)}
-          subtitle="Estimated debits that are not yet invoice-authoritative"
+          subtitle="Estimated charges — not yet confirmed on your invoice"
           icon={Coins}
         />
       </CardContent>
@@ -543,7 +543,7 @@ export function Costs() {
             <div>
                 <h1 className="text-3xl font-semibold tracking-tight">Costs</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Inference spend, platform fees, credits, and live quota windows.
+                  Track how much your AI agency is spending. All amounts in USD.
                 </p>
             </div>
 
@@ -581,9 +581,9 @@ export function Costs() {
 
           <div className="grid gap-3 lg:grid-cols-4">
             <MetricTile
-              label="Inference spend"
+              label="AI Usage Spend"
               value={formatCents(spendData?.summary.spendCents ?? 0)}
-              subtitle={`${formatTokens(inferenceTokenTotal)} tokens across request-scoped events`}
+              subtitle={`${formatTokens(inferenceTokenTotal)} AI tokens used`}
               icon={DollarSign}
             />
             <MetricTile
@@ -603,9 +603,9 @@ export function Costs() {
               icon={Coins}
             />
             <MetricTile
-              label="Finance net"
+              label="Net Charges"
               value={formatCents(financeData?.summary.netCents ?? 0)}
-              subtitle={`${formatCents(financeData?.summary.debitCents ?? 0)} debits · ${formatCents(financeData?.summary.creditCents ?? 0)} credits`}
+              subtitle={`${formatCents(financeData?.summary.debitCents ?? 0)} charges · ${formatCents(financeData?.summary.creditCents ?? 0)} credits`}
               icon={ReceiptText}
             />
             <MetricTile
