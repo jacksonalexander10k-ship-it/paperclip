@@ -532,27 +532,161 @@ Property Finder and Bayut rank agents by response speed. Lead Agent targets **su
 
 ---
 
-## Per-Broker WhatsApp
+## Per-Agent Identity: WhatsApp & Email
 
-Every human broker has their own WhatsApp number they use with clients. The system supports both the agency number and individual broker numbers.
+Every AI agent gets its own real-world identity — a name, a WhatsApp number, and an email address at the agency's own domain. Clients never interact with "the platform." They interact with "Sarah from Dubai Properties" on a real number from a real company email.
 
-### Two-tier WhatsApp
-- **Agency number:** Public-facing. Used in ads, portals, branding. Lead Agent monitors and responds. Used for bulk campaigns.
-- **Broker numbers:** Personal numbers each broker connects individually. Once a lead is assigned to a broker, ALL subsequent messages send FROM that broker's number — maintaining a personal relationship.
+This is not the same as the old "per-broker WhatsApp" model. This applies to AI agents themselves — each hired agent gets its own communications identity.
 
-### How broker WhatsApp connects
-1. Broker receives email invite to join the agency
-2. Sets up profile: name, photo, areas, language preference
-3. Connects WhatsApp via Meta OAuth (same flow as agency number)
-4. Number stored against broker profile in `brokers` table
-5. Lead Agent uses broker's credentials when drafting messages for that broker's assigned leads
+### The identity model
 
-### AI as the broker's ghostwriter
-When a lead is assigned to broker Sara:
-- Lead Agent drafts messages in Sara's voice (based on her tone preference in profile)
-- Queues for Sara's approval (in her broker view, not the agency approval queue)
-- Sara approves → message sends FROM Sara's number
-- Client has a consistent human relationship. AI handles the volume.
+```
+Agency: Dubai Properties LLC
+Domain: dubaiproperties.ae
+
+CEO Agent         → no public comms (internal only)
+Sarah (Lead, JVC) → +971 50 111 1111 | sarah@dubaiproperties.ae
+Mohammed (Lead, Downtown) → +971 55 222 2222 | mohammed@dubaiproperties.ae
+Listings Agent    → +971 50 333 3333 | listings@dubaiproperties.ae
+Portfolio Agent   → +971 55 444 4444 | portfolio@dubaiproperties.ae
+```
+
+Each number and email is fully owned and controlled by the agency. Aygency World never provides or owns these — we just connect to them.
+
+### The agency is responsible for sourcing numbers
+
+Getting a WhatsApp number is easy and cheap:
+- **Physical SIM (Dubai):** du or Etisalat SIM card — AED 50. Register with Meta.
+- **Virtual number:** Twilio or similar virtual number provider — ~$5/month per number. No SIM needed.
+- **eSIM:** Several services offer eSIMs for WhatsApp Business registration.
+
+The agency buys one number per agent they hire. They own the number. If they leave Aygency World, they keep the number.
+
+### What gets connected during agent hire
+
+When the CEO hires a new agent, the setup screen asks:
+
+```
+Agent Name:  Sarah
+Role:        Lead Agent — JVC & Sports City
+Persona:     Friendly, bilingual (English + Arabic), concise
+
+[ Connect WhatsApp ]   → Meta OAuth → phone number ID stored
+[ Connect Gmail     ]  → Google OAuth → access + refresh token stored
+
+→ Skip for now (agent works but WhatsApp/email disabled)
+```
+
+Both connections are standard OAuth flows. No credentials pasted manually (unless the agency prefers it). Agent is live once at least one communication channel is connected.
+
+### What's stored per agent
+
+```sql
+agent_credentials (
+  agent_id,
+  type: "whatsapp" | "gmail",
+  access_token (encrypted),
+  refresh_token (encrypted),
+  whatsapp_phone_number_id,   -- Meta's identifier for the number
+  gmail_address,              -- e.g. sarah@dubaiproperties.ae
+  connected_at,
+  expires_at
+)
+```
+
+Every tool call that involves sending a message loads the credentials for THAT agent, not the agency's master credentials.
+
+---
+
+## What Needs to Be Built for Per-Agent Comms
+
+AygentDesk already has single-tenant WhatsApp + Gmail working. The new builds needed to make it work per-agent across multiple agencies:
+
+### 1. Agent credential store
+The `agent_credentials` table above. One row per agent per integration. Encrypted at rest. All tool calls query this before executing. ~1 hour to build.
+
+### 2. Agent setup UI (connect integrations during hire)
+When a new agent is created via the CEO chat or dashboard, a setup screen shows the OAuth connect buttons. Same OAuth flows as AygentDesk — just scoped to the agent being hired, not the whole account. ~1 day.
+
+### 3. Webhook demultiplexer (most important new build)
+Meta sends ALL inbound WhatsApp messages from ALL connected numbers to ONE webhook URL. You cannot register a separate webhook per number. When a message arrives, the payload contains `phone_number_id`. The demultiplexer resolves which agent owns that number and routes the message to that agent's Paperclip task queue.
+
+```
+Inbound POST → /webhook/whatsapp
+  payload.phone_number_id = "12345678"
+
+  → SELECT agent_id FROM agent_credentials
+      WHERE whatsapp_phone_number_id = '12345678'
+  → agent_id = "sarah-agent-uuid"
+  → create Paperclip issue: assigned to sarah-agent, title: "Inbound WhatsApp from Ahmed"
+  → Sarah's next heartbeat picks it up
+```
+
+Same logic for Gmail — Google sends push notifications to one endpoint, you identify the agent by the `emailAddress` in the notification, route accordingly. ~1 day.
+
+### 4. Token refresh worker
+Gmail tokens expire every hour. WhatsApp tokens have longer lifespans but also expire. A background job (runs every 30 minutes) checks for tokens expiring within 24 hours and refreshes them automatically.
+
+If refresh fails (user revoked access, permissions changed):
+- Agent pauses immediately
+- Push notification to agency owner: "Sarah's WhatsApp disconnected — click to reconnect"
+- Agent can still run but WhatsApp/email tools return an error until reconnected
+
+~half a day to build.
+
+### 5. Meta Tech Provider (Embedded Signup) — see section below
+
+**Total dev time for items 1–4: ~3 days.** AygentDesk has 80% of the underlying code. It's restructuring, not rebuilding.
+
+---
+
+## Meta Tech Provider — What It Is and What You Need
+
+### What it is
+Currently, to connect a WhatsApp Business number to Aygency World, the agency has to manually create their own Meta Business App, navigate Meta's developer portal, copy their API credentials, and paste them in. This is doable but takes 30+ minutes and is confusing for non-technical users.
+
+**Embedded Signup** is Meta's solution for platforms. Instead of all that manual setup, the agency clicks one button in Aygency World, goes through a guided Meta OAuth flow, and their number is connected in under 2 minutes. Aygency World gets permission to manage their number. This requires Aygency World to be a registered **Meta Tech Provider** (also called a Meta Business Partner).
+
+### What you need to apply
+
+**1. A registered legal business entity**
+Meta requires a real company — not a personal account. You need:
+- A trade license (Dubai mainland via DED, or a free zone license)
+- A business bank account
+- A business address
+
+In Dubai, the fastest routes:
+- **Free zone license** (IFZA, Meydan, Shams, Fujairah Creative City) — can be done in 3–7 days, AED 5,000–12,000/year
+- **Mainland DED license** — takes 2–4 weeks, more expensive but more credibility
+
+**2. A verified Meta Business Manager account**
+- business.facebook.com account with business verified (upload trade license, passport)
+- Meta verification takes 3–5 business days
+
+**3. A live business website**
+- Must have Privacy Policy and Terms of Service pages
+- Must clearly describe what the platform does
+- aygencyworld.com needs to be live, not a coming soon page
+
+**4. Apply to the Meta Tech Provider program**
+- Application at developers.facebook.com/micro_site/url/partner-program
+- Review takes 2–6 weeks typically
+- You'll need to demonstrate how you're using the WhatsApp Business API responsibly
+
+### The workaround while waiting for approval
+
+Don't block the launch on this. While the Meta Tech Provider application is in progress:
+
+**Phase 1 (now):** Agencies paste their credentials manually. We provide a clear step-by-step guide in the app: "How to get your WhatsApp API credentials — takes 30 minutes." This works fine for early adopters and technical users.
+
+**Phase 2 (after approval):** Replace the manual form with the Embedded Signup button. Existing agencies can re-connect with one click. New agencies get the smooth flow from day one.
+
+### Summary of what to do now
+1. Register a legal entity (free zone is fastest — can be done this week)
+2. Set up Meta Business Manager + get business verified
+3. Build the paste-credentials flow for launch (don't wait for Tech Provider)
+4. Apply for Meta Tech Provider once the website is live and you have a few real agencies using the platform
+5. Switch to Embedded Signup once approved
 
 ---
 
