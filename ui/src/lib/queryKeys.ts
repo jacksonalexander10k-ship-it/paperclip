@@ -80,6 +80,14 @@ export const queryKeys = {
     comments: (approvalId: string) => ["approvals", "comments", approvalId] as const,
     issues: (approvalId: string) => ["approvals", "issues", approvalId] as const,
   },
+  properties: {
+    list: (companyId: string, filters?: Record<string, unknown>) =>
+      ["properties", companyId, filters ?? {}] as const,
+    detail: (companyId: string, propertyId: string) =>
+      ["properties", companyId, propertyId] as const,
+    leads: (companyId: string, propertyId: string) =>
+      ["properties", companyId, propertyId, "leads"] as const,
+  },
   access: {
     joinRequests: (companyId: string, status: string = "pending_approval") =>
       ["access", "join-requests", companyId, status] as const,
