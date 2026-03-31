@@ -242,7 +242,7 @@ export function Properties() {
   }), [tab, statusFilter]);
 
   const { data, isLoading } = useQuery({
-    queryKey: queryKeys.properties.list(selectedCompanyId!, filters),
+    queryKey: queryKeys.properties.list(selectedCompanyId!, filters as Record<string, unknown>),
     queryFn: () => propertiesApi.list(selectedCompanyId!, filters),
     enabled: !!selectedCompanyId,
   });
