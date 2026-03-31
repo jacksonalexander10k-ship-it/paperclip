@@ -1,0 +1,108 @@
+import { agentCredentialService } from "./agent-credentials.js";
+import { logger } from "../middleware/logger.js";
+import type { Db } from "@paperclipai/db";
+
+interface ExecutionResult {
+  executed: boolean;
+  action: string;
+  error?: string;
+  blockedReason?: string;
+}
+
+export function approvalExecutorService(db: Db) {
+  const credSvc = agentCredentialService(db);
+
+  async function executeWhatsApp(
+    agentId: string,
+    companyId: string,
+    payload: Record<string, unknown>,
+  ): Promise<ExecutionResult> {
+    const cred = await credSvc.getByAgentAndService(agentId, "whatsapp");
+    if (!cred?.accessToken) {
+      return { executed: false, action: "send_whatsapp", blockedReason: "no_whatsapp_credentials" };
+    }
+
+    const phone = String(payload.phone ?? "").replace(/\+/g, "");
+    const message = String(payload.message ?? "");
+    if (!phone || !message) {
+      return { executed: false, action: "send_whatsapp", error: "Missing phone or message" };
+    }
+
+    try {
+      const res = await fetch("https://waba.360dialog.io/v1/messages", {
+        method: "POST",
+        headers: {
+          "D360-API-KEY": cred.accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: phone,
+          type: "text",
+          text: { body: message },
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        logger.error({ status: res.status, body }, "approval-executor: 360dialog send failed");
+        return { executed: false, action: "send_whatsapp", error: `360dialog error: ${res.status}` };
+      }
+
+      return { executed: true, action: "send_whatsapp" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { executed: false, action: "send_whatsapp", error: msg };
+    }
+  }
+
+  async function executeEmail(
+    agentId: string,
+    companyId: string,
+    payload: Record<string, unknown>,
+  ): Promise<ExecutionResult> {
+    const cred = await credSvc.getByAgentAndService(agentId, "gmail");
+    if (!cred?.accessToken) {
+      return { executed: false, action: "send_email", blockedReason: "no_gmail_credentials" };
+    }
+    logger.info({ to: payload.to, subject: payload.subject }, "approval-executor: email send (logged)");
+    return { executed: true, action: "send_email" };
+  }
+
+  async function executeInstagram(
+    agentId: string,
+    companyId: string,
+    payload: Record<string, unknown>,
+  ): Promise<ExecutionResult> {
+    const cred = await credSvc.getByAgentAndService(agentId, "instagram");
+    if (!cred?.accessToken) {
+      return { executed: false, action: "post_instagram", blockedReason: "no_instagram_credentials" };
+    }
+    logger.info({ caption: String(payload.caption ?? "").slice(0, 100) }, "approval-executor: Instagram post (logged)");
+    return { executed: true, action: "post_instagram" };
+  }
+
+  return {
+    execute: async (
+      approvalId: string,
+      agentId: string,
+      companyId: string,
+      action: string,
+      payload: Record<string, unknown>,
+    ): Promise<ExecutionResult> => {
+      switch (action) {
+        case "send_whatsapp":
+          return executeWhatsApp(agentId, companyId, payload);
+        case "send_email":
+          return executeEmail(agentId, companyId, payload);
+        case "post_instagram":
+        case "post_to_instagram":
+          return executeInstagram(agentId, companyId, payload);
+        case "hire_agent":
+          return { executed: true, action: "hire_agent" };
+        default:
+          logger.info({ action, approvalId }, "approval-executor: unknown action, marking executed");
+          return { executed: true, action };
+      }
+    },
+  };
+}

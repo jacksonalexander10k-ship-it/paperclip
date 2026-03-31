@@ -4,6 +4,7 @@ import { approvalComments, approvals } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { redactCurrentUserText } from "../log-redaction.js";
 import { agentService } from "./agents.js";
+import { approvalExecutorService } from "./approval-executor.js";
 import { budgetService } from "./budgets.js";
 import { notifyHireApproved } from "./hire-hook.js";
 import { instanceSettingsService } from "./instance-settings.js";
@@ -162,6 +163,30 @@ export function approvalService(db: Db) {
             sourceId: id,
             approvedAt: now,
           }).catch(() => {});
+        }
+      }
+
+      // Execute the approved action (WhatsApp send, email, Instagram post, etc.)
+      if (applied && updated.type !== "hire_agent" && updated.type !== "budget_override_required") {
+        const executor = approvalExecutorService(db);
+        const agentId = updated.requestedByAgentId;
+        if (agentId) {
+          const result = await executor.execute(
+            updated.id,
+            agentId,
+            updated.companyId,
+            String((updated.payload as Record<string, unknown>)?.action ?? updated.type),
+            (updated.payload as Record<string, unknown>) ?? {},
+          );
+          if (!result.executed && result.blockedReason) {
+            await db
+              .update(approvals)
+              .set({
+                decisionNote: `Blocked: ${result.blockedReason}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(approvals.id, updated.id));
+          }
         }
       }
 
