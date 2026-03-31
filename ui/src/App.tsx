@@ -43,6 +43,7 @@ import { NewAgent } from "./pages/NewAgent";
 import { CeoChat } from "./pages/CeoChat";
 import Landing from "./pages/Landing";
 import { AuthPage } from "./pages/Auth";
+import BillingCheckout from "./pages/BillingCheckout";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -329,6 +330,7 @@ export function App() {
 
         <Route element={<CloudAccessGate />}>
           <Route index element={<CompanyRootRedirect />} />
+          <Route path="billing/checkout" element={<BillingCheckout />} />
           <Route path="onboarding" element={<OnboardingRoutePage />} />
           <Route path="instance" element={<Navigate to="/instance/settings/general" replace />} />
           <Route path="instance/settings" element={<Layout />}>
