@@ -77,3 +77,4 @@ export { aygentNews } from "./aygent-news.js";
 export { aygentCallConfigs, aygentCallScripts } from "./aygent-call-config.js";
 export { aygentCallLogs } from "./aygent-call-logs.js";
 export { aygentListingWatches } from "./aygent-listing-watches.js";
+export { companySubscriptions } from "./billing.js";

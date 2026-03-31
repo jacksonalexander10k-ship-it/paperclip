@@ -344,6 +344,13 @@
       "when": 1774791961080,
       "tag": "0048_free_silver_sable",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1774960878186,
+      "tag": "0049_left_madelyne_pryor",
+      "breakpoints": true
     }
   ]
 }
