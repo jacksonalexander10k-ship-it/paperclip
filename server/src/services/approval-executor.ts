@@ -1,6 +1,7 @@
 import { agentCredentialService } from "./agent-credentials.js";
 import { logger } from "../middleware/logger.js";
 import type { Db } from "@paperclipai/db";
+import { aygentWhatsappMessages } from "@paperclipai/db";
 
 interface ExecutionResult {
   executed: boolean;
@@ -13,6 +14,7 @@ export function approvalExecutorService(db: Db) {
   const credSvc = agentCredentialService(db);
 
   async function executeWhatsApp(
+    approvalId: string,
     agentId: string,
     companyId: string,
     payload: Record<string, unknown>,
@@ -46,6 +48,24 @@ export function approvalExecutorService(db: Db) {
         const body = await res.text();
         logger.error({ status: res.status, body }, "approval-executor: 360dialog send failed");
         return { executed: false, action: "send_whatsapp", error: `360dialog error: ${res.status}` };
+      }
+
+      // Store the sent message in the conversation history
+      try {
+        await db.insert(aygentWhatsappMessages).values({
+          companyId,
+          agentId,
+          chatJid: phone,
+          messageId: `sent-${approvalId}-${Date.now()}`,
+          fromMe: true,
+          senderName: "Agent",
+          content: message,
+          status: "sent",
+          timestamp: new Date(),
+        });
+      } catch (insertErr) {
+        // Log but don't fail the send — message was already delivered
+        logger.warn({ insertErr, approvalId }, "approval-executor: failed to store outbound WhatsApp message");
       }
 
       return { executed: true, action: "send_whatsapp" };
@@ -91,7 +111,7 @@ export function approvalExecutorService(db: Db) {
     ): Promise<ExecutionResult> => {
       switch (action) {
         case "send_whatsapp":
-          return executeWhatsApp(agentId, companyId, payload);
+          return executeWhatsApp(approvalId, agentId, companyId, payload);
         case "send_email":
           return executeEmail(agentId, companyId, payload);
         case "post_instagram":
