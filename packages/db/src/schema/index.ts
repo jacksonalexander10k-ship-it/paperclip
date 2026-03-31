@@ -65,6 +65,7 @@ export { aygentWhatsappTemplates } from "./aygent-whatsapp-templates.js";
 export { aygentAgentCredentials } from "./aygent-agent-credentials.js";
 export { aygentLandlords } from "./aygent-landlords.js";
 export { aygentProperties } from "./aygent-properties.js";
+export { aygentPropertyLeads } from "./aygent-property-leads.js";
 export { aygentTenancies } from "./aygent-tenancies.js";
 export { aygentCampaigns, aygentCampaignSteps, aygentCampaignEnrollments } from "./aygent-campaigns.js";
 export { aygentDocuments } from "./aygent-documents.js";

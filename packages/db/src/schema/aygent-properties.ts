@@ -33,6 +33,9 @@ export const aygentProperties = pgTable(
     saleValue: real("sale_value"),
     purchasePrice: real("purchase_price"),
     serviceCharge: real("service_charge"),
+    listingType: text("listing_type").default("sale"),
+    rentalPrice: real("rental_price"),
+    pipelineStatus: text("pipeline_status").default("available"),
     status: text("status").default("vacant"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -42,5 +45,7 @@ export const aygentProperties = pgTable(
     companyIdx: index("aygent_properties_company_idx").on(table.companyId),
     companyStatusIdx: index("aygent_properties_company_status_idx").on(table.companyId, table.status),
     landlordIdx: index("aygent_properties_landlord_idx").on(table.landlordId),
+    companyListingIdx: index("aygent_properties_company_listing_idx").on(table.companyId, table.listingType),
+    companyPipelineIdx: index("aygent_properties_company_pipeline_idx").on(table.companyId, table.pipelineStatus),
   }),
 );

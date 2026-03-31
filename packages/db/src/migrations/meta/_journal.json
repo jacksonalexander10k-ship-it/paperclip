@@ -351,6 +351,13 @@
       "when": 1774960878186,
       "tag": "0049_left_madelyne_pryor",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1774969147197,
+      "tag": "0050_last_dracula",
+      "breakpoints": true
     }
   ]
 }
