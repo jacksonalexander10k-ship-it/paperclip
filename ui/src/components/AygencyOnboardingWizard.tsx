@@ -1,21 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "@/lib/router";
 import { useMutation } from "@tanstack/react-query";
-import { Building2, Wifi, Loader2, CheckCircle, ChevronRight } from "lucide-react";
+import { ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { companiesApi } from "../api/companies";
 import { agentsApi } from "../api/agents";
-import { Button } from "@/components/ui/button";
+import { issuesApi } from "../api/issues";
+import type { AgentRole } from "@paperclipai/shared";
 
-type FocusArea = "Off-Plan" | "Rentals" | "Secondary" | "All";
-type AgencySize = "Solo" | "Small (2–5)" | "Medium (6–15)" | "Large (15+)";
-
-interface WizardState {
-  agencyName: string;
-  focus: FocusArea;
-  size: AgencySize;
-  whatsappPhone: string;
-  whatsappToken: string;
-}
+const ROLE_OPTIONS: { value: AgentRole; label: string; emoji: string; description: string }[] = [
+  { value: "ceo",      label: "CEO",       emoji: "🏢", description: "Runs the agency & manages the team" },
+  { value: "cmo",      label: "Marketing", emoji: "📣", description: "Leads, content & social media" },
+  { value: "general",  label: "General",   emoji: "⚡", description: "Flexible — handles any task" },
+  { value: "cfo",      label: "Finance",   emoji: "💰", description: "Budgets, costs & reports" },
+  { value: "researcher", label: "Research", emoji: "🔍", description: "Market data & insights" },
+  { value: "engineer", label: "Tech",      emoji: "🛠", description: "Tech setup & integrations" },
+];
 
 interface AygencyOnboardingWizardProps {
   onComplete: () => void;
@@ -23,319 +22,223 @@ interface AygencyOnboardingWizardProps {
 
 export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardProps) {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [agencyName, setAgencyName] = useState("");
+  const [agentName, setAgentName] = useState("");
+  const [agentRole, setAgentRole] = useState<AgentRole>("ceo");
   const [error, setError] = useState<string | null>(null);
-  const [state, setState] = useState<WizardState>({
-    agencyName: "",
-    focus: "All",
-    size: "Solo",
-    whatsappPhone: "",
-    whatsappToken: "",
-  });
 
-  const createCompanyMutation = useMutation({
+  const createMutation = useMutation({
     mutationFn: async () => {
-      const company = await companiesApi.create({ name: state.agencyName });
-      await agentsApi.create(company.id, { name: "CEO", role: "ceo" });
+      const company = await companiesApi.create({ name: agencyName.trim() });
+      const agent = await agentsApi.create(company.id, { name: agentName.trim(), role: agentRole });
+      try {
+        await issuesApi.create(company.id, {
+          title: "CEO Chat",
+          description: "Persistent chat thread between agency owner and CEO agent.",
+          status: "in_progress",
+          priority: "medium",
+          assigneeAgentId: agent.id,
+          originKind: "system",
+        });
+      } catch {
+        // May already exist
+      }
+      try {
+        await agentsApi.wakeup(agent.id, { source: "on_demand", triggerDetail: "system", reason: "onboarding_complete" });
+      } catch {
+        // Non-critical
+      }
       return company;
     },
     onSuccess: (company) => {
       localStorage.setItem("aygency_onboarding_complete", "true");
-      localStorage.setItem("aygency_agency_name", state.agencyName);
-      localStorage.setItem("aygency_focus", state.focus);
-      localStorage.setItem("aygency_size", state.size);
+      localStorage.setItem("aygency_agency_name", agencyName.trim());
       localStorage.setItem("aygency_company_id", company.id);
       localStorage.setItem("aygency_company_prefix", company.issuePrefix);
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : "Failed to create agency");
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+      setStep(2);
     },
   });
 
-  function handleNext() {
-    if (step === 1 && !state.agencyName.trim()) return;
-    if (step === 2) {
-      setStep(3);
-      createCompanyMutation.mutate();
-      return;
-    }
-    setStep((s) => s + 1);
+  function handleStep1() {
+    if (!agencyName.trim()) return;
+    setStep(2);
   }
 
-  function handleOpenChat() {
-    const prefix = localStorage.getItem("aygency_company_prefix");
+  function handleStep2() {
+    if (!agentName.trim()) return;
+    setStep(3);
+    setError(null);
+    createMutation.mutate();
+  }
+
+  function handleEnter() {
     onComplete();
-    if (prefix) {
-      navigate(`/${prefix}/ceo-chat`);
-    } else {
-      navigate("/ceo-chat");
-    }
+    navigate("/ceo-chat");
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="w-full max-w-md mx-4 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl overflow-hidden">
-        {/* Progress bar */}
-        <div className="h-1 bg-zinc-800">
-          <div
-            className="h-full bg-blue-500 transition-all duration-500"
-            style={{ width: `${(step / 3) * 100}%` }}
-          />
-        </div>
-
-        <div className="p-8">
-          {step === 1 && (
-            <Step1
-              state={state}
-              setState={setState}
-              onNext={handleNext}
-            />
-          )}
-          {step === 2 && (
-            <Step2
-              state={state}
-              setState={setState}
-              onNext={handleNext}
-              onSkip={handleNext}
-            />
-          )}
-          {step === 3 && (
-            <Step3
-              isLoading={createCompanyMutation.isPending}
-              isSuccess={createCompanyMutation.isSuccess}
-              error={error}
-              onOpen={handleOpenChat}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Step1({
-  state,
-  setState,
-  onNext,
-}: {
-  state: WizardState;
-  setState: React.Dispatch<React.SetStateAction<WizardState>>;
-  onNext: () => void;
-}) {
-  const focusOptions: FocusArea[] = ["Off-Plan", "Rentals", "Secondary", "All"];
-  const sizeOptions: AgencySize[] = ["Solo", "Small (2–5)", "Medium (6–15)", "Large (15+)"];
+  useEffect(() => {
+    if (createMutation.isSuccess) {
+      const t = setTimeout(handleEnter, 1400);
+      return () => clearTimeout(t);
+    }
+  }, [createMutation.isSuccess]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-blue-500/10">
-          <Building2 className="h-5 w-5 text-blue-400" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-white">Agency Basics</h2>
-          <p className="text-sm text-zinc-400">Tell us about your agency</p>
-        </div>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#080808]">
+
+      {/* Wordmark */}
+      <div className="absolute top-8 left-1/2 -translate-x-1/2 select-none">
+        <span className="text-[15px] font-bold tracking-tight text-white">
+          aygency<span className="text-[#10b981]">world</span>
+        </span>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-zinc-300">Agency Name</label>
-        <input
-          type="text"
-          placeholder="e.g. Dubai Properties LLC"
-          value={state.agencyName}
-          onChange={(e) => setState((s) => ({ ...s, agencyName: e.target.value }))}
-          onKeyDown={(e) => { if (e.key === "Enter") onNext(); }}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none transition-colors"
-          autoFocus
-        />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-zinc-300">Focus Area</label>
-        <div className="grid grid-cols-2 gap-2">
-          {focusOptions.map((opt) => (
-            <button
-              key={opt}
-              onClick={() => setState((s) => ({ ...s, focus: opt }))}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors text-left ${
-                state.focus === opt
-                  ? "border-blue-500 bg-blue-500/10 text-blue-400"
-                  : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600"
+      {/* Step indicator */}
+      {step < 3 && (
+        <div className="absolute top-8 right-8 flex gap-1.5">
+          {[1, 2].map((s) => (
+            <div
+              key={s}
+              className={`h-1 rounded-full transition-all duration-300 ${
+                s <= step ? "w-6 bg-[#10b981]" : "w-6 bg-zinc-800"
               }`}
-            >
-              {opt}
-            </button>
+            />
           ))}
         </div>
-      </div>
+      )}
 
-      <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-zinc-300">Agency Size</label>
-        <div className="grid grid-cols-2 gap-2">
-          {sizeOptions.map((opt) => (
+      <div className="w-full max-w-md px-8">
+
+        {/* ── Step 1: Agency name ── */}
+        {step === 1 && (
+          <div className="flex flex-col gap-8">
+            <div className="text-center">
+              <p className="text-[32px] font-semibold text-white leading-tight">
+                What's your agency called?
+              </p>
+            </div>
+
+            <input
+              type="text"
+              placeholder="e.g. Prime Properties Dubai"
+              value={agencyName}
+              onChange={(e) => setAgencyName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleStep1(); }}
+              autoFocus
+              className="w-full bg-transparent border-b-2 border-zinc-800 focus:border-[#10b981] px-0 py-3 text-xl text-white placeholder-zinc-700 outline-none transition-colors text-center"
+            />
+
             <button
-              key={opt}
-              onClick={() => setState((s) => ({ ...s, size: opt }))}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors text-left ${
-                state.size === opt
-                  ? "border-blue-500 bg-blue-500/10 text-blue-400"
-                  : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600"
-              }`}
+              onClick={handleStep1}
+              disabled={!agencyName.trim()}
+              className="group flex items-center justify-center gap-2 w-full rounded-2xl bg-[#10b981] hover:bg-[#0ea472] disabled:opacity-20 disabled:cursor-not-allowed py-4 text-[15px] font-semibold text-white transition-all"
             >
-              {opt}
+              Continue
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </button>
-          ))}
-        </div>
-      </div>
-
-      <Button
-        onClick={onNext}
-        disabled={!state.agencyName.trim()}
-        className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium"
-      >
-        Next
-        <ChevronRight className="ml-1 h-4 w-4" />
-      </Button>
-    </div>
-  );
-}
-
-function Step2({
-  state,
-  setState,
-  onNext,
-  onSkip,
-}: {
-  state: WizardState;
-  setState: React.Dispatch<React.SetStateAction<WizardState>>;
-  onNext: () => void;
-  onSkip: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-green-500/10">
-          <Wifi className="h-5 w-5 text-green-400" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-white">Connect Integrations</h2>
-          <p className="text-sm text-zinc-400">Optional — connect later any time</p>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4">
-        {/* WhatsApp */}
-        <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-white">WhatsApp Business</span>
-            <span className="text-xs text-zinc-500">(optional — connect later)</span>
           </div>
-          <input
-            type="tel"
-            placeholder="+971 50 000 0000"
-            value={state.whatsappPhone}
-            onChange={(e) => setState((s) => ({ ...s, whatsappPhone: e.target.value }))}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none transition-colors"
-          />
-          <input
-            type="text"
-            placeholder="Access Token"
-            value={state.whatsappToken}
-            onChange={(e) => setState((s) => ({ ...s, whatsappToken: e.target.value }))}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none transition-colors"
-          />
-        </div>
+        )}
 
-        {/* Gmail — coming soon */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/30 p-4 flex items-center justify-between opacity-50">
-          <span className="text-sm font-medium text-zinc-400">Gmail</span>
-          <button
-            disabled
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-500 cursor-not-allowed"
-          >
-            Connect Gmail (coming soon)
-          </button>
-        </div>
+        {/* ── Step 2: Agent name + role ── */}
+        {step === 2 && (
+          <div className="flex flex-col gap-8">
+            <div className="text-center">
+              <p className="text-[32px] font-semibold text-white leading-tight">
+                Name your first agent
+              </p>
+              <p className="mt-2 text-[15px] text-zinc-500">
+                They'll run {agencyName} from day one
+              </p>
+            </div>
 
-        {/* Google Calendar — coming soon */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/30 p-4 flex items-center justify-between opacity-50">
-          <span className="text-sm font-medium text-zinc-400">Google Calendar</span>
-          <button
-            disabled
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-500 cursor-not-allowed"
-          >
-            Connect Calendar (coming soon)
-          </button>
-        </div>
+            <input
+              type="text"
+              placeholder="Give them a name — Alex, Sarah, Max…"
+              value={agentName}
+              onChange={(e) => setAgentName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleStep2(); }}
+              autoFocus
+              className="w-full bg-transparent border-b-2 border-zinc-800 focus:border-[#10b981] px-0 py-3 text-xl text-white placeholder-zinc-700 outline-none transition-colors text-center"
+            />
+
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-medium text-zinc-600 uppercase tracking-widest text-center">
+                Pick their role
+              </p>
+              <div className="grid grid-cols-3 gap-2.5">
+                {ROLE_OPTIONS.map((opt) => {
+                  const active = agentRole === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setAgentRole(opt.value)}
+                      className={`flex flex-col items-center gap-1.5 rounded-2xl py-4 px-2 transition-all ${
+                        active
+                          ? "bg-[#10b981]/15 ring-1 ring-[#10b981]/60"
+                          : "bg-zinc-900/60 hover:bg-zinc-900"
+                      }`}
+                    >
+                      <span className="text-2xl">{opt.emoji}</span>
+                      <span className={`text-xs font-semibold ${active ? "text-[#10b981]" : "text-zinc-300"}`}>
+                        {opt.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-zinc-600 text-center min-h-[1.2em]">
+                {ROLE_OPTIONS.find((o) => o.value === agentRole)?.description}
+              </p>
+            </div>
+
+            {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+
+            <button
+              onClick={handleStep2}
+              disabled={!agentName.trim()}
+              className="group flex items-center justify-center gap-2 w-full rounded-2xl bg-[#10b981] hover:bg-[#0ea472] disabled:opacity-20 disabled:cursor-not-allowed py-4 text-[15px] font-semibold text-white transition-all"
+            >
+              Launch agency
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </button>
+
+            <button
+              onClick={() => setStep(1)}
+              className="text-xs text-zinc-700 hover:text-zinc-500 text-center transition-colors"
+            >
+              ← Back
+            </button>
+          </div>
+        )}
+
+        {/* ── Step 3: Creating ── */}
+        {step === 3 && (
+          <div className="flex flex-col items-center gap-5 text-center">
+            {!createMutation.isSuccess ? (
+              <>
+                <Loader2 className="h-9 w-9 text-[#10b981] animate-spin" />
+                <div>
+                  <p className="text-xl font-semibold text-white">Launching {agencyName}</p>
+                  <p className="mt-1.5 text-sm text-zinc-500">Hiring {agentName}…</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-9 w-9 text-[#10b981]" />
+                <div>
+                  <p className="text-xl font-semibold text-white">You're in.</p>
+                  <p className="mt-1.5 text-sm text-zinc-500">Opening CEO Chat…</p>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
       </div>
-
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onSkip}
-          className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-        >
-          Skip for now
-        </button>
-        <Button
-          onClick={onNext}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-medium"
-        >
-          Next
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function Step3({
-  isLoading,
-  isSuccess,
-  error,
-  onOpen,
-}: {
-  isLoading: boolean;
-  isSuccess: boolean;
-  error: string | null;
-  onOpen: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-6 py-4 text-center">
-      {isLoading && (
-        <>
-          <Loader2 className="h-10 w-10 text-blue-400 animate-spin" />
-          <div>
-            <h2 className="text-lg font-semibold text-white">Launching your agency...</h2>
-            <p className="mt-1 text-sm text-zinc-400">Hiring your CEO agent</p>
-          </div>
-        </>
-      )}
-      {isSuccess && !error && (
-        <>
-          <CheckCircle className="h-10 w-10 text-green-400" />
-          <div>
-            <h2 className="text-lg font-semibold text-white">Your agency is ready.</h2>
-            <p className="mt-1 text-sm text-zinc-400">
-              Your CEO agent is standing by.
-            </p>
-          </div>
-          <Button
-            onClick={onOpen}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium"
-          >
-            Open CEO Chat
-            <ChevronRight className="ml-1 h-4 w-4" />
-          </Button>
-        </>
-      )}
-      {error && (
-        <div className="flex flex-col items-center gap-4">
-          <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
-            {error}
-          </div>
-          <p className="text-xs text-zinc-500">Please refresh the page and try again.</p>
-        </div>
-      )}
     </div>
   );
 }
