@@ -37,6 +37,7 @@ import { whatsappConnectRoutes } from "./routes/whatsapp-connect.js";
 import { billingRoutes, stripeWebhookRoutes } from "./routes/billing.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { brokerRoutes } from "./routes/broker.js";
+import { propertyRoutes } from "./routes/properties.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -172,6 +173,7 @@ export async function createApp(
   api.use(billingRoutes(db));
   api.use(analyticsRoutes(db));
   api.use(brokerRoutes(db));
+  api.use(propertyRoutes(db));
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
