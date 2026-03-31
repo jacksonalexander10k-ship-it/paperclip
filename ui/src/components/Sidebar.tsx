@@ -12,6 +12,7 @@ import {
   Activity,
   BookOpen,
   CheckSquare,
+  Building2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -138,6 +139,11 @@ export function Sidebar() {
           />
           <SidebarNavItem to="/routines" label="Automations" icon={Repeat} />
           <SidebarNavItem to="/deliverables" label="Deliverables" icon={FileText} />
+        </SidebarSection>
+
+        {/* INVENTORY */}
+        <SidebarSection label="Inventory">
+          <SidebarNavItem to="/properties" label="Properties" icon={Building2} />
         </SidebarSection>
 
         {/* TEAM */}
