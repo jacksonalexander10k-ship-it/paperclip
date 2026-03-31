@@ -515,6 +515,7 @@ When a sub-agent detects something requiring immediate owner attention:
 | **Bayut** | Same — Bayut email notification parsing |
 | **Dubizzle** | Same pattern |
 | **Instagram DMs** | Meta Graph API webhook → Webhook Receiver → Lead Agent |
+| **Facebook/Instagram Lead Ads** | Lead submits form inside Facebook → Facebook webhook → Webhook Receiver → lead + issue → Lead Agent responds in minutes |
 | **Landing page forms** | AygentDesk-generated pages POST to Webhook Receiver → lead + issue |
 | **Manual entry** | Owner/broker adds via dashboard form |
 | **CSV import** | Bulk import during onboarding — Lead Agent enriches each record |
@@ -632,6 +633,240 @@ If refresh fails (user revoked access, permissions changed):
 - Push notification to agency owner: "Sarah's WhatsApp disconnected — click to reconnect"
 - Agent can still run but WhatsApp/email tools return an error until reconnected
 
+### 5. Meta Tech Provider (Embedded Signup) — see section below
+
+**Total dev time for items 1–4: ~3 days.** AygentDesk has 80% of the underlying code. It's restructuring, not rebuilding.
+
+---
+
+## WhatsApp Business API — Rules, Templates & Outbound Strategy
+
+WhatsApp Business API has strict rules that directly determine how agents communicate. Every agent and every skill that touches WhatsApp MUST follow these rules or Meta will ban the number.
+
+### The Two Messaging Modes
+
+**1. Business-Initiated (outbound — you message them first)**
+- MUST use a pre-approved **message template** — no free-form text allowed
+- Templates are submitted to Meta for review (approved in minutes to hours)
+- Templates have variable slots: `"Hi {{1}}, thanks for your interest in {{2}}..."`
+- Each conversation costs money (see pricing below)
+- This is how agents do: first contact with new leads, follow-ups after 24h silence, broadcasts
+
+**2. Customer-Initiated (inbound — they message you first)**
+- Once a lead replies, a **24-hour messaging window** opens
+- During this window: free-form conversation, agents can say anything naturally
+- After 24 hours of no reply from the lead: window closes
+- To message them again after the window closes: must use a template
+
+**The practical impact on agent behaviour:**
+```
+New lead from Facebook/PF/Bayut (never messaged before)
+  → Agent MUST use an approved template for first contact
+  → Lead replies → 24-hour window opens → natural conversation
+  → Agent qualifies: budget, timeline, area, financing
+  → Lead stops replying for 24+ hours → window closes
+  → Next follow-up → must use a template again
+  → Lead replies again → new 24-hour window → natural conversation
+  → ... and so on
+```
+
+### Message Template Categories
+
+Meta classifies templates into categories with different pricing and approval rules:
+
+| Category | Use case | UAE cost per conversation | Approval speed |
+|----------|----------|--------------------------|----------------|
+| **Marketing** | Promotions, offers, project launches, newsletters | ~$0.078 | Minutes–hours |
+| **Utility** | Appointment confirmations, status updates, follow-ups | ~$0.027 | Minutes |
+| **Authentication** | OTP codes, verification | ~$0.023 | Minutes |
+| **Service** | Customer-initiated replies (within 24h window) | Free (first 1,000/month), then ~$0.017 | N/A — no template needed |
+
+### Template Library — What Every Agency Needs
+
+Agencies must have approved templates ready BEFORE agents can do outbound. The Marketing Agent or CEO creates these during onboarding. Templates are submitted to Meta for approval, then available for all agents to use.
+
+**Lead Response Templates:**
+```
+new_lead_welcome:
+"Hi {{1}}, this is {{2}} from {{3}}. Thanks for your interest in {{4}}!
+Would you like to see pricing and floor plans? 🏠"
+
+property_details:
+"Hi {{1}}, here are the details for {{2}} you asked about:
+📍 Location: {{3}}
+💰 Starting from: AED {{4}}
+📅 Handover: {{5}}
+Would you like to schedule a viewing?"
+```
+
+**Follow-Up Templates:**
+```
+followup_24h:
+"Hi {{1}}, just checking in about {{2}}.
+Do you have any questions I can help with?"
+
+followup_48h:
+"Hi {{1}}, we have some new availability for {{2}} that might interest you.
+Shall I send you the updated options?"
+
+stale_reactivation_30d:
+"Hi {{1}}, it's {{2}} from {{3}}. We've had some exciting new launches
+in {{4}} since we last spoke. Would you like an update?"
+```
+
+**Viewing Templates:**
+```
+viewing_confirmation:
+"Hi {{1}}, your viewing is confirmed! 🏠
+📍 {{2}}
+📅 {{3}} at {{4}}
+Your agent {{5}} will meet you there. See you soon!"
+
+viewing_reminder:
+"Hi {{1}}, just a reminder — your viewing at {{2}} is tomorrow at {{3}}.
+Looking forward to showing you around! 🏠"
+
+post_viewing:
+"Hi {{1}}, thanks for visiting {{2}} today!
+What did you think? Would you like to discuss next steps?"
+```
+
+**Marketing / Broadcast Templates:**
+```
+project_launch:
+"🚀 New Launch Alert!
+{{1}} by {{2}} in {{3}}
+Starting from AED {{4}} | {{5}} payment plan
+Register for exclusive early-bird pricing → {{6}}"
+
+market_update:
+"📊 {{1}} Market Update
+{{2}}
+Want to discuss what this means for your investment plans?"
+
+special_offer:
+"Hi {{1}}, {{2}} is offering a limited-time payment plan for {{3}}:
+{{4}}
+This ends {{5}}. Shall I reserve a unit for you?"
+```
+
+**Utility Templates:**
+```
+document_received:
+"Hi {{1}}, we've received your {{2}}.
+Our team is reviewing it and will get back to you within {{3}}."
+
+payment_reminder:
+"Hi {{1}}, a friendly reminder that your next payment of AED {{2}}
+for {{3}} is due on {{4}}."
+```
+
+### Template Creation Flow in CEO Chat
+
+```
+Owner: "I need a template for new project launches"
+  → CEO delegates to Content Agent (or handles directly)
+  → Agent drafts template following Meta's guidelines
+  → Approval card in CEO Chat:
+    ┌─────────────────────────────────────────┐
+    │ 📝 New WhatsApp Template                │
+    │                                         │
+    │ Name: project_launch_v1                 │
+    │ Category: Marketing                     │
+    │ Language: English                       │
+    │                                         │
+    │ "🚀 New Launch Alert!                   │
+    │ {{1}} by {{2}} in {{3}}                 │
+    │ Starting from AED {{4}} | {{5}}         │
+    │ payment plan                            │
+    │ Register for exclusive pricing → {{6}}" │
+    │                                         │
+    │ [Approve & Submit]  [Edit]  [Reject]    │
+    └─────────────────────────────────────────┘
+  → Owner approves → template submitted to Meta API
+  → Meta approves (minutes–hours) → template available for agents
+```
+
+### Template Management Tools
+
+| Tool | Purpose |
+|------|---------|
+| `list_whatsapp_templates` | List all approved templates (already exists) |
+| `use_whatsapp_template` | Send a template message to a lead (already exists) |
+| `create_whatsapp_template` | Submit a new template to Meta for approval (needs building) |
+| `get_template_status` | Check if a submitted template was approved/rejected (needs building) |
+| `delete_whatsapp_template` | Remove an unused template (needs building) |
+
+### 24-Hour Window Tracking
+
+Agents need to know whether they're in a free-form window or need a template. The system tracks this per lead per agent:
+
+```sql
+whatsapp_windows (
+  id,
+  agent_id,
+  lead_id,
+  phone_number,
+  window_opened_at,    -- when the lead last replied
+  window_expires_at,   -- opened_at + 24 hours
+  status               -- 'open' | 'closed'
+)
+```
+
+Before every WhatsApp send, the agent checks:
+- Window open? → send free-form message via `send_whatsapp`
+- Window closed? → must use `use_whatsapp_template` with an approved template
+
+This check is enforced at the tool level — `send_whatsapp` rejects free-form messages to leads with closed windows and returns an error telling the agent to use a template instead.
+
+### WhatsApp Broadcast Strategy
+
+For mass outbound (project launches, market updates), the agent:
+
+1. Selects target leads by filter (area interest, budget range, score, language)
+2. Selects the appropriate template
+3. Assembles the variable values per lead (personalised)
+4. Shows approval card with: template preview, lead count, estimated cost
+5. Owner approves → messages sent in batches (to avoid rate limits)
+6. Results tracked: delivered, read, replied, opted out
+
+**Rate limits:** Meta allows ~80 messages/second for verified business accounts. For large broadcasts (500+ leads), send in batches with small delays to stay safe.
+
+**Opt-out handling:** If a lead replies "STOP" or "unsubscribe" to any template, the agent MUST:
+- Tag the lead as `opted_out_whatsapp` immediately
+- Never send another WhatsApp to that number
+- This is a legal requirement under UAE PDPA and Meta's policies
+
+### WhatsApp Costs — What to Tell the Owner
+
+A typical agency's monthly WhatsApp costs:
+- 200 new leads contacted (marketing templates): ~$15.60
+- 100 follow-ups (utility templates): ~$2.70
+- 500 service conversations (replies within 24h): free (under 1,000/month quota)
+- 1 broadcast to 300 leads (marketing template): ~$23.40
+- **Total: ~$40-60/month** — negligible compared to the value generated
+
+Include WhatsApp costs in the CEO morning brief alongside agent compute costs.
+
+### Meta Number Quality & Messaging Limits
+
+Meta assigns a quality rating to each phone number based on how leads react to messages:
+
+| Quality | What it means | Impact |
+|---------|--------------|--------|
+| **Green** | Low block/report rate | Can send up to 100,000 business-initiated conversations per day |
+| **Yellow** | Moderate complaints | Sending limit may decrease |
+| **Red** | High block/report rate | Sending limit drops, number may be suspended |
+
+**How to maintain Green quality:**
+- Only message leads who have shown interest (don't cold-spam)
+- Personalise every message (use lead name, specific project interest)
+- Respond quickly to replies (within the 24-hour window)
+- Honour opt-outs immediately
+- Don't send too frequently to unresponsive leads (3 unanswered messages = stop)
+
+If quality drops to Yellow, the Content Agent should flag to CEO and recommend reducing outbound volume until quality recovers.
+
 ~half a day to build.
 
 ### 5. Meta Tech Provider (Embedded Signup) — see section below
@@ -744,11 +979,123 @@ Once you have 10+ agencies and meaningful message volume, apply for direct Meta 
 
 ---
 
+## Paid Advertising — Facebook Ads & Google Ads
+
+Paid ads (Facebook/Instagram Lead Ads, Google Ads) are the primary paid lead generation channel for Dubai real estate agencies. This is a core capability, not an add-on.
+
+### How it works
+
+The Facebook Marketing API allows full programmatic control over campaigns — create, launch, monitor, optimise, pause. No manual Ads Manager interaction needed. The Content/Marketing Agent handles everything via API tools, with owner approval before anything goes live.
+
+### The complete loop
+
+```
+Owner: "I want more leads for Damac Lagoons"
+  → CEO delegates to Content Agent (or Marketing Agent if hired)
+  → Agent asks qualifying questions (objective, budget, audience, creative)
+  → Agent assembles full campaign: targeting, budget, creative, lead form
+  → Approval card shown in CEO Chat with full campaign preview
+  → Owner approves → campaign goes live via Facebook Marketing API
+  → Lead fills out Facebook Lead Form (never leaves Facebook/Instagram)
+  → Facebook webhook fires instantly → Webhook Receiver (port 3003)
+  → Lead record created → Paperclip issue assigned to Lead Agent
+  → Lead Agent responds via WhatsApp within 5 minutes
+  → Lead qualified, scored, nurtured through normal pipeline
+  → Content Agent monitors campaign daily, reports in CEO morning brief
+```
+
+### Why this is a killer feature
+
+Most agencies today: hire a media buyer (AED 5-15K/month), wait days for campaign setup, manually check Ads Manager for leads, download CSV, call leads back hours later.
+
+With Aygency World: tell the CEO "get me leads" (10 seconds), approve the proposed campaign (1 click), leads come in and get WhatsApp responses in minutes (automated). You're replacing a AED 10K/month media buyer AND cutting lead response time from hours to minutes.
+
+### Facebook OAuth connection
+
+Same Meta OAuth the agency already does for WhatsApp — same app, additional permissions:
+- `ads_management` — create/edit campaigns
+- `ads_read` — read performance data
+- `leads_retrieval` — get lead form submissions via webhook
+- `pages_read_engagement` — required for ad delivery
+
+Stored in `agency_credentials` alongside WhatsApp tokens. One popup, 30 seconds.
+
+### Facebook Ads tools (8 new tools)
+
+| Tool | Purpose |
+|------|---------|
+| `create_fb_campaign` | Create campaign with objective (lead gen, traffic, engagement) |
+| `create_fb_ad_set` | Set targeting, budget, schedule, placements |
+| `create_fb_ad` | Attach creative + copy to ad set |
+| `create_fb_lead_form` | Define instant form fields + intro/thank you screens |
+| `get_fb_campaign_stats` | Pull metrics: CPL, leads, spend, CTR, impressions |
+| `pause_fb_campaign` | Pause a running campaign |
+| `update_fb_budget` | Adjust daily or lifetime budget |
+| `get_fb_audiences` | List targeting options, custom audiences, lookalikes |
+
+### Facebook Leads webhook
+
+When someone submits a Lead Ad form, Facebook sends a webhook POST. Handled by the same Webhook Receiver service (port 3003) that handles WhatsApp inbound:
+
+```
+Facebook Lead webhook → Webhook Receiver
+  → Parse: name, phone, email, custom question answers
+  → Create lead record (source: "facebook_ad", campaign_id stored)
+  → Create Paperclip issue → Lead Agent picks up on next heartbeat
+```
+
+### Approval card for campaigns
+
+```json
+{
+  "type": "approval_required",
+  "action": "launch_fb_campaign",
+  "campaign_name": "JVC Off-Plan — Lead Gen",
+  "objective": "Lead Generation",
+  "budget": "AED 150/day for 14 days (AED 2,100 total)",
+  "audience": "UAE, 28-55, interests: real estate investment, Dubai property",
+  "placements": "Facebook + Instagram (automatic)",
+  "creative_type": "Carousel — 4 project images",
+  "headline": "JVC Off-Plan from AED 800K",
+  "lead_form_fields": ["Full Name", "Phone", "Email", "Budget Range"],
+  "estimated_results": "15-40 leads over 14 days"
+}
+```
+
+### Google Ads (Phase 3)
+
+Same architecture, different API. Google Ads API for Search ads (people googling "buy apartment Dubai"), Display ads, and Performance Max campaigns. Higher intent than Facebook (they're searching) but more expensive per lead. Use alongside Facebook, not instead of.
+
+### Creative generation
+
+The agent generates everything needed:
+- **Ad images**: `generate_social_content` tool or AI image generation
+- **Ad copy**: Claude writes headline, primary text, description (skill file has proven formulas)
+- **Landing pages**: `generate_landing_page` tool (already in AygentDesk)
+- **Video**: HeyGen integration for property videos and talking-head market updates
+- **Developer assets**: Agent asks owner for existing project renders/brochures from developer
+
+### Skill file
+
+The Content Agent's complete Facebook Ads knowledge is encoded in `skills/behaviour/facebook-ads.md`. Covers: campaign types and when to use each, Dubai RE audience targeting by nationality, budget guidelines, creative best practices, lead form design, optimisation playbook (learning phase, scaling, killing underperformers), daily/weekly reporting format, and RERA compliance rules for ad content.
+
+### Build sequence
+
+| Phase | What |
+|-------|------|
+| Phase 2 (Alpha) | Facebook Marketing API tools, Content Agent skill file, campaign approval cards |
+| Phase 2 (Alpha) | Facebook Leads webhook in Webhook Receiver |
+| Phase 3 (Beta) | Google Ads API tools + skill file |
+| Phase 3 (Beta) | Campaign performance in Analytics dashboard, cross-channel attribution |
+| Phase 4 | Closed-loop optimisation (agent adjusts campaigns based on which leads actually converted to deals) |
+
+---
+
 ## Full Lead Lifecycle
 
 ```
 1. ENTRY
-   WhatsApp / PF email / Bayut email / Instagram DM / form / manual
+   WhatsApp / PF email / Bayut email / Instagram DM / form / manual / Facebook Lead Ad
    → Lead created: name, phone, source, initial message
    → Auto-enrichment: DLD history, WhatsApp history, initial score
 

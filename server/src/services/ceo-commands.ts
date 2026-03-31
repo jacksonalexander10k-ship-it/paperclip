@@ -7,6 +7,7 @@
 
 import type { Db } from "@paperclipai/db";
 import { agentService } from "./agents.js";
+import { issueService } from "./issues.js";
 import { routineService } from "./routines.js";
 import { projectService } from "./projects.js";
 import { publishLiveEvent } from "./live-events.js";
@@ -57,13 +58,22 @@ interface UpdateAgentConfigCommand {
   remove_skills?: string[];
 }
 
+interface CreateTaskCommand {
+  action: "create_task";
+  title: string;
+  description?: string;
+  assignee?: string;
+  priority?: string;
+}
+
 type CeoCommand =
   | HireTeamCommand
   | PauseAgentCommand
   | ResumeAgentCommand
   | PauseAllCommand
   | ResumeAllCommand
-  | UpdateAgentConfigCommand;
+  | UpdateAgentConfigCommand
+  | CreateTaskCommand;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -405,6 +415,54 @@ export function ceoCommandService(db: Db) {
   }
 
   // -------------------------------------------------------------------------
+  // create_task
+  // -------------------------------------------------------------------------
+
+  async function handleCreateTask(
+    companyId: string,
+    cmd: CreateTaskCommand,
+    actorAgentId: string,
+  ): Promise<string> {
+    const issueSvc = issueService(db);
+    const allAgents = await agentsSvc.list(companyId);
+
+    let assigneeAgentId: string | undefined;
+    if (cmd.assignee) {
+      const match = allAgents.find(
+        (a) => a.name.toLowerCase() === cmd.assignee!.toLowerCase(),
+      );
+      if (match) assigneeAgentId = match.id;
+    }
+
+    const created = await issueSvc.create(companyId, {
+      title: cmd.title,
+      description: cmd.description ?? "",
+      status: "todo",
+      priority: cmd.priority ?? "medium",
+      assigneeAgentId,
+      createdByAgentId: actorAgentId,
+      originKind: "agent",
+    });
+
+    const assigneeName = assigneeAgentId
+      ? allAgents.find((a) => a.id === assigneeAgentId)?.name ?? "unknown"
+      : "unassigned";
+
+    publishLiveEvent({
+      companyId,
+      type: "activity.logged",
+      payload: {
+        action: "issue.created",
+        issueId: created.id,
+        title: created.title,
+        assignee: assigneeName,
+      },
+    });
+
+    return `Task created: "${created.title}" → ${assigneeName}`;
+  }
+
+  // -------------------------------------------------------------------------
   // Main entry point
   // -------------------------------------------------------------------------
 
@@ -446,6 +504,9 @@ export function ceoCommandService(db: Db) {
               break;
             case "update_agent_config":
               results.push(await handleUpdateAgentConfig(companyId, cmd, actorAgentId));
+              break;
+            case "create_task":
+              results.push(await handleCreateTask(companyId, cmd, actorAgentId));
               break;
             default:
               results.push(`Unknown command action: ${(cmd as { action: string }).action}`);

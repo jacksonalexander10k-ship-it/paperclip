@@ -1,4 +1,21 @@
 /// <reference path="./types/express.d.ts" />
+// Load select env vars from repo root .env (only keys not already set in environment)
+import { parse as parseDotenv } from "dotenv";
+import { resolve as resolvePath, dirname as dirnamePath } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync as readFileSync0, existsSync as existsSync0 } from "node:fs";
+{
+  const envPath = resolvePath(dirnamePath(fileURLToPath(import.meta.url)), "../../.env");
+  if (existsSync0(envPath)) {
+    const parsed = parseDotenv(readFileSync0(envPath, "utf-8"));
+    // Only inject keys that are NOT already set — never override DATABASE_URL (embedded postgres manages it)
+    const skip = new Set(["DATABASE_URL"]);
+    for (const [k, v] of Object.entries(parsed)) {
+      if (!skip.has(k) && !process.env[k]) process.env[k] = v;
+    }
+  }
+}
+
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { resolve } from "node:path";

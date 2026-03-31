@@ -106,6 +106,8 @@ export const issuesApi = {
   unlinkApproval: (id: string, approvalId: string) =>
     api.delete<{ ok: true }>(`/issues/${id}/approvals/${approvalId}`),
   listWorkProducts: (id: string) => api.get<IssueWorkProduct[]>(`/issues/${id}/work-products`),
+  listWorkProductsForCompany: (companyId: string) =>
+    api.get<IssueWorkProduct[]>(`/companies/${companyId}/work-products`),
   createWorkProduct: (id: string, data: Record<string, unknown>) =>
     api.post<IssueWorkProduct>(`/issues/${id}/work-products`, data),
   updateWorkProduct: (id: string, data: Record<string, unknown>) =>

@@ -5,11 +5,14 @@ import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { goalsApi } from "../api/goals";
+import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { EmptyState } from "../components/EmptyState";
 import { ActivityRow } from "../components/ActivityRow";
+import { Identity } from "../components/Identity";
+import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
 import {
   Select,
@@ -27,7 +30,7 @@ export function Activity() {
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Log" }]);
+    setBreadcrumbs([{ label: "Activity" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({
@@ -60,6 +63,26 @@ export function Activity() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 5000,
+  });
+
+  const runningAgents = useMemo(() => {
+    if (!liveRuns || liveRuns.length === 0) return [];
+    const seen = new Set<string>();
+    const results: typeof liveRuns = [];
+    for (const run of liveRuns) {
+      if (!seen.has(run.agentId)) {
+        seen.add(run.agentId);
+        results.push(run);
+      }
+    }
+    return results;
+  }, [liveRuns]);
+
   const agentMap = useMemo(() => {
     const map = new Map<string, Agent>();
     for (const a of agents ?? []) map.set(a.id, a);
@@ -68,7 +91,7 @@ export function Activity() {
 
   const entityNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const i of issues ?? []) map.set(`issue:${i.id}`, i.identifier ?? i.id.slice(0, 8));
+    for (const i of issues ?? []) map.set(`issue:${i.id}`, i.title ?? i.identifier ?? i.id.slice(0, 8));
     for (const a of agents ?? []) map.set(`agent:${a.id}`, a.name);
     for (const p of projects ?? []) map.set(`project:${p.id}`, p.name);
     for (const g of goals ?? []) map.set(`goal:${g.id}`, g.title);
@@ -123,56 +146,106 @@ export function Activity() {
     }
   }
 
+  const runningCount = liveRuns?.length ?? 0;
+
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Log</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A full record of everything your agents have done.
-        </p>
-      </div>
+    <div className="flex flex-col h-full">
+      <PageHeader
+        title="Live Activity"
+        badge={
+          runningCount > 0 ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+              </span>
+              {runningCount} running
+            </span>
+          ) : undefined
+        }
+      />
 
-      <div className="flex items-center justify-end">
-        <label className="text-xs text-muted-foreground mr-2">Filter by agent</label>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[160px] h-8 text-xs">
-            <SelectValue placeholder="All activity" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All activity</SelectItem>
-            {entityTypes.map((type) => (
-              <SelectItem key={type} value={type}>
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
-
-      {filtered && filtered.length === 0 && (
-        <EmptyState icon={History} message="No activity yet. This log fills up as your agents start working." />
-      )}
-
-      {grouped.map((group) => (
-        <div key={group.label}>
-          <div className="px-1 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            {group.label}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* Currently Running */}
+        {runningAgents.length > 0 && (
+          <div>
+            <div className="px-1 py-2 text-[10px] font-semibold text-primary/50 uppercase tracking-[0.15em]">
+              Currently Running
+            </div>
+            <div className="rounded-xl border border-primary/20 bg-primary/5 overflow-hidden divide-y divide-primary/10">
+              {runningAgents.map((run) => (
+                <div key={run.id} className="flex items-center gap-3 px-4 py-3">
+                  <Identity name={run.agentName} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold truncate">{run.agentName}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {run.invocationSource}
+                      {run.startedAt && (
+                        <> &middot; started {new Date(run.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>
+                      )}
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 shrink-0">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                    </span>
+                    Live
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="border border-border divide-y divide-border">
-            {group.events!.map((event) => (
-              <ActivityRow
-                key={event.id}
-                event={event}
-                agentMap={agentMap}
-                entityNameMap={entityNameMap}
-                entityTitleMap={entityTitleMap}
-              />
-            ))}
+        )}
+
+        {/* Filter + Recent Activity */}
+        <div className="flex items-center justify-between">
+          <div className="px-1 text-[10px] font-semibold text-primary/50 uppercase tracking-[0.15em]">
+            Recent Activity
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground">Filter</label>
+            <Select value={filter} onValueChange={setFilter}>
+              <SelectTrigger className="w-[160px] h-8 text-xs">
+                <SelectValue placeholder="All activity" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All activity</SelectItem>
+                {entityTypes.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-      ))}
+
+        {error && <p className="text-sm text-destructive">{error.message}</p>}
+
+        {filtered && filtered.length === 0 && (
+          <EmptyState icon={History} message="No activity yet. This log fills up as your agents start working." />
+        )}
+
+        {grouped.map((group) => (
+          <div key={group.label}>
+            <div className="px-1 py-2 text-[10px] font-semibold text-primary/50 uppercase tracking-[0.15em]">
+              {group.label}
+            </div>
+            <div className="rounded-xl border border-border/50 overflow-hidden bg-card/50 divide-y divide-border/50">
+              {group.events!.map((event) => (
+                <ActivityRow
+                  key={event.id}
+                  event={event}
+                  agentMap={agentMap}
+                  entityNameMap={entityNameMap}
+                  entityTitleMap={entityTitleMap}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,308 +1,314 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ChevronDown, ChevronUp } from "lucide-react";
-import type { Agent, LiveEvent } from "@paperclipai/shared";
-import { AgentStatusCard } from "./AgentStatusCard";
-import { ActivityFeed, type ActivityEntry } from "./ActivityFeed";
-import { useCompany } from "../context/CompanyContext";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { cn, relativeTime } from "../lib/utils";
+import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
-import { heartbeatsApi } from "../api/heartbeats";
+import { activityApi } from "../api/activity";
+import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
-import { cn } from "../lib/utils";
-
-const MAX_FEED_ENTRIES = 100;
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function resolveAgentName(agents: Agent[] | undefined, agentId: string): string {
-  if (!agents) return `Agent ${agentId.slice(0, 8)}`;
-  const agent = agents.find((a) => a.id === agentId);
-  return agent?.name ?? `Agent ${agentId.slice(0, 8)}`;
-}
-
-function buildFeedEntry(
-  agents: Agent[] | undefined,
-  type: string,
-  payload: Record<string, unknown>,
-): ActivityEntry | null {
-  const agentId = readString(payload.agentId);
-  if (!agentId) return null;
-
-  const agentName = resolveAgentName(agents, agentId);
-  const now = new Date();
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-  if (type === "heartbeat.run.status") {
-    const status = readString(payload.status);
-    if (status === "running") {
-      const trigger = readString(payload.triggerDetail);
-      return {
-        id,
-        timestamp: now,
-        agentName,
-        agentId,
-        action: trigger ? `started: ${trigger}` : "heartbeat started",
-      };
-    }
-    if (status === "succeeded") {
-      return { id, timestamp: now, agentName, agentId, action: "run completed", icon: "ok" };
-    }
-    if (status === "failed") {
-      return { id, timestamp: now, agentName, agentId, action: "run failed", icon: "!!" };
-    }
-    if (status === "cancelled") {
-      return { id, timestamp: now, agentName, agentId, action: "run cancelled" };
-    }
-    return null;
-  }
-
-  if (type === "heartbeat.run.queued") {
-    return { id, timestamp: now, agentName, agentId, action: "run queued" };
-  }
-
-  if (type === "agent.status") {
-    const status = readString(payload.status);
-    if (status === "running") {
-      return { id, timestamp: now, agentName, agentId, action: "started working" };
-    }
-    if (status === "paused") {
-      return { id, timestamp: now, agentName, agentId, action: "paused" };
-    }
-    if (status === "error") {
-      return { id, timestamp: now, agentName, agentId, action: "encountered an error", icon: "!!" };
-    }
-    if (status === "idle" || status === "active") {
-      return { id, timestamp: now, agentName, agentId, action: "idle -- no pending tasks" };
-    }
-    return null;
-  }
-
-  if (type === "activity.logged") {
-    const action = readString(payload.action);
-    const entityType = readString(payload.entityType);
-    if (action === "issue.created" && entityType === "issue") {
-      return { id, timestamp: now, agentName, agentId, action: "created a task" };
-    }
-    if (action === "issue.comment_added") {
-      return { id, timestamp: now, agentName, agentId, action: "posted an update" };
-    }
-    if (action === "issue.updated") {
-      return { id, timestamp: now, agentName, agentId, action: "updated a task" };
-    }
-    return null;
-  }
-
-  return null;
-}
+import { approvalLabel, typeIcon, defaultTypeIcon } from "./ApprovalPayload";
+import { Button } from "@/components/ui/button";
+import { Shield, Activity } from "lucide-react";
+import type { Agent } from "@paperclipai/shared";
 
 interface LiveActivityPanelProps {
   className?: string;
-  defaultExpanded?: boolean;
 }
 
-export function LiveActivityPanel({ className, defaultExpanded = true }: LiveActivityPanelProps) {
-  const { selectedCompanyId } = useCompany();
-  const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const [feedEntries, setFeedEntries] = useState<ActivityEntry[]>([]);
-  const feedEntriesRef = useRef(feedEntries);
-  feedEntriesRef.current = feedEntries;
+/* ------------------------------------------------------------------ */
+/*  Pending Tab                                                       */
+/* ------------------------------------------------------------------ */
 
-  // Fetch agents
-  const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+function PendingTab({ companyId }: { companyId: string }) {
+  const queryClient = useQueryClient();
+  const [fadingIds, setFadingIds] = useState<Set<string>>(new Set());
+
+  const { data: approvals } = useQuery({
+    queryKey: queryKeys.approvals.list(companyId),
+    queryFn: () => approvalsApi.list(companyId),
+    refetchInterval: 10_000,
   });
 
-  // Fetch live runs to determine which agents are currently running
-  const { data: liveRuns } = useQuery({
-    queryKey: queryKeys.liveRuns(selectedCompanyId!),
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => approvalsApi.approve(id),
+    onMutate: (id) => {
+      setFadingIds((prev) => new Set(prev).add(id));
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(companyId) }),
+    onSettled: (_data, _err, id) => {
+      setTimeout(() => {
+        setFadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 400);
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id: string) => approvalsApi.reject(id),
+    onMutate: (id) => {
+      setFadingIds((prev) => new Set(prev).add(id));
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(companyId) }),
+    onSettled: (_data, _err, id) => {
+      setTimeout(() => {
+        setFadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 400);
+    },
+  });
+
+  const pending = (approvals ?? []).filter(
+    (a) => a.status === "pending" || a.status === "revision_requested",
+  );
+
+  const agentMap = new Map<string, Agent>();
+  for (const a of agents ?? []) agentMap.set(a.id, a);
+
+  const isBusy = approveMutation.isPending || rejectMutation.isPending;
+
+  if (pending.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-40 text-center px-6">
+        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 mb-2.5">
+          <Shield className="h-4 w-4 text-primary" />
+        </div>
+        <p className="text-[12px] font-semibold text-foreground">All caught up</p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Nothing needs your approval right now.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {pending.map((approval) => {
+        const Icon = typeIcon[approval.type] ?? defaultTypeIcon;
+        const label = approvalLabel(
+          approval.type,
+          approval.payload as Record<string, unknown> | null,
+        );
+        const agent = approval.requestedByAgentId
+          ? agentMap.get(approval.requestedByAgentId)
+          : null;
+        const payload = approval.payload as Record<string, unknown> | null;
+        const preview =
+          payload?.body
+            ? String(payload.body).slice(0, 120)
+            : payload?.description
+              ? String(payload.description).slice(0, 120)
+              : null;
+
+        const isFading = fadingIds.has(approval.id);
+
+        return (
+          <div
+            key={approval.id}
+            className={cn(
+              "px-3 py-3 border-b border-border/40 space-y-2 transition-opacity duration-300",
+              isFading && "opacity-0",
+            )}
+          >
+            {/* Header row */}
+            <div className="flex items-start gap-2.5">
+              <div className="flex items-center justify-center h-[25px] w-[25px] rounded-lg bg-primary/10 shrink-0">
+                <Icon className="h-3 w-3 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold leading-tight truncate">{label}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {agent?.name ?? "Agent"}
+                  {approval.createdAt && (
+                    <> · {relativeTime(String(approval.createdAt))}</>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Preview text */}
+            {preview && (
+              <p className="text-[11.5px] text-muted-foreground italic leading-relaxed bg-muted/50 rounded-md px-2.5 py-1.5">
+                "{preview}"
+              </p>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="flex-1 h-7 text-[11px] font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+                disabled={isBusy}
+                onClick={() => approveMutation.mutate(approval.id)}
+              >
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="flex-1 h-7 text-[11px] font-medium text-muted-foreground border border-border hover:bg-muted"
+                disabled={isBusy}
+                onClick={() => rejectMutation.mutate(approval.id)}
+              >
+                Decline
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Activity Tab                                                      */
+/* ------------------------------------------------------------------ */
+
+function ActivityTab({ companyId }: { companyId: string }) {
+  const { data: activity } = useQuery({
+    queryKey: queryKeys.activity(companyId),
+    queryFn: () => activityApi.list(companyId),
+    refetchInterval: 15_000,
+  });
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+  });
+
+  const agentMap = new Map<string, Agent>();
+  for (const a of agents ?? []) agentMap.set(a.id, a);
+
+  const entries = (activity ?? []).slice(0, 30);
+
+  if (entries.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-40 text-center px-6">
+        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-muted mb-2.5">
+          <Activity className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <p className="text-[12px] text-muted-foreground">No activity yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {entries.map((event) => {
+        const agentId =
+          (event as { actorId?: string; agentId?: string }).actorId ??
+          (event as { actorId?: string; agentId?: string }).agentId;
+        const agent = agentId ? agentMap.get(agentId) : null;
+        const actorName =
+          agent?.name ??
+          (event as { actorName?: string }).actorName ??
+          "Someone";
+
+        return (
+          <div
+            key={event.id}
+            className="px-3 py-3 border-b border-border/40 hover:bg-muted/30 transition-colors"
+          >
+            <p className="text-[11.5px] text-foreground leading-[1.5]">
+              <span className="font-semibold">{actorName}</span>{" "}
+              {(event as { summary?: string; action?: string }).summary ??
+                (event as { summary?: string; action?: string }).action ??
+                "did something"}
+            </p>
+            {event.createdAt && (
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {relativeTime(String(event.createdAt))}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Panel                                                        */
+/* ------------------------------------------------------------------ */
+
+export function LiveActivityPanel({ className }: LiveActivityPanelProps) {
+  const { selectedCompanyId } = useCompany();
+  const [activeTab, setActiveTab] = useState<"pending" | "activity">("pending");
+
+  const { data: approvals } = useQuery({
+    queryKey: queryKeys.approvals.list(selectedCompanyId!),
+    queryFn: () => approvalsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
     refetchInterval: 10_000,
   });
 
-  // Set of agent IDs that are currently running
-  const runningAgentIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const run of liveRuns ?? []) {
-      if (run.status === "running" || run.status === "queued") {
-        set.add(run.agentId);
-      }
-    }
-    return set;
-  }, [liveRuns]);
-
-  // Whether any agent is currently active
-  const anyActive = runningAgentIds.size > 0;
-
-  // Listen to WebSocket events for feed updates
-  useEffect(() => {
-    if (!selectedCompanyId) return;
-
-    let closed = false;
-    let reconnectAttempt = 0;
-    let reconnectTimer: number | null = null;
-    let socket: WebSocket | null = null;
-
-    const clearReconnect = () => {
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-    };
-
-    const scheduleReconnect = () => {
-      if (closed) return;
-      reconnectAttempt += 1;
-      const delayMs = Math.min(15000, 1000 * 2 ** Math.min(reconnectAttempt - 1, 4));
-      reconnectTimer = window.setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-      }, delayMs);
-    };
-
-    const connect = () => {
-      if (closed) return;
-      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      const url = `${protocol}://${window.location.host}/api/companies/${encodeURIComponent(selectedCompanyId)}/events/ws`;
-      socket = new WebSocket(url);
-
-      socket.onopen = () => {
-        reconnectAttempt = 0;
-      };
-
-      socket.onmessage = (message) => {
-        const raw = typeof message.data === "string" ? message.data : "";
-        if (!raw) return;
-
-        try {
-          const parsed = JSON.parse(raw) as LiveEvent;
-          if (parsed.companyId !== selectedCompanyId) return;
-
-          const payload = parsed.payload ?? {};
-          const entry = buildFeedEntry(
-            queryClient.getQueryData<Agent[]>(queryKeys.agents.list(selectedCompanyId)),
-            parsed.type,
-            payload,
-          );
-
-          if (entry) {
-            setFeedEntries((prev) => {
-              const next = [...prev, entry];
-              if (next.length > MAX_FEED_ENTRIES) {
-                return next.slice(next.length - MAX_FEED_ENTRIES);
-              }
-              return next;
-            });
-          }
-        } catch {
-          // Ignore non-JSON payloads.
-        }
-      };
-
-      socket.onerror = () => {
-        socket?.close();
-      };
-
-      socket.onclose = () => {
-        if (closed) return;
-        scheduleReconnect();
-      };
-    };
-
-    connect();
-
-    return () => {
-      closed = true;
-      clearReconnect();
-      if (socket) {
-        socket.onopen = null;
-        socket.onmessage = null;
-        socket.onerror = null;
-        socket.onclose = null;
-        socket.close(1000, "panel_unmount");
-      }
-    };
-  }, [selectedCompanyId, queryClient]);
-
-  const toggleExpanded = useCallback(() => setExpanded((prev) => !prev), []);
-
-  // Filter to only show non-terminated agents, sorted alphabetically
-  const visibleAgents = useMemo(() => {
-    if (!agents) return [];
-    return agents
-      .filter((a) => (a.status as string) !== "terminated" && (a.status as string) !== "archived")
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [agents]);
+  const pendingCount = (approvals ?? []).filter(
+    (a) => a.status === "pending" || a.status === "revision_requested",
+  ).length;
 
   if (!selectedCompanyId) return null;
 
   return (
     <div
       className={cn(
-        "flex flex-col border-l border-border bg-background",
-        expanded ? "w-[350px]" : "w-[350px]",
+        "flex flex-col bg-sidebar w-[280px] shrink-0",
         className,
       )}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-        <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Agency Activity</span>
-          <span className="relative flex h-2 w-2">
-            {anyActive && (
-              <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-pulse" />
-            )}
-            <span
-              className={cn(
-                "relative inline-flex rounded-full h-2 w-2",
-                anyActive ? "bg-green-500" : "bg-neutral-400",
-              )}
-            />
-          </span>
-        </div>
+      {/* Tab bar — 50px height */}
+      <div className="flex items-stretch h-[50px] border-b border-border shrink-0">
         <button
-          onClick={toggleExpanded}
-          className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-          aria-label={expanded ? "Collapse panel" : "Expand panel"}
-        >
-          {expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronUp className="h-4 w-4" />
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold transition-colors border-b-2 -mb-px",
+            activeTab === "pending"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
           )}
+          onClick={() => setActiveTab("pending")}
+        >
+          <Shield className="h-3.5 w-3.5" />
+          Pending
+          {pendingCount > 0 && (
+            <span className="flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+              {pendingCount}
+            </span>
+          )}
+        </button>
+        <button
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold transition-colors border-b-2 -mb-px",
+            activeTab === "activity"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+          onClick={() => setActiveTab("activity")}
+        >
+          <Activity className="h-3.5 w-3.5" />
+          Activity
         </button>
       </div>
 
-      {expanded && (
-        <>
-          {/* Agent status cards — horizontal scrolling row */}
-          {visibleAgents.length > 0 && (
-            <div className="shrink-0 border-b border-border">
-              <div className="flex gap-2 overflow-x-auto scrollbar-auto-hide p-3">
-                {visibleAgents.map((agent, i) => (
-                  <AgentStatusCard
-                    key={agent.id}
-                    agent={agent}
-                    index={i}
-                    isRunning={runningAgentIds.has(agent.id)}
-                    pendingApprovals={0}
-                    lastActionAt={agent.lastHeartbeatAt ? String(agent.lastHeartbeatAt) : null}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Activity feed — fills remaining space */}
-          <ActivityFeed entries={feedEntries} />
-        </>
-      )}
+      {/* Scrollable tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === "pending" ? (
+          <PendingTab companyId={selectedCompanyId} />
+        ) : (
+          <ActivityTab companyId={selectedCompanyId} />
+        )}
+      </div>
     </div>
   );
 }

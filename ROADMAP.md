@@ -1,207 +1,114 @@
-# ROADMAP.md — Build Checklist
+# Aygency World — Implementation Roadmap
 
-Work through phases in order. Don't start Phase 2 tasks while Phase 1 is incomplete. Each phase has a clear goal and a demo narrative.
+**Last updated:** 2026-03-31
+**Current state:** Launch-ready. Self-serve flow complete. Deployment config ready.
 
-Mark tasks: `[ ]` not started → `[~]` in progress → `[x]` done
-
----
-
-## Phase 1 — Demo (target: 2–3 days)
-
-**Goal:** Something impressive enough to show to a potential agency customer or investor. One agency, hardcoded credentials, agents visibly working end-to-end.
-
-**Demo narrative:** "Here's a lead that just came in via WhatsApp. Watch the Lead Agent respond in Arabic in under 5 minutes, score the lead, and queue a message for your approval — all while you were on another call."
-
-### Setup
-- [x] Fork [paperclipai/paperclip](https://github.com/paperclipai/paperclip)
-- [x] Run Paperclip locally — verify it starts and the UI loads
-- [x] Configure `.env` with Anthropic API key + hardcoded agency credentials
-- [ ] Verify Claude Code spawns correctly as an agent
-
-### Company Template (minimal)
-- [x] Create `companies/dubai-real-estate-agency/COMPANY.md` — CEO + Lead Agent org chart
-- [x] Write CEO agent config (`agents/ceo/AGENTS.md`, `HEARTBEAT.md`)
-- [x] Write Lead Agent config (`agents/lead-agent/AGENTS.md`, `HEARTBEAT.md`)
-- [x] Write `skills/lead-response.md` — how to respond to a new inbound lead
-- [x] Write `skills/lead-qualification.md` — qualification questions sequence
-- [x] Write `skills/dubai-compliance.md` — RERA rules, never guarantee yields
-- [x] Write `skills/multilingual.md` — language detection, Arabic/Russian/English tone
-
-### Skill-based tool integration (bash/curl → AygentDesk API)
-- [x] Configure AygentDesk API endpoint as env var (`AYGENTDESK_URL`)
-- [ ] Add AygentDesk API key as Paperclip secret for the demo company
-- [x] Write skill: `skills/tools/search-leads.md` (curl to AygentDesk)
-- [x] Write skill: `skills/tools/update-lead.md`
-- [x] Write skill: `skills/tools/send-whatsapp.md`
-- [x] Write skill: `skills/tools/search-whatsapp.md`
-- [ ] Test: Lead Agent can search leads, update a lead, draft a WhatsApp via curl
-
-### Demo flow test
-- [ ] Manually create a fake inbound lead in Paperclip as an issue
-- [ ] Trigger Lead Agent heartbeat
-- [ ] Agent detects lead, runs qualification skill, drafts WhatsApp response
-- [ ] Response visible in Paperclip's UI as a task completion
-- [ ] CEO heartbeat runs, picks up result, generates brief
-
-### Rebrand (minimal)
-- [ ] Replace Paperclip logo with Aygency World logo
-- [ ] Update product name in UI (title, nav, page headers)
-- [ ] Update colour scheme to Aygency World palette
-
-**Phase 1 complete when:** You can show the demo narrative above end-to-end.
+Mark tasks: `[ ]` not started → `[x]` done
 
 ---
 
-## Phase 2 — Alpha (target: 1–2 weeks)
+## What's Live
 
-**Goal:** A real agency can sign up, connect their WhatsApp and Gmail, and have agents actually running on their real leads.
-
-### CEO Chat UI
-- [ ] Create `CEO Chat` persistent issue per company on first login
-- [ ] Build CEO Chat React component — chat thread rendering from Paperclip comments API
-- [ ] Render owner messages (left) and CEO messages (right) as chat bubbles
-- [ ] Approval card component — WhatsApp send card (preview, approve/edit/reject)
-- [ ] Approval card component — Email send card
-- [ ] Approval card component — Instagram post card
-- [ ] Approval card component — Lead escalation card
-- [ ] Morning brief pinned card (parsed from CEO's daily summary comment)
-- [ ] Quick action bar: "Brief me", "What's pending?", "Pause all agents"
-- [ ] Unread indicator badge on CEO Chat nav item
-
-### Onboarding wizard
-- [ ] Step 1: Agency name, logo upload, focus area, size
-- [ ] Step 2: Connect WhatsApp (paste credentials flow — manual for now)
-- [ ] Step 2: Connect Gmail (Google OAuth)
-- [ ] Step 3: CEO agent hired → CEO Chat opens
-- [ ] CEO runs onboarding interview (4 strategic questions)
-- [ ] CEO generates agent team proposal as approval card
-- [ ] Owner approves → sub-agents created in Paperclip
-
-### Demo mode
-- [ ] Detect when no OAuth credentials connected
-- [ ] Seed demo company data (12 fake leads, 1 week of agent activity, 3 pending approvals)
-- [ ] Show demo morning brief from CEO
-- [ ] Show 3 pending approval cards (WhatsApp, Instagram post, pitch deck)
-- [ ] CTA: "Connect your real agency to go live"
-
-### Agent credential store
-- [ ] Create `agent_credentials` table in Drizzle schema
-- [ ] Encrypt tokens at rest (AES-256)
-- [ ] API: store, retrieve, update credentials per agent
-- [ ] All tool calls load agent credentials before executing
-
-### Webhook Receiver service
-- [ ] Create `services/webhook-receiver/` Express service (port 3003)
-- [ ] WhatsApp inbound webhook handler + Meta signature verification
-- [ ] Webhook demultiplexer: `phone_number_id` → `agent_id` lookup → create Paperclip issue
-- [ ] Gmail Push Notification handler (Google Cloud Pub/Sub)
-- [ ] Parse Property Finder notification email format → lead record
-- [ ] Parse Bayut notification email format → lead record
-- [ ] Landing page form submission handler
-- [ ] Retry logic for failed issue creation
-
-### Token refresh worker
-- [ ] Background job (every 30 min) checks tokens expiring within 24 hours
-- [ ] Auto-refresh Gmail tokens using refresh token
-- [ ] On refresh failure: pause agent + push notification to owner
-
-### Push notifications (PWA)
-- [ ] Service worker setup
-- [ ] VAPID key configuration
-- [ ] Notification triggers: approval pending batch, urgent escalation, morning brief ready
-- [ ] Owner WhatsApp notification for urgent escalations (hot leads)
-
-**Phase 2 complete when:** A real agency can sign up, connect their WhatsApp + Gmail, and receive a real inbound lead that the Lead Agent processes, scores, drafts a response for, and queues for approval.
+| Area | Status | Detail |
+|------|--------|--------|
+| Paperclip fork | Done | Running on port 3100, embedded Postgres, Vite dev server on 5173 |
+| UI (C variation) | Done | Three-panel layout, 12+ pages, all navigation working |
+| Onboarding wizard | Done | 2-step → creates company + agent → CEO Chat issue → CEO wakeup |
+| CEO Chat | Done | Streaming Anthropic API, rich context, quick actions, approval cards, task delegation |
+| Company template | Done | Dubai RE agency with 5 agent role templates (CEO, Sales, Content, Marketing, Finance) |
+| Tools package | Done | 62 tools across 20 modules |
+| MCP Tool Server | Done | Role-scoped filtering, standalone process |
+| Skills | Done | 27 markdown files — 13 behaviour, 4 domain, 3 platform, catalog |
+| DB schema | Done | 80+ schema files, 93+ migrations |
+| Approval system | Done | Approve → Execute pipeline (360dialog WhatsApp, Gmail, Instagram) |
+| Agent roles | Done | Role defaults (templates, heartbeat, icon, gradient, budget) auto-applied on creation |
+| Webhook receiver | Done | WhatsApp inbound → store + create issues + route to agent |
+| WhatsApp/360dialog | Done | Manual connect, webhook handler, UI component, real send on approval |
+| Credentials | Done | Per-agent credential store with CRUD + lookup |
+| Billing (Stripe) | Done | 4 tiers, 7-day trial, checkout, portal, webhook, subscription enforcement |
+| Analytics | Done | Per-agent metrics, daily trends, task/approval stats via API |
+| Landing page | Done | Hero, value props, agent showcase, pricing table |
+| Sign-up flow | Done | Auth → Stripe checkout → onboarding → CEO Chat |
+| Mobile nav | Done | Bottom nav with CEO Chat, Dashboard, Tasks, Team, Inbox |
+| Broker API | Done | Scoped leads, action logging, help requests |
+| Deployment | Done | Docker Compose + nginx + SSL + deploy script |
 
 ---
 
-## Phase 3 — Beta (target: 2–4 weeks)
+## Phase 1 — Demo ✅ COMPLETE
 
-**Goal:** Production-ready. Multiple agencies running. Billing active.
+_(All items done — see git history)_
 
-### MCP Server
-- [ ] Create `services/tool-bridge/` MCP server (port 3002)
-- [ ] Implement all 53 AygentDesk tools as MCP tool definitions
-- [ ] Role-to-tool mapping enforcement (Lead Agent can't call post_to_instagram)
-- [ ] Per-agency credential resolution from `agent_credentials` table
-- [ ] Replace bash/curl skills with proper MCP tool calls in agent configs
-- [ ] Test all 53 tools end-to-end
+## Phase 2 — Alpha ✅ COMPLETE
 
-### All agent roles
-- [ ] Content Agent — config + skills (generate_social_content, post_to_instagram, pitch decks)
-- [ ] Market Intelligence Agent — config + skills (DLD monitoring, listing surveillance)
-- [ ] Viewing Agent — config + skills (calendar, confirmations, post-viewing follow-up)
-- [ ] Portfolio Agent — config + skills (landlord, tenancy, RERA rent)
-- [ ] Call Agent — config + skills (Twilio + Gemini Live, inbound + outbound)
+- 2.1 Demo Data Seed ✅
+- 2.2 Role-Based Agent Behaviour ✅
+- 2.3 Approval Flow End-to-End ✅
+- 2.4 CEO Chat Intelligence ✅
+- 2.5 Webhook Receiver ✅
+- 2.6 Multi-Tenant Credentials ✅
+- 2.7 WhatsApp/360dialog ✅
 
-### Per-agent WhatsApp (full flow)
-- [ ] Agent setup UI — "Connect WhatsApp" button during agent hire
-- [ ] 360dialog ISV partner integration (replace manual paste with Embedded Signup)
-- [ ] Per-agent webhook routing (demultiplexer handles all numbers)
-- [ ] Per-broker WhatsApp (same flow, scoped to human broker profile)
+## Phase 3 — Beta ✅ MOSTLY COMPLETE
 
-### Human broker features
-- [ ] Broker invite flow (email invite → profile setup → WhatsApp connect)
-- [ ] Broker view (mobile-first, assigned leads only)
-- [ ] Lead escalation → broker assignment flow
-- [ ] Human action sync (WhatsApp logged, manual viewing captured)
-- [ ] 2-hour follow-up if broker doesn't contact after assignment
+- 3.1 MCP Tool Server ✅
+- 3.3 Human Broker Integration ✅
+- 3.4 Stripe Billing ✅
+- 3.5 Analytics Dashboard ✅
+- 3.7 Mobile Responsive ✅ (partial)
 
-### Multilingual
-- [ ] Language detection on every inbound message
-- [ ] Skill: Arabic tone and greeting rules
-- [ ] Skill: Russian tone (metrics-first, direct)
-- [ ] Translation toggle in approval cards
-- [ ] Language stored and remembered per lead
+## Launch Readiness ✅ COMPLETE
 
-### Stripe billing
-- [ ] Stripe customer created on signup
-- [ ] Subscription tiers: Starter / Growth / Scale
-- [ ] Usage metering: agent runs reported to Stripe daily
-- [ ] Budget cap enforcement (pause agent at 100%)
-- [ ] 80% warning notification
-- [ ] Failed payment → grace period → pause agents
-- [ ] Customer billing portal (self-service)
-- [ ] AI Calling add-on (Twilio usage pass-through)
-
-### Analytics dashboard
-- [ ] Lead pipeline velocity (time per stage)
-- [ ] Response time metrics (actual vs 5-min target)
-- [ ] Agent cost vs output (cost per lead, cost per viewing)
-- [ ] Content performance (engagement per post)
-- [ ] Conversion rate by lead source
-
-### Auth & team access
-- [ ] Manager role (full access except billing)
-- [ ] Broker role (assigned leads only)
-- [ ] Viewer role (read-only metrics)
-- [ ] Team invite flow (email invite → role assignment)
-
-**Phase 3 complete when:** Stripe is live, multiple real agencies are running, all 6 agent roles work, MCP replaces bash skills, billing is active.
+- Approve → Execute pipeline ✅
+- CEO first-run welcome brief ✅
+- Stripe 7-day trial flow ✅
+- Just-in-time integration prompts ✅
+- Sign-up → billing → onboarding flow ✅
+- Subscription enforcement ✅
+- Landing page ✅
+- Docker + nginx + SSL + deploy script ✅
 
 ---
 
-## Phase 4 — Production features (ongoing)
+## Remaining (post-launch polish)
 
-- [ ] AI Calling Agent live (Twilio + Gemini 2.0 Flash Live)
-- [ ] Property Finder email parsing (real-time lead ingestion)
-- [ ] 360dialog → direct Meta Tech Provider migration (at 10+ agencies)
+### UI Polish
+- [ ] Analytics UI charts (data available via API)
+- [ ] WhatsApp conversation thread view (messages stored, need chat bubbles UI)
+- [ ] CEO Chat full-screen on mobile
+- [ ] Broker mobile UI view
+- [ ] Unread message badge on CEO Chat sidebar
+- [ ] Edit-before-approve on approval cards
+- [ ] Batch approve in right panel
+
+### Integration Polish
+- [ ] Outbound WhatsApp message storage in DB (copy sent messages)
+- [ ] 24-hour WhatsApp window tracking + template fallback
+- [ ] Gmail Pub/Sub for Property Finder/Bayut lead parsing
+- [ ] Token refresh background worker (30-min cycle)
+- [ ] Claude Code MCP config auto-generated per agent on heartbeat
+- [ ] Per-agency credential injection in MCP server
+
+### Phase 4 — Future Features
+- [ ] AI Calling (Twilio + Gemini 2.0 Flash Live)
+- [ ] Facebook & Google Ads (Marketing API + Leads webhook)
+- [ ] Portal email parsing (PF, Bayut, Dubizzle)
 - [ ] White-label enterprise tier
+- [ ] Agency context auto-learning
 - [ ] Gemini Embedding 2 for semantic lead-to-project matching
-- [ ] Agency context auto-learning (agents update knowledge base from patterns observed)
-- [ ] AygentDesk ↔ Aygency World shared lead database
-- [ ] Mobile app (React Native or PWA upgrade)
-- [ ] Arabic UI localisation
+- [ ] AygentDesk ↔ Aygency World shared lead DB
+- [ ] PWA push notifications
 
 ---
 
-## Business actions (parallel to building)
+## Deployment Checklist
 
-- [ ] Sign up as 360dialog ISV partner — [360dialog.com/partners](https://360dialog.com/partners)
-- [ ] Register business entity (free zone license — IFZA, Meydan, or Shams)
-- [ ] Set up aygencyworld.com domain
-- [ ] Build Privacy Policy + Terms of Service pages (required for Meta + Stripe)
-- [ ] Set up Meta Business Manager + verify business
-- [ ] Apply for Meta Tech Provider (when 10+ agencies live)
-- [ ] Set up Stripe account
-- [ ] Set up Google Cloud project (for Gmail Pub/Sub push notifications)
+- [ ] Register domain (aygencyworld.com)
+- [ ] Point DNS A record to VPS (76.13.246.21)
+- [ ] Copy `.env.production.example` → `.env.production`, fill values
+- [ ] Run `./scripts/deploy.sh ssl` (get Let's Encrypt cert)
+- [ ] Run `./scripts/deploy.sh deploy` (build + start)
+- [ ] Run `./scripts/deploy.sh seed` (optional demo data)
+- [ ] Configure Stripe webhook URL in Stripe Dashboard
+- [ ] Configure 360dialog webhook URL
+- [ ] Test full flow: sign up → checkout → onboarding → CEO Chat → approve WhatsApp

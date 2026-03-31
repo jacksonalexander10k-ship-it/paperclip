@@ -7,14 +7,168 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
+import { PageHeader } from "../components/PageHeader";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
-import { ShieldCheck } from "lucide-react";
-import { ApprovalCard } from "../components/ApprovalCard";
+import { Button } from "@/components/ui/button";
+import { ShieldCheck, CheckCircle2, Clock, History } from "lucide-react";
+import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } from "../components/ApprovalPayload";
+import { Identity } from "../components/Identity";
+import { timeAgo } from "../lib/timeAgo";
 import { PageSkeleton } from "../components/PageSkeleton";
+import type { Approval, Agent } from "@paperclipai/shared";
 
 type StatusFilter = "pending" | "all";
 
+/* ------------------------------------------------------------------ */
+/*  Layout-C Approval Card                                             */
+/* ------------------------------------------------------------------ */
+function LayoutCApprovalCard({
+  approval,
+  requesterAgent,
+  onApprove,
+  onReject,
+  isPending,
+  justApproved,
+  justRejected,
+}: {
+  approval: Approval;
+  requesterAgent: Agent | null;
+  onApprove: () => void;
+  onReject: () => void;
+  isPending: boolean;
+  justApproved?: boolean;
+  justRejected?: boolean;
+}) {
+  const Icon = typeIcon[approval.type] ?? defaultTypeIcon;
+  const label = approvalLabel(approval.type, approval.payload as Record<string, unknown> | null);
+  const showResolutionButtons =
+    approval.type !== "budget_override_required" &&
+    (approval.status === "pending" || approval.status === "revision_requested") &&
+    !justApproved &&
+    !justRejected;
+
+  // Extract a message preview from the payload if available
+  const payload = approval.payload as Record<string, unknown> | null;
+  const messagePreview =
+    (payload?.message as string) ??
+    (payload?.body as string) ??
+    (payload?.content as string) ??
+    (payload?.description as string) ??
+    null;
+
+  return (
+    <div className="rounded-xl border border-border/50 overflow-hidden transition-all hover:border-border">
+      {/* Header strip */}
+      <div className="bg-primary/5 px-3.5 py-2.5 border-b border-border/40">
+        <div className="flex items-center gap-2.5">
+          <span className="flex items-center justify-center h-[25px] w-[25px] rounded-lg bg-primary/10 shrink-0">
+            <Icon className="h-3.5 w-3.5 text-primary" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <span className="block text-[13px] font-bold text-primary leading-tight truncate">
+              {label}
+            </span>
+            <span className="block text-[11px] text-muted-foreground mt-0.5">
+              {requesterAgent ? (
+                <>
+                  Requested by{" "}
+                  <Identity name={requesterAgent.name} size="sm" className="inline-flex" />
+                </>
+              ) : (
+                "System request"
+              )}
+              {" "}&middot; {timeAgo(approval.createdAt)}
+            </span>
+          </div>
+          {/* Status indicator for resolved */}
+          {approval.status === "approved" && !justApproved && (
+            <span className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400 shrink-0">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Approved
+            </span>
+          )}
+          {approval.status === "rejected" && !justRejected && (
+            <span className="flex items-center gap-1 text-[11px] text-red-500 shrink-0">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Rejected
+            </span>
+          )}
+          {(approval.status === "pending" || approval.status === "revision_requested") && !justApproved && !justRejected && (
+            <span className="flex items-center gap-1 text-[11px] text-yellow-600 dark:text-yellow-400 shrink-0">
+              <Clock className="h-3.5 w-3.5" />
+              Pending
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-3.5">
+        {/* Payload details */}
+        <ApprovalPayloadRenderer type={approval.type} payload={approval.payload} />
+
+        {/* Message preview */}
+        {messagePreview && (
+          <div className="mt-2.5 rounded-lg bg-muted p-2.5">
+            <p className="text-[12px] text-muted-foreground italic line-clamp-3 m-0">
+              {messagePreview}
+            </p>
+          </div>
+        )}
+
+        {/* Decision note */}
+        {approval.decisionNote && (
+          <div className="mt-2.5 text-[11px] text-muted-foreground italic border-t border-border/40 pt-2">
+            Note: {approval.decisionNote}
+          </div>
+        )}
+
+        {/* Just approved / rejected state */}
+        {justApproved && (
+          <div className="mt-3 flex items-center gap-2 text-green-600 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4" />
+            <span className="text-[13px] font-medium">Approved</span>
+          </div>
+        )}
+        {justRejected && (
+          <div className="mt-3 flex items-center gap-2 text-red-500">
+            <ShieldCheck className="h-4 w-4" />
+            <span className="text-[13px] font-medium">Rejected</span>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {showResolutionButtons && (
+          <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
+            <Button
+              size="sm"
+              className="flex-1 h-8 bg-primary text-white hover:bg-primary/90 text-[12px] font-medium"
+              onClick={onApprove}
+              disabled={isPending}
+            >
+              Approve & Send
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-[12px] border border-border/50 hover:bg-muted"
+              onClick={onReject}
+              disabled={isPending}
+            >
+              Decline
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+/* ================================================================== */
+/*  Main Approvals page                                                */
+/* ================================================================== */
 export function Approvals() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -24,6 +178,7 @@ export function Approvals() {
   const pathSegment = location.pathname.split("/").pop() ?? "pending";
   const statusFilter: StatusFilter = pathSegment === "all" ? "all" : "pending";
   const [actionError, setActionError] = useState<string | null>(null);
+  const [resolvedIds, setResolvedIds] = useState<Map<string, "approved" | "rejected">>(new Map());
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Approvals" }]);
@@ -45,8 +200,8 @@ export function Approvals() {
     mutationFn: (id: string) => approvalsApi.approve(id),
     onSuccess: (_approval, id) => {
       setActionError(null);
+      setResolvedIds((prev) => new Map(prev).set(id, "approved"));
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
-      navigate(`/approvals/${id}?resolved=approved`);
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : "Failed to approve");
@@ -55,8 +210,9 @@ export function Approvals() {
 
   const rejectMutation = useMutation({
     mutationFn: (id: string) => approvalsApi.reject(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       setActionError(null);
+      setResolvedIds((prev) => new Map(prev).set(id, "rejected"));
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
     },
     onError: (err) => {
@@ -83,50 +239,82 @@ export function Approvals() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Tabs value={statusFilter} onValueChange={(v) => navigate(`/approvals/${v}`)}>
-          <PageTabBar items={[
-            { value: "pending", label: <>Pending{pendingCount > 0 && (
-              <span className={cn(
-                "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                "bg-yellow-500/20 text-yellow-500"
-              )}>
-                {pendingCount}
-              </span>
-            )}</> },
-            { value: "all", label: "All" },
-          ]} />
-        </Tabs>
+    <div className="flex flex-col h-full">
+      {/* PageHeader */}
+      <PageHeader
+        title="Approvals"
+        badge={
+          pendingCount > 0 ? (
+            <span className="inline-flex items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white min-w-[20px]">
+              {pendingCount} pending
+            </span>
+          ) : undefined
+        }
+        actions={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2.5 text-[11px] gap-1.5"
+            onClick={() => navigate(`/approvals/${statusFilter === "all" ? "pending" : "all"}`)}
+          >
+            <History className="h-3.5 w-3.5" />
+            {statusFilter === "all" ? "Pending" : "History"}
+          </Button>
+        }
+      />
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-2">
+        {/* Tab bar */}
+        <div className="flex items-center justify-between mb-4">
+          <Tabs value={statusFilter} onValueChange={(v) => navigate(`/approvals/${v}`)}>
+            <PageTabBar items={[
+              { value: "pending", label: <>Pending{pendingCount > 0 && (
+                <span className={cn(
+                  "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                  "bg-red-500/20 text-red-500"
+                )}>
+                  {pendingCount}
+                </span>
+              )}</> },
+              { value: "all", label: "All" },
+            ]} />
+          </Tabs>
+        </div>
+
+        {error && <p className="text-sm text-destructive">{error.message}</p>}
+        {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+
+        {filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <ShieldCheck className="h-8 w-8 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">
+              {statusFilter === "pending" ? "No pending approvals." : "No approvals yet."}
+            </p>
+          </div>
+        )}
+
+        {filtered.length > 0 && (
+          <div className="space-y-3">
+            {filtered.map((approval) => (
+              <LayoutCApprovalCard
+                key={approval.id}
+                approval={approval}
+                requesterAgent={
+                  approval.requestedByAgentId
+                    ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null
+                    : null
+                }
+                onApprove={() => approveMutation.mutate(approval.id)}
+                onReject={() => rejectMutation.mutate(approval.id)}
+                isPending={approveMutation.isPending || rejectMutation.isPending}
+                justApproved={resolvedIds.get(approval.id) === "approved"}
+                justRejected={resolvedIds.get(approval.id) === "rejected"}
+              />
+            ))}
+          </div>
+        )}
       </div>
-
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
-      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-
-      {filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <ShieldCheck className="h-8 w-8 text-muted-foreground/30 mb-3" />
-          <p className="text-sm text-muted-foreground">
-            {statusFilter === "pending" ? "No pending approvals." : "No approvals yet."}
-          </p>
-        </div>
-      )}
-
-      {filtered.length > 0 && (
-        <div className="grid gap-3">
-          {filtered.map((approval) => (
-            <ApprovalCard
-              key={approval.id}
-              approval={approval}
-              requesterAgent={approval.requestedByAgentId ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null : null}
-              onApprove={() => approveMutation.mutate(approval.id)}
-              onReject={() => rejectMutation.mutate(approval.id)}
-              detailLink={`/approvals/${approval.id}`}
-              isPending={approveMutation.isPending || rejectMutation.isPending}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

@@ -1,52 +1,56 @@
-import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "@/lib/router";
 
 interface MetricCardProps {
-  icon: LucideIcon;
+  icon?: unknown;
   value: string | number;
   label: string;
   description?: ReactNode;
   to?: string;
   onClick?: () => void;
+  valueColor?: "default" | "green" | "amber";
 }
 
-export function MetricCard({ icon: Icon, value, label, description, to, onClick }: MetricCardProps) {
+export function MetricCard({ value, label, description, to, onClick, valueColor = "default" }: MetricCardProps) {
   const isClickable = !!(to || onClick);
 
+  const valueClass =
+    valueColor === "green"
+      ? "text-primary"
+      : valueColor === "amber"
+        ? "text-amber-400"
+        : "text-foreground";
+
   const inner = (
-    <div className={`h-full px-4 py-4 sm:px-5 sm:py-5 rounded-lg transition-colors${isClickable ? " hover:bg-accent/50 cursor-pointer" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-2xl sm:text-3xl font-semibold tracking-tight tabular-nums">
-            {value}
-          </p>
-          <p className="text-xs sm:text-sm font-medium text-muted-foreground mt-1">
-            {label}
-          </p>
-          {description && (
-            <div className="text-xs text-muted-foreground/70 mt-1.5 hidden sm:block">{description}</div>
-          )}
-        </div>
-        <Icon className="h-4 w-4 text-muted-foreground/50 shrink-0 mt-1.5" />
-      </div>
+    <div
+      className="bg-card border border-border rounded-[12px] p-[16px_18px] transition-[border-color] duration-150 hover:border-[rgba(255,255,255,0.12)]"
+      style={{ cursor: isClickable ? "pointer" : undefined }}
+    >
+      {/* .ml */}
+      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground mb-2">
+        {label}
+      </p>
+      {/* .mv */}
+      <p className={`font-['JetBrains_Mono',monospace] text-[38px] font-extrabold leading-none tracking-[-0.04em] ${valueClass}`}>
+        {value}
+      </p>
+      {/* .ms */}
+      {description && (
+        <div className="text-[11px] text-muted-foreground mt-1">{description}</div>
+      )}
     </div>
   );
 
   if (to) {
     return (
-      <Link to={to} className="no-underline text-inherit h-full" onClick={onClick}>
+      <Link to={to} className="no-underline text-inherit" onClick={onClick}>
         {inner}
       </Link>
     );
   }
 
   if (onClick) {
-    return (
-      <div className="h-full" onClick={onClick}>
-        {inner}
-      </div>
-    );
+    return <div onClick={onClick}>{inner}</div>;
   }
 
   return inner;

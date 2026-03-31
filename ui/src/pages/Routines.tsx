@@ -11,12 +11,12 @@ import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "../components/InlineEntitySelector";
 import { MarkdownEditor, type MarkdownEditorRef } from "../components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
@@ -87,7 +87,7 @@ export function Routines() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Routines" }]);
+    setBreadcrumbs([{ label: "Automations" }]);
   }, [setBreadcrumbs]);
 
   const { data: routines, isLoading, error } = useQuery({
@@ -226,22 +226,15 @@ export function Routines() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            Routines
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">Beta</span>
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Automated schedules that keep your agents running around the clock.
-          </p>
-        </div>
-        <Button onClick={() => setComposerOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create routine
-        </Button>
-      </div>
+    <div className="flex flex-col h-full">
+      <PageHeader
+        title="Automations"
+        actions={
+          <Button size="sm" className="text-[11.5px] h-7" onClick={() => setComposerOpen(true)}>
+            + New Automation
+          </Button>
+        }
+      />
 
       <Dialog
         open={composerOpen}
@@ -489,170 +482,103 @@ export function Routines() {
         </DialogContent>
       </Dialog>
 
-      {error ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-destructive">
-            {error instanceof Error ? error.message : "Failed to load routines"}
-          </CardContent>
-        </Card>
-      ) : null}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {error && <p className="text-sm text-destructive">{error instanceof Error ? error.message : "Failed to load routines"}</p>}
 
-      <div>
         {(routines ?? []).length === 0 ? (
-          <div className="py-12">
-            <EmptyState
-              icon={Repeat}
-              message="No routines set up. Routines are created automatically when you hire agents."
-            />
-          </div>
+          <EmptyState
+            icon={Repeat}
+            message="No automations set up. Automations are created automatically when you hire agents."
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">Project</th>
-                  <th className="px-3 py-2 font-medium">Agent</th>
-                  <th className="px-3 py-2 font-medium">Last run</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="w-12 px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {(routines ?? []).map((routine) => {
-                  const enabled = routine.status === "active";
-                  const isArchived = routine.status === "archived";
-                  const isStatusPending = statusMutationRoutineId === routine.id;
-                  return (
-                    <tr
-                      key={routine.id}
-                      className="align-middle border-b border-border transition-colors hover:bg-accent/50 last:border-b-0 cursor-pointer"
-                      onClick={() => navigate(`/routines/${routine.id}`)}
-                    >
-                      <td className="px-3 py-2.5">
-                        <div className="min-w-[180px]">
-                          <span className="font-medium">
-                            {routine.title}
-                          </span>
-                          {(isArchived || routine.status === "paused") && (
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {isArchived ? "archived" : "paused"}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {routine.projectId ? (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span
-                              className="shrink-0 h-3 w-3 rounded-sm"
-                              style={{ backgroundColor: projectById.get(routine.projectId)?.color ?? "#6366f1" }}
-                            />
-                            <span className="truncate">{projectById.get(routine.projectId)?.name ?? "Unknown"}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {routine.assigneeAgentId ? (() => {
-                          const agent = agentById.get(routine.assigneeAgentId);
-                          return agent ? (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <AgentIcon icon={agent.icon} className="h-4 w-4 shrink-0" />
-                              <span className="truncate">{agent.name}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Unknown</span>
-                          );
-                        })() : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">
-                        <div>{formatLastRunTimestamp(routine.lastRun?.triggeredAt)}</div>
-                        {routine.lastRun ? (
-                          <div className="mt-1 text-xs">{routine.lastRun.status.replaceAll("_", " ")}</div>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            role="switch"
-                            data-slot="toggle"
-                            aria-checked={enabled}
-                            aria-label={enabled ? `Disable ${routine.title}` : `Enable ${routine.title}`}
-                            disabled={isStatusPending || isArchived}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                              enabled ? "bg-foreground" : "bg-muted"
-                            } ${isStatusPending || isArchived ? "cursor-not-allowed opacity-50" : ""}`}
-                            onClick={() =>
-                              updateRoutineStatus.mutate({
-                                id: routine.id,
-                                status: nextRoutineStatus(routine.status, !enabled),
-                              })
-                            }
-                          >
-                            <span
-                              className={`inline-block h-5 w-5 rounded-full bg-background shadow-sm transition-transform ${
-                                enabled ? "translate-x-5" : "translate-x-0.5"
-                              }`}
-                            />
-                          </button>
-                          <span className="text-xs text-muted-foreground">
-                            {isArchived ? "Archived" : enabled ? "Active" : "Paused"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${routine.title}`}>
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => navigate(`/routines/${routine.id}`)}>
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={runningRoutineId === routine.id || isArchived}
-                              onClick={() => runRoutine.mutate(routine.id)}
-                            >
-                              {runningRoutineId === routine.id ? "Running..." : "Run now"}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() =>
-                                updateRoutineStatus.mutate({
-                                  id: routine.id,
-                                  status: enabled ? "paused" : "active",
-                                })
-                              }
-                              disabled={isStatusPending || isArchived}
-                            >
-                              {enabled ? "Pause" : "Enable"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                updateRoutineStatus.mutate({
-                                  id: routine.id,
-                                  status: routine.status === "archived" ? "active" : "archived",
-                                })
-                              }
-                              disabled={isStatusPending}
-                            >
-                              {routine.status === "archived" ? "Restore" : "Archive"}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+            {(routines ?? []).map((routine, index) => {
+              const enabled = routine.status === "active";
+              const isArchived = routine.status === "archived";
+              const isStatusPending = statusMutationRoutineId === routine.id;
+              const agent = routine.assigneeAgentId ? agentById.get(routine.assigneeAgentId) : null;
+              const agentName = agent?.name ?? "Unassigned";
+
+              // Build schedule string from triggers if available
+              const lastRanStr = routine.lastRun?.triggeredAt
+                ? `Last ran ${formatLastRunTimestamp(routine.lastRun.triggeredAt)}`
+                : "Never ran";
+
+              return (
+                <div
+                  key={routine.id}
+                  className={`flex items-center gap-3 p-3.5 cursor-pointer hover:bg-accent/30 transition-colors ${
+                    index < (routines ?? []).length - 1 ? "border-b border-border/40" : ""
+                  }`}
+                  onClick={() => navigate(`/routines/${routine.id}`)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold truncate">{routine.title}</div>
+                    <div className="text-[11.5px] text-muted-foreground truncate">
+                      {agentName} &middot; {routine.status === "archived" ? "Archived" : routine.status === "paused" ? "Paused" : "Active"} &middot; {lastRanStr}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className={`toggle-switch ${enabled ? "active" : ""} ${isStatusPending || isArchived ? "opacity-50 cursor-not-allowed" : ""}`}
+                      aria-checked={enabled}
+                      aria-label={enabled ? `Disable ${routine.title}` : `Enable ${routine.title}`}
+                      disabled={isStatusPending || isArchived}
+                      onClick={() =>
+                        updateRoutineStatus.mutate({
+                          id: routine.id,
+                          status: nextRoutineStatus(routine.status, !enabled),
+                        })
+                      }
+                    />
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${routine.title}`}>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => navigate(`/routines/${routine.id}`)}>
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={runningRoutineId === routine.id || isArchived}
+                          onClick={() => runRoutine.mutate(routine.id)}
+                        >
+                          {runningRoutineId === routine.id ? "Running..." : "Run now"}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() =>
+                            updateRoutineStatus.mutate({
+                              id: routine.id,
+                              status: enabled ? "paused" : "active",
+                            })
+                          }
+                          disabled={isStatusPending || isArchived}
+                        >
+                          {enabled ? "Pause" : "Enable"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            updateRoutineStatus.mutate({
+                              id: routine.id,
+                              status: routine.status === "archived" ? "active" : "archived",
+                            })
+                          }
+                          disabled={isStatusPending}
+                        >
+                          {routine.status === "archived" ? "Restore" : "Archive"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

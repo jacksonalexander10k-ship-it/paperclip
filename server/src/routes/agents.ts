@@ -60,6 +60,7 @@ import { ensureOpenCodeModelConfiguredAndAvailable } from "@paperclipai/adapter-
 import {
   loadDefaultAgentInstructionsBundle,
   resolveDefaultAgentInstructionsBundleRole,
+  getRoleDefaults,
 } from "../services/default-agent-instructions.js";
 
 export function agentRoutes(db: Db) {
@@ -515,6 +516,42 @@ export function agentRoutes(db: Db) {
     }
 
     return details;
+  }
+
+  /**
+   * Enriches agent creation input with role-based defaults (icon, capabilities,
+   * heartbeat interval, budget) when those fields aren't explicitly provided.
+   */
+  function applyRoleDefaults<T extends Record<string, unknown>>(input: T): T {
+    const role = typeof input["role"] === "string" ? input["role"] : "";
+    const defaults = getRoleDefaults(role);
+    if (!defaults) return input;
+
+    const enriched: Record<string, unknown> = { ...input };
+
+    if (!enriched["icon"]) enriched["icon"] = defaults.icon;
+    if (!enriched["capabilities"]) enriched["capabilities"] = defaults.capabilities;
+    if (!enriched["budgetMonthlyCents"] && enriched["budgetMonthlyCents"] !== 0) {
+      enriched["budgetMonthlyCents"] = defaults.budgetMonthlyCents;
+    }
+
+    // Merge runtime config with heartbeat defaults
+    const existing = (enriched["runtimeConfig"] ?? {}) as Record<string, unknown>;
+    if (existing["heartbeatIntervalSec"] === undefined) {
+      enriched["runtimeConfig"] = {
+        ...existing,
+        heartbeatIntervalSec: defaults.heartbeatIntervalSec,
+        wakeOnDemand: defaults.wakeOnDemand,
+      };
+    }
+
+    // Store gradient in metadata
+    const existingMeta = (enriched["metadata"] ?? {}) as Record<string, unknown>;
+    if (!existingMeta["gradient"]) {
+      enriched["metadata"] = { ...existingMeta, gradient: defaults.gradient };
+    }
+
+    return enriched as T;
   }
 
   function buildUnsupportedSkillSnapshot(
@@ -1191,10 +1228,10 @@ export function agentRoutes(db: Db) {
       hireInput.adapterType,
       normalizedAdapterConfig,
     );
-    const normalizedHireInput = {
+    const normalizedHireInput = applyRoleDefaults({
       ...hireInput,
       adapterConfig: normalizedAdapterConfig,
-    };
+    });
 
     const company = await db
       .select()
@@ -1352,9 +1389,12 @@ export function agentRoutes(db: Db) {
       normalizedAdapterConfig,
     );
 
-    const createdAgent = await svc.create(companyId, {
+    const enrichedInput = applyRoleDefaults({
       ...createInput,
       adapterConfig: normalizedAdapterConfig,
+    });
+    const createdAgent = await svc.create(companyId, {
+      ...enrichedInput,
       status: "idle",
       spentMonthlyCents: 0,
       lastHeartbeatAt: null,

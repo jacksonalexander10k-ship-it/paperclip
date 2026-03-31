@@ -6,16 +6,20 @@ import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
+import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { EmptyState } from "../components/EmptyState";
 import { IssuesList } from "../components/IssuesList";
-import { CircleDot } from "lucide-react";
+import { PageHeader } from "../components/PageHeader";
+import { Button } from "@/components/ui/button";
+import { CircleDot, Filter } from "lucide-react";
 
 export function Issues() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { openNewIssue } = useDialog();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -97,28 +101,39 @@ export function Issues() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Everything your agents are working on — past and present.
-        </p>
-      </div>
-      <IssuesList
-        issues={issues ?? []}
-        isLoading={isLoading}
-        error={error as Error | null}
-        agents={agents}
-        projects={projects}
-        liveIssueIds={liveIssueIds}
-        viewStateKey="paperclip:issues-view"
-        issueLinkState={issueLinkState}
-        initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
-        initialSearch={initialSearch}
-        onSearchChange={handleSearchChange}
-        onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
-        searchFilters={participantAgentId ? { participantAgentId } : undefined}
+    <div className="flex flex-col h-full">
+      <PageHeader
+        title="Tasks"
+        actions={
+          <>
+            <Button variant="ghost" size="sm" className="text-[11.5px] h-7 gap-1.5">
+              <Filter className="h-3 w-3" />
+              Filter
+            </Button>
+            <Button size="sm" className="text-[11.5px] h-7" onClick={() => openNewIssue()}>
+              + New Task
+            </Button>
+          </>
+        }
       />
+
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <IssuesList
+          issues={issues ?? []}
+          isLoading={isLoading}
+          error={error as Error | null}
+          agents={agents}
+          projects={projects}
+          liveIssueIds={liveIssueIds}
+          viewStateKey="paperclip:issues-view"
+          issueLinkState={issueLinkState}
+          initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
+          initialSearch={initialSearch}
+          onSearchChange={handleSearchChange}
+          onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+          searchFilters={participantAgentId ? { participantAgentId } : undefined}
+        />
+      </div>
     </div>
   );
 }

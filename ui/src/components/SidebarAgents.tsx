@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { NavLink, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
@@ -11,16 +11,21 @@ import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { useAgentOrder } from "../hooks/useAgentOrder";
-import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import type { Agent } from "@paperclipai/shared";
+
+const AGENT_GRADIENTS = [
+  "linear-gradient(135deg, #064e3b, #047857)",
+  "linear-gradient(135deg, #3730a3, #4f46e5)",
+  "linear-gradient(135deg, #0c4a6e, #0369a1)",
+  "linear-gradient(135deg, #78350f, #b45309)",
+  "linear-gradient(135deg, #7f1d1d, #b91c1c)",
+  "linear-gradient(135deg, #1e3a5f, #1d4ed8)",
+  "linear-gradient(135deg, #134e4a, #0f766e)",
+  "linear-gradient(135deg, #500724, #9d174d)",
+] as const;
+
 export function SidebarAgents() {
-  const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialog();
   const { isMobile, setSidebarOpen } = useSidebar();
@@ -68,78 +73,68 @@ export function SidebarAgents() {
   const activeAgentId = agentMatch?.[1] ?? null;
   const activeTab = agentMatch?.[2] ?? null;
 
-
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="group">
-        <div className="flex items-center px-3 py-1.5">
-          <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0">
-            <ChevronRight
-              className={cn(
-                "h-3 w-3 text-muted-foreground/60 transition-transform opacity-0 group-hover:opacity-100",
-                open && "rotate-90"
-              )}
-            />
-            <span className="text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
-              Agents
-            </span>
-          </CollapsibleTrigger>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              openNewAgent();
-            }}
-            className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
-            aria-label="New agent"
-          >
-            <Plus className="h-3 w-3" />
-          </button>
-        </div>
+    <>
+      {/* Hire button */}
+      <div className="flex items-center px-2 py-0.5">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            openNewAgent();
+          }}
+          className="ml-auto flex items-center justify-center h-4 w-4 rounded text-muted-foreground/40 hover:text-foreground hover:bg-accent/50 transition-colors"
+          aria-label="Hire a new team member"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
       </div>
 
-      <CollapsibleContent>
-        <div className="flex flex-col gap-0.5 mt-0.5">
-          {orderedAgents.map((agent: Agent) => {
-            const runCount = liveCountByAgent.get(agent.id) ?? 0;
-            return (
-              <NavLink
-                key={agent.id}
-                to={activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent)}
-                onClick={() => {
-                  if (isMobile) setSidebarOpen(false);
-                }}
-                className={cn(
-                  "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
-                  activeAgentId === agentRouteRef(agent)
-                    ? "bg-accent text-foreground"
-                    : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
-                )}
+      {/* Agent list */}
+      <div className="flex flex-col gap-0.5">
+        {orderedAgents.map((agent: Agent, index: number) => {
+          const runCount = liveCountByAgent.get(agent.id) ?? 0;
+          const gradient = AGENT_GRADIENTS[index % AGENT_GRADIENTS.length];
+          const initials = agent.name.slice(0, 2).toUpperCase();
+          return (
+            <NavLink
+              key={agent.id}
+              to={activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent)}
+              onClick={() => {
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1 text-[12px] font-medium rounded-lg transition-colors ml-1",
+                activeAgentId === agentRouteRef(agent)
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground/60 hover:bg-accent/50 hover:text-foreground"
+              )}
+            >
+              {/* Status dot */}
+              {runCount > 0 ? (
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+              ) : (
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/20 shrink-0" />
+              )}
+              {/* Colored gradient badge with initials */}
+              <span
+                className="flex shrink-0 items-center justify-center rounded-[4px] text-white font-bold"
+                style={{ background: gradient, width: 18, height: 18, fontSize: 7 }}
               >
-                <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
-                <span className="flex-1 truncate">{agent.name}</span>
-                {(agent.pauseReason === "budget" || runCount > 0) && (
-                  <span className="ml-auto flex items-center gap-1.5 shrink-0">
-                    {agent.pauseReason === "budget" ? (
-                      <BudgetSidebarMarker title="Agent paused by budget" />
-                    ) : null}
-                    {runCount > 0 ? (
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-                      </span>
-                    ) : null}
-                    {runCount > 0 ? (
-                      <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                        {runCount} live
-                      </span>
-                    ) : null}
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+                {initials}
+              </span>
+              <span className="flex-1 truncate">{agent.name}</span>
+              {agent.pauseReason === "budget" && (
+                <span className="ml-auto shrink-0">
+                  <BudgetSidebarMarker title="Paused — budget limit reached" />
+                </span>
+              )}
+            </NavLink>
+          );
+        })}
+      </div>
+    </>
   );
 }

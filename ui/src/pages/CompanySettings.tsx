@@ -8,10 +8,9 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, Download, Upload } from "lucide-react";
-import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import { Check, Download, Upload, MessageCircle, Mail, Calendar, Camera, Plug } from "lucide-react";
+import { PageHeader } from "../components/PageHeader";
 import {
-  Field,
   ToggleField,
   HintIcon
 } from "../components/agent-config-primitives";
@@ -206,7 +205,7 @@ export function CompanySettings() {
 
   if (!selectedCompany) {
     return (
-      <div className="text-sm text-muted-foreground">
+      <div className="text-sm text-muted-foreground p-5">
         No company selected. Select a company from the switcher above.
       </div>
     );
@@ -220,222 +219,269 @@ export function CompanySettings() {
     });
   }
 
+  // Integration items for the Integrations section
+  const integrations = [
+    {
+      icon: MessageCircle,
+      iconBg: "bg-green-500/15",
+      iconColor: "text-green-500",
+      name: "WhatsApp",
+      status: "Not connected",
+      connected: false,
+    },
+    {
+      icon: Mail,
+      iconBg: "bg-blue-500/15",
+      iconColor: "text-blue-500",
+      name: "Gmail",
+      status: "Not connected",
+      connected: false,
+    },
+    {
+      icon: Camera,
+      iconBg: "bg-pink-500/15",
+      iconColor: "text-pink-500",
+      name: "Instagram",
+      status: "Not connected",
+      connected: false,
+    },
+    {
+      icon: Calendar,
+      iconBg: "bg-amber-500/15",
+      iconColor: "text-amber-500",
+      name: "Google Calendar",
+      status: "Not connected",
+      connected: false,
+    },
+  ];
+
   return (
-    <div className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-2">
-        <Settings className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Company Settings</h1>
-      </div>
+    <div className="flex flex-col h-full">
+      <PageHeader title="Settings" />
 
-      {/* General */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          General
-        </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
-          <Field label="Company name" hint="The display name for your company.">
-            <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-              type="text"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-            />
-          </Field>
-          <Field
-            label="Description"
-            hint="Optional description shown in the company profile."
-          >
-            <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-              type="text"
-              value={description}
-              placeholder="Optional company description"
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </Field>
-        </div>
-      </div>
-
-      {/* Appearance */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Appearance
-        </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
-          <div className="flex items-start gap-4">
-            <div className="shrink-0">
-              <CompanyPatternIcon
-                companyName={companyName || selectedCompany.name}
-                logoUrl={logoUrl || null}
-                brandColor={brandColor || null}
-                className="rounded-[14px]"
+      <div className="flex-1 overflow-y-auto p-5 space-y-4 max-w-2xl">
+        {/* Agency section */}
+        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+          <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
+            <span className="text-[12px] font-bold">Agency</span>
+          </div>
+          <div className="p-4 space-y-4">
+            {/* Agency name */}
+            <div className="space-y-1.5">
+              <label className="text-[11.5px] text-muted-foreground">Agency name</label>
+              <input
+                className="w-full bg-background border border-border rounded-lg p-2 text-[13px] outline-none focus:border-primary/50 transition-colors"
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
               />
             </div>
-            <div className="flex-1 space-y-3">
-              <Field
-                label="Logo"
-                hint="Upload a PNG, JPEG, WEBP, GIF, or SVG logo image."
-              >
-                <div className="space-y-2">
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                    onChange={handleLogoFileChange}
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
-                  />
-                  {logoUrl && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleClearLogo}
-                        disabled={clearLogoMutation.isPending}
-                      >
-                        {clearLogoMutation.isPending ? "Removing..." : "Remove logo"}
-                      </Button>
-                    </div>
-                  )}
-                  {(logoUploadMutation.isError || logoUploadError) && (
-                    <span className="text-xs text-destructive">
-                      {logoUploadError ??
-                        (logoUploadMutation.error instanceof Error
-                          ? logoUploadMutation.error.message
-                          : "Logo upload failed")}
-                    </span>
-                  )}
-                  {clearLogoMutation.isError && (
-                    <span className="text-xs text-destructive">
-                      {clearLogoMutation.error.message}
-                    </span>
-                  )}
-                  {logoUploadMutation.isPending && (
-                    <span className="text-xs text-muted-foreground">Uploading logo...</span>
-                  )}
-                </div>
-              </Field>
-              <Field
-                label="Brand color"
-                hint="Sets the hue for the company icon. Leave empty for auto-generated color."
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={brandColor || "#6366f1"}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
-                  />
-                  <input
-                    type="text"
-                    value={brandColor}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "" || /^#[0-9a-fA-F]{0,6}$/.test(v)) {
-                        setBrandColor(v);
-                      }
-                    }}
-                    placeholder="Auto"
-                    className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
-                  />
-                  {brandColor && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setBrandColor("")}
-                      className="text-xs text-muted-foreground"
-                    >
-                      Clear
-                    </Button>
-                  )}
-                </div>
-              </Field>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Save button for General + Appearance */}
-      {generalDirty && (
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={handleSaveGeneral}
-            disabled={generalMutation.isPending || !companyName.trim()}
-          >
-            {generalMutation.isPending ? "Saving..." : "Save changes"}
-          </Button>
-          {generalMutation.isSuccess && (
-            <span className="text-xs text-muted-foreground">Saved</span>
-          )}
-          {generalMutation.isError && (
-            <span className="text-xs text-destructive">
-              {generalMutation.error instanceof Error
-                  ? generalMutation.error.message
-                  : "Failed to save"}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Hiring */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Hiring
-        </div>
-        <div className="rounded-md border border-border px-4 py-3">
-          <ToggleField
-            label="Require board approval for new hires"
-            hint="New agent hires stay pending until approved by board."
-            checked={!!selectedCompany.requireBoardApprovalForNewAgents}
-            onChange={(v) => settingsMutation.mutate(v)}
-          />
-        </div>
-      </div>
-
-      {/* Invites */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Invites
-        </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">
-              Generate an OpenClaw agent invite snippet.
-            </span>
-            <HintIcon text="Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt." />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => inviteMutation.mutate()}
-              disabled={inviteMutation.isPending}
-            >
-              {inviteMutation.isPending
-                ? "Generating..."
-                : "Generate OpenClaw Invite Prompt"}
-            </Button>
-          </div>
-          {inviteError && (
-            <p className="text-sm text-destructive">{inviteError}</p>
-          )}
-          {inviteSnippet && (
-            <div className="rounded-md border border-border bg-muted/30 p-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-muted-foreground">
-                  OpenClaw Invite Prompt
-                </div>
-                {snippetCopied && (
-                  <span
-                    key={snippetCopyDelightId}
-                    className="flex items-center gap-1 text-xs text-green-600 animate-pulse"
+            {/* Brand colour */}
+            <div className="space-y-1.5">
+              <label className="text-[11.5px] text-muted-foreground">Brand colour</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={brandColor || "#6366f1"}
+                  onChange={(e) => setBrandColor(e.target.value)}
+                  className="h-8 w-8 cursor-pointer rounded-lg border border-border bg-transparent p-0 shrink-0"
+                />
+                <input
+                  type="text"
+                  value={brandColor}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "" || /^#[0-9a-fA-F]{0,6}$/.test(v)) {
+                      setBrandColor(v);
+                    }
+                  }}
+                  placeholder="Auto"
+                  className="flex-1 bg-background border border-border rounded-lg p-2 text-[13px] font-mono outline-none focus:border-primary/50 transition-colors"
+                />
+                {brandColor && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setBrandColor("")}
+                    className="text-[11px] text-muted-foreground h-7"
                   >
-                    <Check className="h-3 w-3" />
-                    Copied
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Issue prefix / Description */}
+            <div className="space-y-1.5">
+              <label className="text-[11.5px] text-muted-foreground">Description</label>
+              <input
+                className="w-full bg-background border border-border rounded-lg p-2 text-[13px] outline-none focus:border-primary/50 transition-colors"
+                type="text"
+                value={description}
+                placeholder="Optional agency description"
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
+            {/* Logo upload */}
+            <div className="space-y-1.5">
+              <label className="text-[11.5px] text-muted-foreground">Logo</label>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                onChange={handleLogoFileChange}
+                className="w-full bg-background border border-border rounded-lg p-2 text-[13px] outline-none file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
+              />
+              {logoUrl && (
+                <div className="flex items-center gap-2 mt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleClearLogo}
+                    disabled={clearLogoMutation.isPending}
+                    className="text-[11px] h-7"
+                  >
+                    {clearLogoMutation.isPending ? "Removing..." : "Remove logo"}
+                  </Button>
+                </div>
+              )}
+              {(logoUploadMutation.isError || logoUploadError) && (
+                <span className="text-[11px] text-destructive">
+                  {logoUploadError ??
+                    (logoUploadMutation.error instanceof Error
+                      ? logoUploadMutation.error.message
+                      : "Logo upload failed")}
+                </span>
+              )}
+              {clearLogoMutation.isError && (
+                <span className="text-[11px] text-destructive">
+                  {clearLogoMutation.error.message}
+                </span>
+              )}
+              {logoUploadMutation.isPending && (
+                <span className="text-[11px] text-muted-foreground">Uploading logo...</span>
+              )}
+            </div>
+
+            {/* Save button */}
+            {generalDirty && (
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  size="sm"
+                  onClick={handleSaveGeneral}
+                  disabled={generalMutation.isPending || !companyName.trim()}
+                  className="text-[11.5px] h-7"
+                >
+                  {generalMutation.isPending ? "Saving..." : "Save changes"}
+                </Button>
+                {generalMutation.isSuccess && (
+                  <span className="text-[11px] text-muted-foreground">Saved</span>
+                )}
+                {generalMutation.isError && (
+                  <span className="text-[11px] text-destructive">
+                    {generalMutation.error instanceof Error
+                      ? generalMutation.error.message
+                      : "Failed to save"}
                   </span>
                 )}
               </div>
-              <div className="mt-1 space-y-1.5">
+            )}
+
+            {/* Hiring toggle */}
+            <div className="pt-2 border-t border-border/40">
+              <ToggleField
+                label="Require board approval for new hires"
+                hint="New agent hires stay pending until approved by board."
+                checked={!!selectedCompany.requireBoardApprovalForNewAgents}
+                onChange={(v) => settingsMutation.mutate(v)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Integrations section */}
+        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+          <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
+            <span className="text-[12px] font-bold">Integrations</span>
+          </div>
+          <div>
+            {integrations.map((integration, index) => {
+              const Icon = integration.icon;
+              return (
+                <div
+                  key={integration.name}
+                  className={`flex items-center gap-3 p-3.5 ${
+                    index < integrations.length - 1 ? "border-b border-border/40" : ""
+                  }`}
+                >
+                  <div
+                    className={`w-[28px] h-[28px] rounded-lg flex items-center justify-center shrink-0 ${integration.iconBg}`}
+                  >
+                    <Icon className={`h-3.5 w-3.5 ${integration.iconColor}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold">{integration.name}</div>
+                    <div className="text-[11px] text-muted-foreground">{integration.status}</div>
+                  </div>
+                  <Button
+                    variant={integration.connected ? "outline" : "ghost"}
+                    size="sm"
+                    className="text-[11px] h-7 shrink-0"
+                  >
+                    {integration.connected ? "Disconnect" : "Connect"}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Invites section */}
+        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+          <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
+            <span className="text-[12px] font-bold">Agent Invites</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11.5px] text-muted-foreground">
+                Generate an OpenClaw agent invite snippet.
+              </span>
+              <HintIcon text="Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt." />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => inviteMutation.mutate()}
+                disabled={inviteMutation.isPending}
+                className="text-[11.5px] h-7"
+              >
+                {inviteMutation.isPending
+                  ? "Generating..."
+                  : "Generate OpenClaw Invite Prompt"}
+              </Button>
+            </div>
+            {inviteError && (
+              <p className="text-[11.5px] text-destructive">{inviteError}</p>
+            )}
+            {inviteSnippet && (
+              <div className="rounded-lg border border-border/50 bg-background p-2 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-muted-foreground">
+                    OpenClaw Invite Prompt
+                  </div>
+                  {snippetCopied && (
+                    <span
+                      key={snippetCopyDelightId}
+                      className="flex items-center gap-1 text-[11px] text-green-600 animate-pulse"
+                    >
+                      <Check className="h-3 w-3" />
+                      Copied
+                    </span>
+                  )}
+                </div>
                 <textarea
-                  className="h-[28rem] w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
+                  className="h-[28rem] w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] outline-none"
                   value={inviteSnippet}
                   readOnly
                 />
@@ -443,6 +489,7 @@ export function CompanySettings() {
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="text-[11px] h-7"
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(inviteSnippet);
@@ -458,87 +505,88 @@ export function CompanySettings() {
                   </Button>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Import / Export */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Company Packages
-        </div>
-        <div className="rounded-md border border-border px-4 py-4">
-          <p className="text-sm text-muted-foreground">
-            Import and export have moved to dedicated pages accessible from the{" "}
-            <a href="/org" className="underline hover:text-foreground">Org Chart</a> header.
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <a href="/company/export">
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Export
-              </a>
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href="/company/import">
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
-                Import
-              </a>
-            </Button>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Danger Zone */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-destructive uppercase tracking-wide">
-          Danger Zone
+        {/* Import / Export */}
+        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+          <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
+            <span className="text-[12px] font-bold">Company Packages</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-[11.5px] text-muted-foreground">
+              Import and export have moved to dedicated pages accessible from the{" "}
+              <a href="/org" className="underline hover:text-foreground">Org Chart</a> header.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" asChild className="text-[11px] h-7">
+                <a href="/company/export">
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Export
+                </a>
+              </Button>
+              <Button size="sm" variant="outline" asChild className="text-[11px] h-7">
+                <a href="/company/import">
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  Import
+                </a>
+              </Button>
+            </div>
+          </div>
         </div>
-        <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-4">
-          <p className="text-sm text-muted-foreground">
-            Archive this company to hide it from the sidebar. This persists in
-            the database.
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={
-                archiveMutation.isPending ||
-                selectedCompany.status === "archived"
-              }
-              onClick={() => {
-                if (!selectedCompanyId) return;
-                const confirmed = window.confirm(
-                  `Archive company "${selectedCompany.name}"? It will be hidden from the sidebar.`
-                );
-                if (!confirmed) return;
-                const nextCompanyId =
-                  companies.find(
-                    (company) =>
-                      company.id !== selectedCompanyId &&
-                      company.status !== "archived"
-                  )?.id ?? null;
-                archiveMutation.mutate({
-                  companyId: selectedCompanyId,
-                  nextCompanyId
-                });
-              }}
-            >
-              {archiveMutation.isPending
-                ? "Archiving..."
-                : selectedCompany.status === "archived"
-                ? "Already archived"
-                : "Archive company"}
-            </Button>
-            {archiveMutation.isError && (
-              <span className="text-xs text-destructive">
-                {archiveMutation.error instanceof Error
-                  ? archiveMutation.error.message
-                  : "Failed to archive company"}
-              </span>
-            )}
+
+        {/* Danger Zone */}
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 overflow-hidden">
+          <div className="px-3.5 py-3 border-b border-destructive/20 bg-destructive/5">
+            <span className="text-[12px] font-bold text-destructive">Danger Zone</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-[11.5px] text-muted-foreground">
+              Archive this company to hide it from the sidebar. This persists in
+              the database.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="destructive"
+                className="text-[11px] h-7"
+                disabled={
+                  archiveMutation.isPending ||
+                  selectedCompany.status === "archived"
+                }
+                onClick={() => {
+                  if (!selectedCompanyId) return;
+                  const confirmed = window.confirm(
+                    `Archive company "${selectedCompany.name}"? It will be hidden from the sidebar.`
+                  );
+                  if (!confirmed) return;
+                  const nextCompanyId =
+                    companies.find(
+                      (company) =>
+                        company.id !== selectedCompanyId &&
+                        company.status !== "archived"
+                    )?.id ?? null;
+                  archiveMutation.mutate({
+                    companyId: selectedCompanyId,
+                    nextCompanyId
+                  });
+                }}
+              >
+                {archiveMutation.isPending
+                  ? "Archiving..."
+                  : selectedCompany.status === "archived"
+                  ? "Already archived"
+                  : "Archive company"}
+              </Button>
+              {archiveMutation.isError && (
+                <span className="text-[11px] text-destructive">
+                  {archiveMutation.error instanceof Error
+                    ? archiveMutation.error.message
+                    : "Failed to archive company"}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

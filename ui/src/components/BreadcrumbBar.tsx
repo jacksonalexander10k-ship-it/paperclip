@@ -3,6 +3,7 @@ import { Menu } from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useCompany } from "../context/CompanyContext";
+import { useDialog } from "../context/DialogContext";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -30,10 +31,15 @@ function GlobalToolbarPlugins({ context }: { context: GlobalToolbarContext }) {
   );
 }
 
+function openSearch() {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+}
+
 export function BreadcrumbBar() {
   const { breadcrumbs } = useBreadcrumbs();
   const { toggleSidebar, isMobile } = useSidebar();
   const { selectedCompanyId, selectedCompany } = useCompany();
+  const { openNewIssue } = useDialog();
 
   const globalToolbarSlotContext = useMemo(
     () => ({
@@ -47,7 +53,7 @@ export function BreadcrumbBar() {
 
   if (breadcrumbs.length === 0) {
     return (
-      <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center justify-end">
+      <div className="border-b border-border/60 px-4 md:px-6 h-14 shrink-0 flex items-center justify-end">
         {globalToolbarSlots}
       </div>
     );
@@ -65,24 +71,38 @@ export function BreadcrumbBar() {
     </Button>
   );
 
-  // Single breadcrumb = page title (uppercase)
+  const actionButtons = !isMobile && (
+    <div className="flex items-center gap-2 shrink-0 ml-auto pl-2">
+      <button
+        onClick={openSearch}
+        className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground border border-border/60 rounded-md hover:bg-accent/50 transition-colors font-mono"
+      >
+        ⌘K
+      </button>
+      <Button size="sm" onClick={() => openNewIssue()} className="h-7 text-xs px-3">
+        + New Task
+      </Button>
+      {globalToolbarSlots}
+    </div>
+  );
+
+  // Single breadcrumb = page title
   if (breadcrumbs.length === 1) {
     return (
-      <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center">
+      <div className="border-b border-border/60 px-4 md:px-6 h-14 shrink-0 flex items-center">
         {menuButton}
-        <div className="min-w-0 overflow-hidden flex-1">
-          <h1 className="text-sm font-semibold uppercase tracking-wider truncate">
-            {breadcrumbs[0].label}
-          </h1>
-        </div>
-        {globalToolbarSlots}
+        <h1 className="text-sm font-semibold truncate">
+          {breadcrumbs[0].label}
+        </h1>
+        {actionButtons}
+        {isMobile && globalToolbarSlots}
       </div>
     );
   }
 
   // Multiple breadcrumbs = breadcrumb trail
   return (
-    <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center">
+    <div className="border-b border-border/60 px-4 md:px-6 h-14 shrink-0 flex items-center">
       {menuButton}
       <div className="min-w-0 overflow-hidden flex-1">
         <Breadcrumb className="min-w-0 overflow-hidden">
@@ -107,7 +127,8 @@ export function BreadcrumbBar() {
           </BreadcrumbList>
         </Breadcrumb>
       </div>
-      {globalToolbarSlots}
+      {actionButtons}
+      {isMobile && globalToolbarSlots}
     </div>
   );
 }

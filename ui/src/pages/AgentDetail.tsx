@@ -23,7 +23,6 @@ import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { AgentConfigForm } from "../components/AgentConfigForm";
-import { PageTabBar } from "../components/PageTabBar";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { assetsApi } from "../api/assets";
@@ -35,7 +34,7 @@ import { CopyText } from "../components/CopyText";
 import { EntityRow } from "../components/EntityRow";
 import { Identity } from "../components/Identity";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { RunButton, PauseResumeButton } from "../components/AgentActionButtons";
+import { PauseResumeButton } from "../components/AgentActionButtons";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { PackageFileTree, buildFileTree } from "../components/PackageFileTree";
 import { ScrollToBottom } from "../components/ScrollToBottom";
@@ -43,7 +42,6 @@ import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd 
 import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Popover,
@@ -74,7 +72,8 @@ import {
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
-import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
+// AgentIcon/AgentIconPicker available if needed
+// import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
 import { RunTranscriptView, type TranscriptMode } from "../components/transcript/RunTranscriptView";
 import {
   isUuidLike,
@@ -105,6 +104,17 @@ const runStatusIcons: Record<string, { icon: typeof CheckCircle2; color: string 
   timed_out: { icon: Timer, color: "text-orange-600 dark:text-orange-400" },
   cancelled: { icon: Slash, color: "text-neutral-500 dark:text-neutral-400" },
 };
+
+const DETAIL_AGENT_GRADIENTS = [
+  "linear-gradient(135deg, #064e3b, #047857)",
+  "linear-gradient(135deg, #3730a3, #4f46e5)",
+  "linear-gradient(135deg, #0c4a6e, #0369a1)",
+  "linear-gradient(135deg, #78350f, #b45309)",
+  "linear-gradient(135deg, #7f1d1d, #b91c1c)",
+  "linear-gradient(135deg, #1e3a5f, #1d4ed8)",
+  "linear-gradient(135deg, #134e4a, #0f766e)",
+  "linear-gradient(135deg, #500724, #9d174d)",
+] as const;
 
 const REDACTED_ENV_VALUE = "***REDACTED***";
 const SECRET_ENV_KEY_RE =
@@ -162,9 +172,9 @@ function formatEnvForDisplay(envValue: unknown, censorUsernameInLogs: boolean): 
 }
 
 const sourceLabels: Record<string, string> = {
-  timer: "Timer",
-  assignment: "Assignment",
-  on_demand: "On-demand",
+  timer: "Scheduled",
+  assignment: "Assigned",
+  on_demand: "Manual",
   automation: "Automation",
 };
 
@@ -762,16 +772,16 @@ export function AgentDetail() {
     } else {
       crumbs.push({ label: agentName, href: `/agents/${canonicalAgentRef}/dashboard` });
       if (urlRunId) {
-        crumbs.push({ label: "Runs", href: `/agents/${canonicalAgentRef}/runs` });
+        crumbs.push({ label: "History", href: `/agents/${canonicalAgentRef}/runs` });
         crumbs.push({ label: `Run ${urlRunId.slice(0, 8)}` });
       } else if (activeView === "instructions") {
         crumbs.push({ label: "Instructions" });
       } else if (activeView === "configuration") {
-        crumbs.push({ label: "Configuration" });
+        crumbs.push({ label: "Settings" });
       // } else if (activeView === "skills") { // TODO: bring back later
       //   crumbs.push({ label: "Skills" });
       } else if (activeView === "runs") {
-        crumbs.push({ label: "Runs" });
+        crumbs.push({ label: "History" });
       } else if (activeView === "budget") {
         crumbs.push({ label: "Budget" });
       } else {
@@ -794,6 +804,15 @@ export function AgentDetail() {
     }, [configDirty]),
   );
 
+  const agentGradientIndex = useMemo(() => {
+    const name = agent?.name ?? "";
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash) % DETAIL_AGENT_GRADIENTS.length;
+  }, [agent?.name]);
+
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
   if (!agent) return null;
@@ -803,28 +822,58 @@ export function AgentDetail() {
   const isPendingApproval = agent.status === "pending_approval";
   const showConfigActionBar = (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
 
+  const agentGradient = DETAIL_AGENT_GRADIENTS[agentGradientIndex];
+  const agentInitials = agent.name.slice(0, 2).toUpperCase();
+  const isAgentWorking = agent.status === "running" || agent.status === "active" || !!mobileLiveRun;
+  const isAgentPaused = agent.status === "paused" || agent.status === "error";
+
   return (
-    <div className={cn("space-y-6", isMobile && showConfigActionBar && "pb-24")}>
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <AgentIconPicker
-            value={agent.icon}
-            onChange={(icon) => updateIcon.mutate(icon)}
-          >
-            <button className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-accent hover:bg-accent/80 transition-colors">
-              <AgentIcon icon={agent.icon} className="h-6 w-6" />
-            </button>
-          </AgentIconPicker>
-          <div className="min-w-0">
-            <h2 className="text-2xl font-bold truncate">{agent.name}</h2>
-            <p className="text-sm text-muted-foreground truncate">
-              {roleLabels[agent.role] ?? agent.role}
-              {agent.title ? ` - ${agent.title}` : ""}
-            </p>
-          </div>
+    <div className={cn("flex flex-col h-full", isMobile && showConfigActionBar && "pb-24")}>
+      {/* PageHeader with gradient avatar */}
+      <div className="h-[50px] shrink-0 flex items-center px-5 border-b border-border/40 gap-3">
+        <div
+          className="shrink-0 flex items-center justify-center rounded-[7px] text-white text-[10px] font-bold"
+          style={{
+            width: 26,
+            height: 26,
+            background: agentGradient,
+          }}
+        >
+          {agentInitials}
         </div>
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        <h1 className="text-[14px] font-bold tracking-[-0.02em] text-foreground truncate">
+          {agent.name}
+        </h1>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-medium whitespace-nowrap shrink-0",
+            isAgentWorking
+              ? "text-green-600 dark:text-green-400"
+              : isAgentPaused
+                ? "text-red-500 dark:text-red-400"
+                : "text-muted-foreground"
+          )}
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              isAgentWorking
+                ? "bg-green-500"
+                : isAgentPaused
+                  ? "bg-red-500"
+                  : "bg-muted-foreground/50"
+            )}
+          />
+          {isAgentWorking ? "Working" : isAgentPaused ? (agent.status === "error" ? "Error" : "Paused") : "Idle"}
+        </span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 shrink-0">
+          <PauseResumeButton
+            isPaused={agent.status === "paused"}
+            onPause={() => agentAction.mutate("pause")}
+            onResume={() => agentAction.mutate("resume")}
+            disabled={agentAction.isPending || isPendingApproval}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -833,31 +882,6 @@ export function AgentDetail() {
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
             <span className="hidden sm:inline">Assign Task</span>
           </Button>
-          <RunButton
-            onClick={() => agentAction.mutate("invoke")}
-            disabled={agentAction.isPending || isPendingApproval}
-            label="Run Heartbeat"
-          />
-          <PauseResumeButton
-            isPaused={agent.status === "paused"}
-            onPause={() => agentAction.mutate("pause")}
-            onResume={() => agentAction.mutate("resume")}
-            disabled={agentAction.isPending || isPendingApproval}
-          />
-          <span className="hidden sm:inline"><StatusBadge status={agent.status} /></span>
-          {mobileLiveRun && (
-            <Link
-              to={`/agents/${canonicalAgentRef}/runs/${mobileLiveRun.id}`}
-              className="sm:hidden flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 transition-colors no-underline"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-              </span>
-              <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">Live</span>
-            </Link>
-          )}
-
           {/* Overflow menu */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
@@ -866,6 +890,16 @@ export function AgentDetail() {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-44 p-1" align="end">
+              <button
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
+                onClick={() => {
+                  agentAction.mutate("invoke");
+                  setMoreOpen(false);
+                }}
+              >
+                <RotateCcw className="h-3 w-3" />
+                Wake Up
+              </button>
               <button
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
                 onClick={() => {
@@ -884,7 +918,7 @@ export function AgentDetail() {
                 }}
               >
                 <RotateCcw className="h-3 w-3" />
-                Reset Sessions
+                Reset Memory
               </button>
               <button
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
@@ -901,153 +935,163 @@ export function AgentDetail() {
         </div>
       </div>
 
+      {/* Tab bar */}
       {!urlRunId && (
-        <Tabs
-          value={activeView}
-          onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
-        >
-          <PageTabBar
-            items={[
-              { value: "dashboard", label: "Dashboard" },
-              { value: "instructions", label: "Instructions" },
-              { value: "skills", label: "Skills" },
-              { value: "configuration", label: "Configuration" },
-              { value: "runs", label: "Runs" },
-              { value: "budget", label: "Budget" },
-            ]}
-            value={activeView}
-            onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
-          />
-        </Tabs>
+        <div className="flex border-b border-border/40 px-5 gap-0.5">
+          {([
+            { value: "dashboard", label: "Overview" },
+            { value: "runs", label: "Runs" },
+            { value: "instructions", label: "Instructions" },
+            { value: "configuration", label: "Config" },
+          ] as const).map((t) => (
+            <button
+              key={t.value}
+              className={cn(
+                "py-2.5 px-3 text-sm font-semibold cursor-pointer border-b-2 transition-colors",
+                activeView === t.value
+                  ? "text-primary border-b-primary"
+                  : "text-muted-foreground border-transparent hover:text-foreground"
+              )}
+              onClick={() => navigate(`/agents/${canonicalAgentRef}/${t.value}`)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       )}
 
-      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-      {isPendingApproval && (
-        <p className="text-sm text-amber-500">
-          This agent is pending board approval and cannot be invoked yet.
-        </p>
-      )}
-
-      {/* Floating Save/Cancel (desktop) */}
-      {!isMobile && (
-        <div
-          className={cn(
-            "sticky top-6 z-10 float-right transition-opacity duration-150",
-            showConfigActionBar
-              ? "opacity-100"
-              : "opacity-0 pointer-events-none"
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-5 py-4 space-y-6">
+          {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+          {isPendingApproval && (
+            <p className="text-sm text-amber-500">
+              This agent is pending board approval and cannot be invoked yet.
+            </p>
           )}
-        >
-          <div className="flex items-center gap-2 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => cancelConfigActionRef.current?.()}
-              disabled={configSaving}
+
+          {/* Floating Save/Cancel (desktop) */}
+          {!isMobile && (
+            <div
+              className={cn(
+                "sticky top-2 z-10 float-right transition-opacity duration-150",
+                showConfigActionBar
+                  ? "opacity-100"
+                  : "opacity-0 pointer-events-none"
+              )}
             >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => saveConfigActionRef.current?.()}
-              disabled={configSaving}
-            >
-              {configSaving ? "Saving…" : "Save"}
-            </Button>
-          </div>
+              <div className="flex items-center gap-2 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => cancelConfigActionRef.current?.()}
+                  disabled={configSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => saveConfigActionRef.current?.()}
+                  disabled={configSaving}
+                >
+                  {configSaving ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile bottom Save/Cancel bar */}
+          {isMobile && showConfigActionBar && (
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-sm">
+              <div
+                className="flex items-center justify-end gap-2 px-3 py-2"
+                style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => cancelConfigActionRef.current?.()}
+                  disabled={configSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => saveConfigActionRef.current?.()}
+                  disabled={configSaving}
+                >
+                  {configSaving ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* View content */}
+          {activeView === "dashboard" && (
+            <AgentOverview
+              agent={agent}
+              runs={heartbeats ?? []}
+              assignedIssues={assignedIssues}
+              runtimeState={runtimeState}
+              agentId={agent.id}
+              agentRouteId={canonicalAgentRef}
+            />
+          )}
+
+          {activeView === "instructions" && (
+            <PromptsTab
+              agent={agent}
+              companyId={resolvedCompanyId ?? undefined}
+              onDirtyChange={setConfigDirty}
+              onSaveActionChange={setSaveConfigAction}
+              onCancelActionChange={setCancelConfigAction}
+              onSavingChange={setConfigSaving}
+            />
+          )}
+
+          {activeView === "configuration" && (
+            <AgentConfigurePage
+              agent={agent}
+              agentId={agent.id}
+              companyId={resolvedCompanyId ?? undefined}
+              onDirtyChange={setConfigDirty}
+              onSaveActionChange={setSaveConfigAction}
+              onCancelActionChange={setCancelConfigAction}
+              onSavingChange={setConfigSaving}
+              updatePermissions={updatePermissions}
+            />
+          )}
+
+          {activeView === "skills" && (
+            <AgentSkillsTab
+              agent={agent}
+              companyId={resolvedCompanyId ?? undefined}
+            />
+          )}
+
+          {activeView === "runs" && (
+            <RunsTab
+              runs={heartbeats ?? []}
+              companyId={resolvedCompanyId!}
+              agentId={agent.id}
+              agentRouteId={canonicalAgentRef}
+              selectedRunId={urlRunId ?? null}
+              adapterType={agent.adapterType}
+            />
+          )}
+
+          {activeView === "budget" && resolvedCompanyId ? (
+            <div className="max-w-3xl">
+              <BudgetPolicyCard
+                summary={agentBudgetSummary}
+                isSaving={budgetMutation.isPending}
+                onSave={(amount) => budgetMutation.mutate(amount)}
+                variant="plain"
+              />
+            </div>
+          ) : null}
         </div>
-      )}
-
-      {/* Mobile bottom Save/Cancel bar */}
-      {isMobile && showConfigActionBar && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-sm">
-          <div
-            className="flex items-center justify-end gap-2 px-3 py-2"
-            style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => cancelConfigActionRef.current?.()}
-              disabled={configSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => saveConfigActionRef.current?.()}
-              disabled={configSaving}
-            >
-              {configSaving ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* View content */}
-      {activeView === "dashboard" && (
-        <AgentOverview
-          agent={agent}
-          runs={heartbeats ?? []}
-          assignedIssues={assignedIssues}
-          runtimeState={runtimeState}
-          agentId={agent.id}
-          agentRouteId={canonicalAgentRef}
-        />
-      )}
-
-      {activeView === "instructions" && (
-        <PromptsTab
-          agent={agent}
-          companyId={resolvedCompanyId ?? undefined}
-          onDirtyChange={setConfigDirty}
-          onSaveActionChange={setSaveConfigAction}
-          onCancelActionChange={setCancelConfigAction}
-          onSavingChange={setConfigSaving}
-        />
-      )}
-
-      {activeView === "configuration" && (
-        <AgentConfigurePage
-          agent={agent}
-          agentId={agent.id}
-          companyId={resolvedCompanyId ?? undefined}
-          onDirtyChange={setConfigDirty}
-          onSaveActionChange={setSaveConfigAction}
-          onCancelActionChange={setCancelConfigAction}
-          onSavingChange={setConfigSaving}
-          updatePermissions={updatePermissions}
-        />
-      )}
-
-      {activeView === "skills" && (
-        <AgentSkillsTab
-          agent={agent}
-          companyId={resolvedCompanyId ?? undefined}
-        />
-      )}
-
-      {activeView === "runs" && (
-        <RunsTab
-          runs={heartbeats ?? []}
-          companyId={resolvedCompanyId!}
-          agentId={agent.id}
-          agentRouteId={canonicalAgentRef}
-          selectedRunId={urlRunId ?? null}
-          adapterType={agent.adapterType}
-        />
-      )}
-
-      {activeView === "budget" && resolvedCompanyId ? (
-        <div className="max-w-3xl">
-          <BudgetPolicyCard
-            summary={agentBudgetSummary}
-            isSaving={budgetMutation.isPending}
-            onSave={(amount) => budgetMutation.mutate(amount)}
-            variant="plain"
-          />
-        </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -1167,43 +1211,170 @@ function AgentOverview({
   agentId: string;
   agentRouteId: string;
 }) {
-  return (
-    <div className="space-y-8">
-      {/* Latest Run */}
-      <LatestRunCard runs={runs} agentId={agentRouteId} />
+  // Compute overview metrics
+  const sorted = useMemo(
+    () => [...runs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [runs],
+  );
+  const liveRun = sorted.find((r) => r.status === "running" || r.status === "queued");
+  const currentRun = liveRun ?? sorted[0];
+  const isLive = currentRun && (currentRun.status === "running" || currentRun.status === "queued");
 
-      {/* Charts */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ChartCard title="Run Activity" subtitle="Last 14 days">
-          <RunActivityChart runs={runs} />
-        </ChartCard>
-        <ChartCard title="Issues by Priority" subtitle="Last 14 days">
-          <PriorityChart issues={assignedIssues} />
-        </ChartCard>
-        <ChartCard title="Issues by Status" subtitle="Last 14 days">
-          <IssueStatusChart issues={assignedIssues} />
-        </ChartCard>
-        <ChartCard title="Success Rate" subtitle="Last 14 days">
-          <SuccessRateChart runs={runs} />
-        </ChartCard>
+  const thirtyDayRuns = useMemo(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return runs.filter((r) => new Date(r.createdAt).getTime() > cutoff);
+  }, [runs]);
+
+  const totalRuns30d = thirtyDayRuns.length;
+  const succeededRuns30d = thirtyDayRuns.filter((r) => r.status === "succeeded").length;
+  const successRate = totalRuns30d > 0 ? Math.round((succeededRuns30d / totalRuns30d) * 100) : 0;
+  const totalSpend30d = useMemo(
+    () => thirtyDayRuns.reduce((sum, r) => sum + runMetrics(r).cost, 0),
+    [thirtyDayRuns],
+  );
+
+  const currentRunSummary = useMemo(() => {
+    if (!currentRun) return "";
+    const raw = currentRun.resultJson
+      ? String((currentRun.resultJson as Record<string, unknown>).summary ?? (currentRun.resultJson as Record<string, unknown>).result ?? "")
+      : currentRun.error ?? "";
+    if (!raw) return "";
+    const lines = raw
+      .replace(/^#{1,6}\s+/gm, "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith("---") && !l.startsWith("|") && !l.startsWith("```") && !/^[-*>]/.test(l) && !/^\d+\./.test(l));
+    const excerpt: string[] = [];
+    let chars = 0;
+    for (const line of lines) {
+      if (excerpt.length >= 2 || chars + line.length > 200) break;
+      excerpt.push(line);
+      chars += line.length;
+    }
+    return excerpt.join(" ");
+  }, [currentRun]);
+
+  return (
+    <div className="space-y-6">
+      {/* Current run card */}
+      {currentRun && (
+        <Link
+          to={`/agents/${agentRouteId}/runs/${currentRun.id}`}
+          className={cn(
+            "block rounded-xl p-4 no-underline text-inherit transition-colors",
+            isLive
+              ? "bg-primary/5 border border-primary/20 hover:bg-primary/10"
+              : "bg-card/80 border border-border/50 hover:bg-accent/30"
+          )}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              {isLive && (
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+                </span>
+              )}
+              <span className="text-[13px] font-semibold">
+                {isLive ? "Current Run" : "Latest Run"}
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {currentRun.id.slice(0, 8)}
+              </span>
+            </div>
+            <StatusBadge status={currentRun.status} />
+          </div>
+          {currentRunSummary && (
+            <p className="text-[12px] text-muted-foreground mt-2 line-clamp-2">
+              {currentRunSummary}
+            </p>
+          )}
+          {isLive && (
+            <div className="mt-3">
+              <div className="h-1 rounded-full bg-primary/10 overflow-hidden">
+                <div className="h-full bg-primary/40 rounded-full animate-pulse" style={{ width: "60%" }} />
+              </div>
+            </div>
+          )}
+        </Link>
+      )}
+
+      {/* Metric cards — exact same as Budget page TopStatCard */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Runs (30d)</div>
+          <div className="mt-2 text-2xl font-bold tabular-nums">{totalRuns30d}</div>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Success rate</div>
+          <div className="mt-2 text-2xl font-bold tabular-nums">{successRate}%</div>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Spend (30d)</div>
+          <div className="mt-2 text-2xl font-bold tabular-nums">
+            ${totalSpend30d > 0 ? totalSpend30d.toFixed(2) : "0.00"}
+          </div>
+        </div>
       </div>
 
-      {/* Recent Issues */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">Recent Issues</h3>
-          <Link
-            to={`/issues?participantAgentId=${agentId}`}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            See All &rarr;
-          </Link>
+      {/* Recent Runs list */}
+      {sorted.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[13px] font-semibold">Recent Runs</h3>
+            <Link
+              to={`/agents/${agentRouteId}/runs`}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors no-underline"
+            >
+              See all
+            </Link>
+          </div>
+          <div className="rounded-xl border border-border/50 overflow-hidden">
+            {sorted.slice(0, 8).map((run) => {
+              const metrics = runMetrics(run);
+              const statusInfo = runStatusIcons[run.status] ?? { icon: Clock, color: "text-neutral-400" };
+              const StatusIcon = statusInfo.icon;
+              return (
+                <Link
+                  key={run.id}
+                  to={`/agents/${agentRouteId}/runs/${run.id}`}
+                  className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-b-0 hover:bg-accent/20 transition-colors no-underline text-inherit"
+                >
+                  <StatusIcon className={cn("h-3.5 w-3.5 shrink-0", statusInfo.color, run.status === "running" && "animate-spin")} />
+                  <span className="font-mono text-[11px] text-muted-foreground shrink-0">
+                    {run.id.slice(0, 8)}
+                  </span>
+                  <StatusBadge status={run.status} />
+                  <span className="flex-1" />
+                  {metrics.cost > 0 && (
+                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                      ${metrics.cost.toFixed(3)}
+                    </span>
+                  )}
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    {relativeTime(run.createdAt)}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
-        {assignedIssues.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No recent issues.</p>
-        ) : (
-          <div className="border border-border rounded-lg">
-            {assignedIssues.slice(0, 10).map((issue) => (
+      )}
+
+      {/* Recent Tasks */}
+      {assignedIssues.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[13px] font-semibold">Recent Tasks</h3>
+            <Link
+              to={`/issues?participantAgentId=${agentId}`}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors no-underline"
+            >
+              See all
+            </Link>
+          </div>
+          <div className="rounded-xl border border-border/50 overflow-hidden">
+            {assignedIssues.slice(0, 6).map((issue) => (
               <EntityRow
                 key={issue.id}
                 identifier={issue.identifier ?? issue.id.slice(0, 8)}
@@ -1212,20 +1383,22 @@ function AgentOverview({
                 trailing={<StatusBadge status={issue.status} />}
               />
             ))}
-            {assignedIssues.length > 10 && (
-              <div className="px-3 py-2 text-xs text-muted-foreground text-center border-t border-border">
-                +{assignedIssues.length - 10} more issues
+            {assignedIssues.length > 6 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground text-center border-t border-border/50">
+                +{assignedIssues.length - 6} more
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Costs */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium">Costs</h3>
-        <CostsSection runtimeState={runtimeState} runs={runs} />
-      </div>
+      {runtimeState && (
+        <div className="space-y-3">
+          <h3 className="text-[13px] font-semibold">Cost Breakdown</h3>
+          <CostsSection runtimeState={runtimeState} runs={runs} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1249,29 +1422,29 @@ function CostsSection({
   return (
     <div className="space-y-4">
       {runtimeState && (
-        <div className="border border-border rounded-lg p-4">
+        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 tabular-nums">
             <div>
-              <span className="text-xs text-muted-foreground block">Input tokens</span>
-              <span className="text-lg font-semibold">{formatTokens(runtimeState.totalInputTokens)}</span>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Input tokens</div>
+              <div className="mt-2 text-2xl font-bold">{formatTokens(runtimeState.totalInputTokens)}</div>
             </div>
             <div>
-              <span className="text-xs text-muted-foreground block">Output tokens</span>
-              <span className="text-lg font-semibold">{formatTokens(runtimeState.totalOutputTokens)}</span>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Output tokens</div>
+              <div className="mt-2 text-2xl font-bold">{formatTokens(runtimeState.totalOutputTokens)}</div>
             </div>
             <div>
-              <span className="text-xs text-muted-foreground block">Cached tokens</span>
-              <span className="text-lg font-semibold">{formatTokens(runtimeState.totalCachedInputTokens)}</span>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Cached tokens</div>
+              <div className="mt-2 text-2xl font-bold">{formatTokens(runtimeState.totalCachedInputTokens)}</div>
             </div>
             <div>
-              <span className="text-xs text-muted-foreground block">Total cost</span>
-              <span className="text-lg font-semibold">{formatCents(runtimeState.totalCostCents)}</span>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Total cost</div>
+              <div className="mt-2 text-2xl font-bold">{formatCents(runtimeState.totalCostCents)}</div>
             </div>
           </div>
         </div>
       )}
       {runsWithCost.length > 0 && (
-        <div className="border border-border rounded-lg overflow-hidden">
+        <div className="border border-border/50 rounded-xl overflow-hidden">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-accent/20">
@@ -1360,11 +1533,11 @@ function AgentConfigurePage({
         hideInstructionsFile
       />
       <div>
-        <h3 className="text-sm font-medium mb-3">API Keys</h3>
+        <h3 className="text-sm font-medium mb-3">Connection Keys</h3>
         <KeysTab agentId={agentId} companyId={companyId} />
       </div>
 
-      {/* Configuration Revisions — collapsible at the bottom */}
+      {/* Change History — collapsible at the bottom */}
       <div>
         <button
           className="flex items-center gap-2 text-sm font-medium hover:text-foreground transition-colors"
@@ -1374,13 +1547,13 @@ function AgentConfigurePage({
             ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
           }
-          Configuration Revisions
+          Change History
           <span className="text-xs font-normal text-muted-foreground">{configRevisions?.length ?? 0}</span>
         </button>
         {revisionsOpen && (
           <div className="mt-3">
             {(configRevisions ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No configuration revisions yet.</p>
+              <p className="text-sm text-muted-foreground">No changes recorded yet.</p>
             ) : (
               <div className="space-y-2">
                 {(configRevisions ?? []).slice(0, 10).map((revision) => (
@@ -1525,9 +1698,9 @@ function ConfigurationTab({
         <div className="border border-border rounded-lg p-4 space-y-4">
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can create new agents</div>
+              <div>Can hire team members</div>
               <p className="text-xs text-muted-foreground">
-                Lets this agent create or hire agents and implicitly assign tasks.
+                Lets this agent bring on new agents and delegate tasks to them.
               </p>
             </div>
             <button
@@ -1557,7 +1730,7 @@ function ConfigurationTab({
           </div>
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
-              <div>Can assign tasks</div>
+              <div>Can delegate tasks</div>
               <p className="text-xs text-muted-foreground">
                 {taskAssignHint}
               </p>
@@ -3706,70 +3879,6 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
         operations={workspaceOperations}
         censorUsernameInLogs={censorUsernameInLogs}
       />
-      {adapterInvokePayload && (
-        <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">Invocation</div>
-          {typeof adapterInvokePayload.adapterType === "string" && (
-            <div className="text-xs"><span className="text-muted-foreground">Adapter: </span>{adapterInvokePayload.adapterType}</div>
-          )}
-          {typeof adapterInvokePayload.cwd === "string" && (
-            <div className="text-xs break-all"><span className="text-muted-foreground">Working dir: </span><span className="font-mono">{adapterInvokePayload.cwd}</span></div>
-          )}
-          {typeof adapterInvokePayload.command === "string" && (
-            <div className="text-xs break-all">
-              <span className="text-muted-foreground">Command: </span>
-              <span className="font-mono">
-                {[
-                  adapterInvokePayload.command,
-                  ...(Array.isArray(adapterInvokePayload.commandArgs)
-                    ? adapterInvokePayload.commandArgs.filter((v): v is string => typeof v === "string")
-                    : []),
-                ].join(" ")}
-              </span>
-            </div>
-          )}
-          {Array.isArray(adapterInvokePayload.commandNotes) && adapterInvokePayload.commandNotes.length > 0 && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Command notes</div>
-              <ul className="list-disc pl-5 space-y-1">
-                {adapterInvokePayload.commandNotes
-                  .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-                  .map((note, idx) => (
-                    <li key={`${idx}-${note}`} className="text-xs break-all font-mono">
-                      {note}
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          )}
-          {adapterInvokePayload.prompt !== undefined && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Prompt</div>
-              <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
-                {typeof adapterInvokePayload.prompt === "string"
-                  ? redactPathText(adapterInvokePayload.prompt, censorUsernameInLogs)
-                  : JSON.stringify(redactPathValue(adapterInvokePayload.prompt, censorUsernameInLogs), null, 2)}
-              </pre>
-            </div>
-          )}
-          {adapterInvokePayload.context !== undefined && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Context</div>
-              <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
-                {JSON.stringify(redactPathValue(adapterInvokePayload.context, censorUsernameInLogs), null, 2)}
-              </pre>
-            </div>
-          )}
-          {adapterInvokePayload.env !== undefined && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Environment</div>
-              <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono">
-                {formatEnvForDisplay(adapterInvokePayload.env, censorUsernameInLogs)}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
@@ -3994,7 +4103,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
           Create API Key
         </h3>
         <p className="text-xs text-muted-foreground">
-          API keys allow this agent to authenticate calls to the Paperclip server.
+          Connection keys allow this agent to authenticate with the server.
         </p>
         <div className="flex items-center gap-2">
           <Input
@@ -4021,7 +4130,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
       {isLoading && <p className="text-sm text-muted-foreground">Loading keys...</p>}
 
       {!isLoading && activeKeys.length === 0 && !newToken && (
-        <p className="text-sm text-muted-foreground">No active API keys.</p>
+        <p className="text-sm text-muted-foreground">No active connection keys.</p>
       )}
 
       {activeKeys.length > 0 && (

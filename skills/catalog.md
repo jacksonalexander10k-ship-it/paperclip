@@ -29,6 +29,8 @@ The CEO uses this catalog to assign skills when hiring agents. Each skill can be
 - **market-monitoring** — Daily DLD transaction scans, weekly price movement analysis (flag >5% changes), new launch detection, listing alerts, competitor activity. Reports: morning brief, weekly summary, immediate alerts.
 - **portfolio-management** — Tenancy lifecycle: 90/60/30-day renewal alerts, RERA rent increase calculation (5-band system), vacancy management, landlord monthly reports, maintenance tracking.
 - **campaign-management** — Drip campaigns: welcome series, nurture, re-engagement, post-deal. Enrolment rules: one campaign per lead, remove on opt-out or broker assignment. Performance: open/reply/conversion rates.
+- **whatsapp-outbound** — Rules for all outbound WhatsApp: 24-hour window management (free-form vs template), template selection by scenario, first contact rules, follow-up cadence, broadcast strategy, opt-out handling, number quality management, 3-strike rule.
+- **facebook-ads** — Create, launch, optimise, and report on Facebook/Instagram ad campaigns for Dubai RE lead generation. Campaign setup flow (objective, audience, budget, creative, lead form), approval cards, daily/weekly reporting, optimisation playbook, audience targeting by nationality.
 - **call-handling** — Inbound: greet with agency name, capture name/phone/interest/budget. Outbound: prepare context, opening script, post-call logging. Voicemail handling. Call windows: 10am-12pm, 4pm-6pm.
 
 ## Tool Groups (assigned per role — CEO assigns relevant groups when hiring)
@@ -54,6 +56,9 @@ The CEO uses this catalog to assign skills when hiring agents. Each skill can be
 ### Client & Docs (5 tools)
 `create_portal`, `get_portal_activity`, `list_documents`, `extract_document_data`, `scrape_url`
 
+### Paid Ads (8 tools)
+`create_fb_campaign`, `create_fb_ad_set`, `create_fb_ad`, `create_fb_lead_form`, `get_fb_campaign_stats`, `pause_fb_campaign`, `update_fb_budget`, `get_fb_audiences`
+
 ### Market & Admin (7 tools)
 `analyze_investment`, `web_search`, `get_news`, `get_campaign_stats`, `create_task`, `remember`, `set_guardrails`
 
@@ -64,10 +69,10 @@ When the CEO hires an agent, these are the default skill assignments. The CEO ca
 | Role | Domain Skills | Behaviour Skills | Tool Groups |
 |------|--------------|-----------------|-------------|
 | CEO | All 4 | catalog (this file) | All groups (read-heavy, write-gated) |
-| Lead Agent | All 4 | lead-response, lead-qualification, lead-followup, lead-handoff | Communication, Lead Pipeline, Search & Intel |
-| Content Agent | All 4 | content-instagram, content-pitch-deck, campaign-management | Content Generation, Communication (post_to_instagram only) |
+| Lead Agent | All 4 | lead-response, lead-qualification, lead-followup, lead-handoff, whatsapp-outbound | Communication, Lead Pipeline, Search & Intel |
+| Content Agent | All 4 | content-instagram, content-pitch-deck, campaign-management, facebook-ads, whatsapp-outbound | Content Generation, Paid Ads, Communication |
 | Market Agent | All 4 | market-monitoring | Search & Intel, Market & Admin |
-| Viewing Agent | All 4 | viewing-scheduling | Calendar & Viewings, Communication (send_whatsapp, send_email only) |
-| Portfolio Agent | All 4 | portfolio-management | Portfolio, Client & Docs, Communication (send_email, send_whatsapp only) |
-| Call Agent | All 4 | call-handling | Communication (make_call, send_whatsapp, send_email), Lead Pipeline (search_leads, update_lead) |
+| Viewing Agent | All 4 | viewing-scheduling, whatsapp-outbound | Calendar & Viewings, Communication (send_whatsapp, send_email only) |
+| Portfolio Agent | All 4 | portfolio-management, whatsapp-outbound | Portfolio, Client & Docs, Communication (send_email, send_whatsapp only) |
+| Call Agent | All 4 | call-handling, whatsapp-outbound | Communication (make_call, send_whatsapp, send_email), Lead Pipeline (search_leads, update_lead) |
 | Social Agent | All 4 | content-instagram | Communication (search_instagram_dms, post_to_instagram, send_instagram_dm) |

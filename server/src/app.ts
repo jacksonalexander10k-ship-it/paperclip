@@ -31,6 +31,12 @@ import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
+import { whatsappWebhookRoutes } from "./routes/whatsapp-webhook.js";
+import { agentCredentialRoutes } from "./routes/agent-credentials.js";
+import { whatsappConnectRoutes } from "./routes/whatsapp-connect.js";
+import { billingRoutes, stripeWebhookRoutes } from "./routes/billing.js";
+import { analyticsRoutes } from "./routes/analytics.js";
+import { brokerRoutes } from "./routes/broker.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -86,6 +92,11 @@ export async function createApp(
       (req as unknown as { rawBody: Buffer }).rawBody = buf;
     },
   }));
+  // WhatsApp webhook — mounted before auth so 360dialog can POST freely
+  app.use(whatsappWebhookRoutes(db));
+  // Stripe webhook — mounted before auth so Stripe can POST freely
+  app.use(stripeWebhookRoutes(db));
+
   app.use(httpLogger);
   const privateHostnameGateEnabled =
     opts.deploymentMode === "authenticated" && opts.deploymentExposure === "private";
@@ -156,6 +167,11 @@ export async function createApp(
   api.use(dashboardRoutes(db));
   api.use(sidebarBadgeRoutes(db));
   api.use(ceoChatRoutes(db));
+  api.use(agentCredentialRoutes(db));
+  api.use(whatsappConnectRoutes(db));
+  api.use(billingRoutes(db));
+  api.use(analyticsRoutes(db));
+  api.use(brokerRoutes(db));
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();

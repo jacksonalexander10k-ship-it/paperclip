@@ -11,8 +11,6 @@ interface SidebarNavItemProps {
   className?: string;
   badge?: number;
   badgeTone?: "default" | "danger";
-  textBadge?: string;
-  textBadgeTone?: "default" | "amber";
   alert?: boolean;
   liveCount?: number;
 }
@@ -25,8 +23,6 @@ export function SidebarNavItem({
   className,
   badge,
   badgeTone = "default",
-  textBadge,
-  textBadgeTone = "default",
   alert = false,
   liveCount,
 }: SidebarNavItemProps) {
@@ -39,49 +35,37 @@ export function SidebarNavItem({
       onClick={() => { if (isMobile) setSidebarOpen(false); }}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors",
+          "relative flex items-center gap-2.5 px-2 py-1.5 text-[12.5px] font-medium rounded-lg transition-all duration-150",
           isActive
-            ? "bg-accent text-foreground"
-            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground/60 hover:bg-accent/50 hover:text-foreground",
           className,
         )
       }
     >
       <span className="relative shrink-0">
-        <Icon className="h-4 w-4" />
+        <Icon className="w-[13px] h-[13px]" />
         {alert && (
           <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500 shadow-[0_0_0_2px_hsl(var(--background))]" />
         )}
       </span>
       <span className="flex-1 truncate">{label}</span>
-      {textBadge && (
-        <span
-          className={cn(
-            "ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
-            textBadgeTone === "amber"
-              ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-              : "bg-muted text-muted-foreground",
-          )}
-        >
-          {textBadge}
-        </span>
-      )}
       {liveCount != null && liveCount > 0 && (
         <span className="ml-auto flex items-center gap-1.5">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-primary opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
           </span>
-          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">{liveCount} live</span>
+          <span className="text-[10px] font-medium text-primary">{liveCount}</span>
         </span>
       )}
       {badge != null && badge > 0 && (
         <span
           className={cn(
-            "ml-auto rounded-full px-1.5 py-0.5 text-xs leading-none",
+            "ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums",
             badgeTone === "danger"
-              ? "bg-red-600/90 text-red-50"
-              : "bg-primary text-primary-foreground",
+              ? "bg-red-500/20 text-red-400"
+              : "bg-primary/15 text-primary",
           )}
         >
           {badge}

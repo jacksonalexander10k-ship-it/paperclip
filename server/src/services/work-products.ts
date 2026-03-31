@@ -32,6 +32,15 @@ function toIssueWorkProduct(row: IssueWorkProductRow): IssueWorkProduct {
 
 export function workProductService(db: Db) {
   return {
+    listForCompany: async (companyId: string) => {
+      const rows = await db
+        .select()
+        .from(issueWorkProducts)
+        .where(eq(issueWorkProducts.companyId, companyId))
+        .orderBy(desc(issueWorkProducts.updatedAt));
+      return rows.map(toIssueWorkProduct);
+    },
+
     listForIssue: async (issueId: string) => {
       const rows = await db
         .select()

@@ -17,6 +17,7 @@ import {
   companyPortabilityService,
   companyService,
   logActivity,
+  workProductService,
 } from "../services/index.js";
 import type { StorageService } from "../storage/types.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
@@ -28,6 +29,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
   const portability = companyPortabilityService(db, storage);
   const access = accessService(db);
   const budgets = budgetService(db);
+  const workProducts = workProductService(db);
 
   async function assertCanUpdateBranding(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
@@ -336,6 +338,13 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       return;
     }
     res.json({ ok: true });
+  });
+
+  router.get("/:companyId/work-products", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const items = await workProducts.listForCompany(companyId);
+    res.json(items);
   });
 
   return router;

@@ -68,7 +68,7 @@ function OrgTreeNode({
           className={cn(
             "h-2 w-2 rounded-full shrink-0",
             node.status === "active"
-              ? "bg-green-400"
+              ? "bg-primary"
               : node.status === "paused"
                 ? "bg-yellow-400"
                 : node.status === "pending_approval"
@@ -94,7 +94,7 @@ export function Org() {
   const { setBreadcrumbs } = useBreadcrumbs();
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Org Chart" }]);
+    setBreadcrumbs([{ label: "Team" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({

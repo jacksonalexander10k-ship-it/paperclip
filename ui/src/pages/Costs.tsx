@@ -9,7 +9,7 @@ import type {
   FinanceEvent,
   QuotaWindow,
 } from "@paperclipai/shared";
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, ReceiptText } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, Download, ReceiptText, Settings } from "lucide-react";
 import { budgetsApi } from "../api/budgets";
 import { costsApi } from "../api/costs";
 import { BillerSpendCard } from "../components/BillerSpendCard";
@@ -20,6 +20,7 @@ import { FinanceBillerCard } from "../components/FinanceBillerCard";
 import { FinanceKindCard } from "../components/FinanceKindCard";
 import { FinanceTimelineCard } from "../components/FinanceTimelineCard";
 import { Identity } from "../components/Identity";
+import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { ProviderQuotaCard } from "../components/ProviderQuotaCard";
@@ -80,15 +81,15 @@ function MetricTile({
   icon: ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="border border-border p-4">
+    <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-          <div className="mt-2 text-2xl font-semibold tabular-nums">{value}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">{label}</div>
+          <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
           <div className="mt-1 text-xs leading-5 text-muted-foreground">{subtitle}</div>
         </div>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-primary/5">
+          <Icon className="h-4 w-4 text-primary/60" />
         </div>
       </div>
     </div>
@@ -168,7 +169,7 @@ export function Costs() {
   } = useDateRange();
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Costs" }]);
+    setBreadcrumbs([{ label: "Budget" }]);
   }, [setBreadcrumbs]);
 
   const [today, setToday] = useState(() => new Date().toDateString());
@@ -537,352 +538,116 @@ export function Costs() {
   const overviewError = spendError ?? financeError;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Costs</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Track how much your AI agency is spending. All amounts in USD.
-                </p>
-            </div>
+    <div className="flex flex-col h-full">
+      <PageHeader
+        title="Budget"
+        actions={
+          <>
+            <Button variant="ghost" size="sm" className="text-[11.5px] h-7 gap-1.5">
+              <Download className="h-3 w-3" />
+              Export CSV
+            </Button>
+            <Button size="sm" className="text-[11.5px] h-7 gap-1.5">
+              <Settings className="h-3 w-3" />
+              Set Limits
+            </Button>
+          </>
+        }
+      />
 
-            <div className="flex flex-wrap items-center gap-2">
-              {PRESET_KEYS.map((key) => (
-                <Button
-                  key={key}
-                  variant={preset === key ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setPreset(key)}
-                >
-                  {PRESET_LABELS[key]}
-                </Button>
-              ))}
-            </div>
-          </div>
+      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        {/* Date range presets */}
+        <div className="flex flex-wrap items-center gap-2">
+          {PRESET_KEYS.map((key) => (
+            <Button
+              key={key}
+              variant={preset === key ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setPreset(key)}
+            >
+              {PRESET_LABELS[key]}
+            </Button>
+          ))}
+        </div>
 
-          {preset === "custom" ? (
-            <div className="flex flex-wrap items-center gap-2 border border-border p-3">
-              <input
-                type="date"
-                value={customFrom}
-                onChange={(event) => setCustomFrom(event.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-              />
-              <span className="text-sm text-muted-foreground">to</span>
-              <input
-                type="date"
-                value={customTo}
-                onChange={(event) => setCustomTo(event.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-              />
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 lg:grid-cols-4">
-            <MetricTile
-              label="AI Usage Spend"
-              value={formatCents(spendData?.summary.spendCents ?? 0)}
-              subtitle={`${formatTokens(inferenceTokenTotal)} AI tokens used`}
-              icon={DollarSign}
+        {preset === "custom" ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-3">
+            <input
+              type="date"
+              value={customFrom}
+              onChange={(event) => setCustomFrom(event.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
             />
-            <MetricTile
-              label="Budget"
-              value={activeBudgetIncidents.length > 0 ? String(activeBudgetIncidents.length) : (
-                spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                  ? `${spendData.summary.utilizationPercent}%`
-                  : "Open"
-              )}
-              subtitle={
-                activeBudgetIncidents.length > 0
-                  ? `${budgetData?.pausedAgentCount ?? 0} agents paused · ${budgetData?.pausedProjectCount ?? 0} projects paused`
-                  : spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                    ? `${formatCents(spendData.summary.spendCents)} of ${formatCents(spendData.summary.budgetCents)}`
-                    : "No monthly cap configured"
-              }
-              icon={Coins}
-            />
-            <MetricTile
-              label="Net Charges"
-              value={formatCents(financeData?.summary.netCents ?? 0)}
-              subtitle={`${formatCents(financeData?.summary.debitCents ?? 0)} charges · ${formatCents(financeData?.summary.creditCents ?? 0)} credits`}
-              icon={ReceiptText}
-            />
-            <MetricTile
-              label="Finance events"
-              value={String(financeData?.summary.eventCount ?? 0)}
-              subtitle={`${formatCents(financeData?.summary.estimatedDebitCents ?? 0)} estimated in range`}
-              icon={ArrowUpRight}
+            <span className="text-sm text-muted-foreground">to</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={(event) => setCustomTo(event.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
             />
           </div>
-      </div>
+        ) : null}
 
-      <Tabs value={mainTab} onValueChange={(value) => setMainTab(value as typeof mainTab)}>
-        <TabsList variant="line" className="justify-start">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="budgets">Budgets</TabsTrigger>
-          <TabsTrigger value="providers">Providers</TabsTrigger>
-          <TabsTrigger value="billers">Billers</TabsTrigger>
-          <TabsTrigger value="finance">Finance</TabsTrigger>
-        </TabsList>
+        {/* Top metrics */}
+        <div className="grid gap-3 lg:grid-cols-4">
+          <MetricTile
+            label="AI Usage Spend"
+            value={formatCents(spendData?.summary.spendCents ?? 0)}
+            subtitle={`${formatTokens(inferenceTokenTotal)} AI tokens used`}
+            icon={DollarSign}
+          />
+          <MetricTile
+            label="Budget"
+            value={activeBudgetIncidents.length > 0 ? String(activeBudgetIncidents.length) : (
+              spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
+                ? `${spendData.summary.utilizationPercent}%`
+                : "Open"
+            )}
+            subtitle={
+              activeBudgetIncidents.length > 0
+                ? `${budgetData?.pausedAgentCount ?? 0} agents paused · ${budgetData?.pausedProjectCount ?? 0} projects paused`
+                : spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
+                  ? `${formatCents(spendData.summary.spendCents)} of ${formatCents(spendData.summary.budgetCents)}`
+                  : "No monthly cap configured"
+            }
+            icon={Coins}
+          />
+          <MetricTile
+            label="Net Charges"
+            value={formatCents(financeData?.summary.netCents ?? 0)}
+            subtitle={`${formatCents(financeData?.summary.debitCents ?? 0)} charges · ${formatCents(financeData?.summary.creditCents ?? 0)} credits`}
+            icon={ReceiptText}
+          />
+          <MetricTile
+            label="Transactions"
+            value={String(financeData?.summary.eventCount ?? 0)}
+            subtitle={`${formatCents(financeData?.summary.estimatedDebitCents ?? 0)} estimated in range`}
+            icon={ArrowUpRight}
+          />
+        </div>
 
-        <TabsContent value="overview" className="mt-4 space-y-4">
-          {showCustomPrompt ? (
-            <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
-          ) : showOverviewLoading ? (
-            <PageSkeleton variant="costs" />
-          ) : overviewError ? (
-            <p className="text-sm text-destructive">{(overviewError as Error).message}</p>
-          ) : (
-            <>
-              {activeBudgetIncidents.length > 0 ? (
-                <div className="grid gap-4 xl:grid-cols-2">
-                  {activeBudgetIncidents.slice(0, 2).map((incident) => (
-                    <BudgetIncidentCard
-                      key={incident.id}
-                      incident={incident}
-                      isMutating={incidentMutation.isPending}
-                      onKeepPaused={() => incidentMutation.mutate({ incidentId: incident.id, action: "keep_paused" })}
-                      onRaiseAndResume={(amount) =>
-                        incidentMutation.mutate({
-                          incidentId: incident.id,
-                          action: "raise_budget_and_resume",
-                          amount,
-                        })}
-                    />
-                  ))}
-                </div>
-              ) : null}
+        {/* Tabs */}
+        <Tabs value={mainTab} onValueChange={(value) => setMainTab(value as typeof mainTab)}>
+          <TabsList variant="line" className="justify-start">
+            <TabsTrigger value="overview">Summary</TabsTrigger>
+            <TabsTrigger value="budgets">Spending Limits</TabsTrigger>
+            <TabsTrigger value="providers">AI Usage</TabsTrigger>
+            <TabsTrigger value="billers">Billers</TabsTrigger>
+            <TabsTrigger value="finance">Transactions</TabsTrigger>
+          </TabsList>
 
-              <div className="grid gap-4 xl:grid-cols-[1.3fr,1fr]">
-                <Card>
-                  <CardHeader className="px-5 pt-5 pb-2">
-                    <CardTitle className="text-base">Inference ledger</CardTitle>
-                    <CardDescription>
-                      Request-scoped inference spend for the selected period.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4 px-5 pb-5 pt-2">
-                    <div className="flex flex-wrap items-end justify-between gap-3">
-                      <div>
-                        <div className="text-3xl font-semibold tabular-nums">
-                          {formatCents(spendData?.summary.spendCents ?? 0)}
-                        </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                            ? `Budget ${formatCents(spendData.summary.budgetCents)}`
-                            : "Unlimited budget"}
-                        </div>
-                      </div>
-                      <div className="border border-border px-4 py-3 text-right">
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">usage</div>
-                        <div className="mt-1 text-lg font-medium tabular-nums">
-                          {formatTokens(inferenceTokenTotal)}
-                        </div>
-                      </div>
-                    </div>
-                    {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0 ? (
-                      <div className="space-y-2">
-                        <div className="h-2 overflow-hidden bg-muted">
-                          <div
-                            className={cn(
-                              "h-full transition-[width,background-color] duration-150",
-                              spendData.summary.utilizationPercent > 90
-                                ? "bg-red-400"
-                                : spendData.summary.utilizationPercent > 70
-                                  ? "bg-yellow-400"
-                                  : "bg-emerald-400",
-                            )}
-                            style={{ width: `${Math.min(100, spendData.summary.utilizationPercent)}%` }}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {spendData.summary.utilizationPercent}% of monthly budget consumed in this range.
-                        </div>
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-
-                <FinanceSummaryCard
-                  debitCents={financeData?.summary.debitCents ?? 0}
-                  creditCents={financeData?.summary.creditCents ?? 0}
-                  netCents={financeData?.summary.netCents ?? 0}
-                  estimatedDebitCents={financeData?.summary.estimatedDebitCents ?? 0}
-                  eventCount={financeData?.summary.eventCount ?? 0}
-                />
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-[1.25fr,0.95fr]">
-                <Card>
-                  <CardHeader className="px-5 pt-5 pb-2">
-                    <CardTitle className="text-base">By agent</CardTitle>
-                    <CardDescription>What each agent consumed in the selected period.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2 px-5 pb-5 pt-2">
-                    {(spendData?.byAgent.length ?? 0) === 0 ? (
-                      <p className="text-sm text-muted-foreground">No cost events yet.</p>
-                    ) : (
-                      spendData?.byAgent.map((row) => {
-                        const modelRows = agentModelRows.get(row.agentId) ?? [];
-                        const isExpanded = expandedAgents.has(row.agentId);
-                        const hasBreakdown = modelRows.length > 0;
-                        return (
-                          <div key={row.agentId} className="border border-border px-4 py-3">
-                            <div
-                              className={cn("flex items-start justify-between gap-3", hasBreakdown ? "cursor-pointer select-none" : "")}
-                              onClick={() => hasBreakdown && toggleAgent(row.agentId)}
-                            >
-                              <div className="flex min-w-0 items-center gap-2">
-                                {hasBreakdown ? (
-                                  isExpanded
-                                    ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                    : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                ) : (
-                                  <span className="h-3 w-3 shrink-0" />
-                                )}
-                                <Identity name={row.agentName ?? row.agentId} size="sm" />
-                                {row.agentStatus === "terminated" ? <StatusBadge status="terminated" /> : null}
-                              </div>
-                              <div className="text-right text-sm tabular-nums">
-                                <div className="font-medium">{formatCents(row.costCents)}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  in {formatTokens(row.inputTokens + row.cachedInputTokens)} · out {formatTokens(row.outputTokens)}
-                                </div>
-                                {(row.apiRunCount > 0 || row.subscriptionRunCount > 0) ? (
-                                  <div className="text-xs text-muted-foreground">
-                                    {row.apiRunCount > 0 ? `${row.apiRunCount} api` : "0 api"}
-                                    {" · "}
-                                    {row.subscriptionRunCount > 0
-                                      ? `${row.subscriptionRunCount} subscription`
-                                      : "0 subscription"}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            {isExpanded && modelRows.length > 0 ? (
-                              <div className="mt-3 space-y-2 border-l border-border pl-4">
-                                {modelRows.map((modelRow) => {
-                                  const sharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
-                                  return (
-                                    <div
-                                      key={`${modelRow.provider}:${modelRow.model}:${modelRow.billingType}`}
-                                      className="flex items-start justify-between gap-3 text-xs"
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="truncate font-medium text-foreground">
-                                          {providerDisplayName(modelRow.provider)}
-                                          <span className="mx-1 text-border">/</span>
-                                          <span className="font-mono">{modelRow.model}</span>
-                                        </div>
-                                        <div className="truncate text-muted-foreground">
-                                          {providerDisplayName(modelRow.biller)} · {billingTypeDisplayName(modelRow.billingType)}
-                                        </div>
-                                      </div>
-                                      <div className="text-right tabular-nums">
-                                        <div className="font-medium">
-                                          {formatCents(modelRow.costCents)}
-                                          <span className="ml-1 font-normal text-muted-foreground">({sharePct}%)</span>
-                                        </div>
-                                        <div className="text-muted-foreground">
-                                          {formatTokens(modelRow.inputTokens + modelRow.cachedInputTokens + modelRow.outputTokens)} tok
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    )}
-                  </CardContent>
-                </Card>
-
-                <div className="space-y-4">
-                  <Card>
-                    <CardHeader className="px-5 pt-5 pb-2">
-                      <CardTitle className="text-base">By project</CardTitle>
-                      <CardDescription>Run costs attributed through project-linked issues.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2 px-5 pb-5 pt-2">
-                      {(spendData?.byProject.length ?? 0) === 0 ? (
-                        <p className="text-sm text-muted-foreground">No project-attributed run costs yet.</p>
-                      ) : (
-                        spendData?.byProject.map((row, index) => (
-                          <div
-                            key={row.projectId ?? `unattributed-${index}`}
-                            className="flex items-center justify-between gap-3 border border-border px-3 py-2 text-sm"
-                          >
-                            <span className="truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
-                            <span className="font-medium tabular-nums">{formatCents(row.costCents)}</span>
-                          </div>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <FinanceTimelineCard rows={topFinanceEvents.slice(0, 6)} emptyMessage="No finance events yet. Add account-level charges once biller invoices or credits land." />
-                </div>
-              </div>
-            </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="budgets" className="mt-4 space-y-4">
-          {budgetLoading ? (
-            <PageSkeleton variant="costs" />
-          ) : budgetError ? (
-            <p className="text-sm text-destructive">{(budgetError as Error).message}</p>
-          ) : (
-            <>
-              <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]">
-                <CardHeader className="px-5 pt-5 pb-3">
-                  <CardTitle className="text-base">Budget control plane</CardTitle>
-                  <CardDescription>
-                    Hard-stop spend limits for agents and projects. Provider subscription quota stays separate and appears under Providers.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-3 px-5 pb-5 pt-0 md:grid-cols-4">
-                  <MetricTile
-                    label="Active incidents"
-                    value={String(activeBudgetIncidents.length)}
-                    subtitle="Open soft or hard threshold crossings"
-                    icon={ReceiptText}
-                  />
-                  <MetricTile
-                    label="Pending approvals"
-                    value={String(budgetData?.pendingApprovalCount ?? 0)}
-                    subtitle="Budget override approvals awaiting board action"
-                    icon={ArrowUpRight}
-                  />
-                  <MetricTile
-                    label="Paused agents"
-                    value={String(budgetData?.pausedAgentCount ?? 0)}
-                    subtitle="Agent heartbeats blocked by budget"
-                    icon={Coins}
-                  />
-                  <MetricTile
-                    label="Paused projects"
-                    value={String(budgetData?.pausedProjectCount ?? 0)}
-                    subtitle="Project execution blocked by budget"
-                    icon={DollarSign}
-                  />
-                </CardContent>
-              </Card>
-
-              {activeBudgetIncidents.length > 0 ? (
-                <div className="space-y-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">Active incidents</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Resolve hard stops here by raising the budget or explicitly keeping the scope paused.
-                    </p>
-                  </div>
+          <TabsContent value="overview" className="mt-4 space-y-4">
+            {showCustomPrompt ? (
+              <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
+            ) : showOverviewLoading ? (
+              <PageSkeleton variant="costs" />
+            ) : overviewError ? (
+              <p className="text-sm text-destructive">{(overviewError as Error).message}</p>
+            ) : (
+              <>
+                {activeBudgetIncidents.length > 0 ? (
                   <div className="grid gap-4 xl:grid-cols-2">
-                    {activeBudgetIncidents.map((incident) => (
+                    {activeBudgetIncidents.slice(0, 2).map((incident) => (
                       <BudgetIncidentCard
                         key={incident.id}
                         incident={incident}
@@ -897,206 +662,452 @@ export function Costs() {
                       />
                     ))}
                   </div>
-                </div>
-              ) : null}
-
-              <div className="space-y-5">
-                {(["company", "agent", "project"] as const).map((scopeType) => {
-                  const rows = budgetPoliciesByScope[scopeType];
-                  if (rows.length === 0) return null;
-                  return (
-                    <section key={scopeType} className="space-y-3">
-                      <div>
-                        <h2 className="text-lg font-semibold capitalize">{scopeType} budgets</h2>
-                        <p className="text-sm text-muted-foreground">
-                          {scopeType === "company"
-                            ? "Company-wide monthly policy."
-                            : scopeType === "agent"
-                              ? "Recurring monthly spend policies for individual agents."
-                              : "Lifetime spend policies for execution-bound projects."}
-                        </p>
-                      </div>
-                      <div className="grid gap-4 xl:grid-cols-2">
-                        {rows.map((summary) => (
-                          <BudgetPolicyCard
-                            key={summary.policyId}
-                            summary={summary}
-                            isSaving={policyMutation.isPending}
-                            onSave={(amount) =>
-                              policyMutation.mutate({
-                                scopeType: summary.scopeType,
-                                scopeId: summary.scopeId,
-                                amount,
-                                windowKind: summary.windowKind,
-                              })}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  );
-                })}
-
-                {budgetPolicies.length === 0 ? (
-                  <Card>
-                    <CardContent className="px-5 py-8 text-sm text-muted-foreground">
-                      No budget policies yet. Set agent and project budgets from their detail pages, or use the existing company monthly budget control.
-                    </CardContent>
-                  </Card>
                 ) : null}
-              </div>
-            </>
-          )}
-        </TabsContent>
 
-        <TabsContent value="providers" className="mt-4 space-y-4">
-          {showCustomPrompt ? (
-            <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
-          ) : (
-            <>
-              <Tabs value={effectiveProvider} onValueChange={setActiveProvider}>
-                <PageTabBar items={providerTabItems} value={effectiveProvider} />
-
-                <TabsContent value="all" className="mt-4">
-                  {providers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No cost events in this period.</p>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {providers.map((provider) => (
-                        <ProviderQuotaCard
-                          key={provider}
-                          provider={provider}
-                          rows={byProvider.get(provider) ?? []}
-                          budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                          totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
-                          weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
-                          windowRows={windowSpendByProvider.get(provider) ?? []}
-                          showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
-                          quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
-                          quotaError={quotaErrorsByProvider.get(provider) ?? null}
-                          quotaSource={quotaSourcesByProvider.get(provider) ?? null}
-                          quotaLoading={quotaLoading}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </TabsContent>
-
-                {providers.map((provider) => (
-                  <TabsContent key={provider} value={provider} className="mt-4">
-                    <ProviderQuotaCard
-                      provider={provider}
-                      rows={byProvider.get(provider) ?? []}
-                      budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                      totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
-                      weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
-                      windowRows={windowSpendByProvider.get(provider) ?? []}
-                      showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
-                      quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
-                      quotaError={quotaErrorsByProvider.get(provider) ?? null}
-                      quotaSource={quotaSourcesByProvider.get(provider) ?? null}
-                      quotaLoading={quotaLoading}
-                    />
-                  </TabsContent>
-                ))}
-              </Tabs>
-            </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="billers" className="mt-4 space-y-4">
-          {showCustomPrompt ? (
-            <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
-          ) : (
-            <>
-              <Tabs value={effectiveBiller} onValueChange={setActiveBiller}>
-                <PageTabBar items={billerTabItems} value={effectiveBiller} />
-
-                <TabsContent value="all" className="mt-4">
-                  {billers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No billable events in this period.</p>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {billers.map((biller) => {
-                        const row = (byBiller.get(biller) ?? [])[0];
-                        if (!row) return null;
-                        const providerRows = (providerData ?? []).filter((entry) => entry.biller === biller);
-                        return (
-                          <BillerSpendCard
-                            key={biller}
-                            row={row}
-                            weekSpendCents={weekSpendByBiller.get(biller) ?? 0}
-                            budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                            totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
-                            providerRows={providerRows}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </TabsContent>
-
-                {billers.map((biller) => {
-                  const row = (byBiller.get(biller) ?? [])[0];
-                  if (!row) return null;
-                  const providerRows = (providerData ?? []).filter((entry) => entry.biller === biller);
-                  return (
-                    <TabsContent key={biller} value={biller} className="mt-4">
-                      <BillerSpendCard
-                        row={row}
-                        weekSpendCents={weekSpendByBiller.get(biller) ?? 0}
-                        budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                        totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
-                        providerRows={providerRows}
-                      />
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
-            </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="finance" className="mt-4 space-y-4">
-          {showCustomPrompt ? (
-            <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
-          ) : financeLoading ? (
-            <PageSkeleton variant="costs" />
-          ) : financeError ? (
-            <p className="text-sm text-destructive">{(financeError as Error).message}</p>
-          ) : (
-            <>
-              <FinanceSummaryCard
-                debitCents={financeData?.summary.debitCents ?? 0}
-                creditCents={financeData?.summary.creditCents ?? 0}
-                netCents={financeData?.summary.netCents ?? 0}
-                estimatedDebitCents={financeData?.summary.estimatedDebitCents ?? 0}
-                eventCount={financeData?.summary.eventCount ?? 0}
-              />
-
-              <div className="grid gap-4 xl:grid-cols-[1.2fr,0.95fr]">
-                <div className="space-y-4">
+                <div className="grid gap-4 xl:grid-cols-[1.3fr,1fr]">
                   <Card>
                     <CardHeader className="px-5 pt-5 pb-2">
-                      <CardTitle className="text-base">By biller</CardTitle>
-                      <CardDescription>Account-level financial events grouped by who charged or credited them.</CardDescription>
+                      <CardTitle className="text-base">AI Usage</CardTitle>
+                      <CardDescription>
+                        AI processing spend for the selected period.
+                      </CardDescription>
                     </CardHeader>
-                    <CardContent className="grid gap-4 px-5 pb-5 pt-2 md:grid-cols-2">
-                      {(financeData?.byBiller.length ?? 0) === 0 ? (
-                        <p className="text-sm text-muted-foreground">No finance events yet.</p>
+                    <CardContent className="space-y-4 px-5 pb-5 pt-2">
+                      <div className="flex flex-wrap items-end justify-between gap-3">
+                        <div>
+                          <div className="text-3xl font-semibold tabular-nums">
+                            {formatCents(spendData?.summary.spendCents ?? 0)}
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
+                              ? `Budget ${formatCents(spendData.summary.budgetCents)}`
+                              : "Unlimited budget"}
+                          </div>
+                        </div>
+                        <div className="border border-border px-4 py-3 text-right">
+                          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">usage</div>
+                          <div className="mt-1 text-lg font-medium tabular-nums">
+                            {formatTokens(inferenceTokenTotal)}
+                          </div>
+                        </div>
+                      </div>
+                      {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0 ? (
+                        <div className="space-y-2">
+                          <div className="h-2 overflow-hidden bg-muted">
+                            <div
+                              className={cn(
+                                "h-full transition-[width,background-color] duration-150",
+                                spendData.summary.utilizationPercent > 90
+                                  ? "bg-red-400"
+                                  : spendData.summary.utilizationPercent > 70
+                                    ? "bg-yellow-400"
+                                    : "bg-emerald-400",
+                              )}
+                              style={{ width: `${Math.min(100, spendData.summary.utilizationPercent)}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {spendData.summary.utilizationPercent}% of monthly budget consumed in this range.
+                          </div>
+                        </div>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+
+                  <FinanceSummaryCard
+                    debitCents={financeData?.summary.debitCents ?? 0}
+                    creditCents={financeData?.summary.creditCents ?? 0}
+                    netCents={financeData?.summary.netCents ?? 0}
+                    estimatedDebitCents={financeData?.summary.estimatedDebitCents ?? 0}
+                    eventCount={financeData?.summary.eventCount ?? 0}
+                  />
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-[1.25fr,0.95fr]">
+                  <Card>
+                    <CardHeader className="px-5 pt-5 pb-2">
+                      <CardTitle className="text-base">By agent</CardTitle>
+                      <CardDescription>What each agent consumed in the selected period.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2 px-5 pb-5 pt-2">
+                      {(spendData?.byAgent.length ?? 0) === 0 ? (
+                        <p className="text-sm text-muted-foreground">No cost events yet.</p>
                       ) : (
-                        financeData?.byBiller.map((row) => <FinanceBillerCard key={row.biller} row={row} />)
+                        spendData?.byAgent.map((row) => {
+                          const modelRows = agentModelRows.get(row.agentId) ?? [];
+                          const isExpanded = expandedAgents.has(row.agentId);
+                          const hasBreakdown = modelRows.length > 0;
+                          return (
+                            <div key={row.agentId} className="border border-border px-4 py-3">
+                              <div
+                                className={cn("flex items-start justify-between gap-3", hasBreakdown ? "cursor-pointer select-none" : "")}
+                                onClick={() => hasBreakdown && toggleAgent(row.agentId)}
+                              >
+                                <div className="flex min-w-0 items-center gap-2">
+                                  {hasBreakdown ? (
+                                    isExpanded
+                                      ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                      : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                  ) : (
+                                    <span className="h-3 w-3 shrink-0" />
+                                  )}
+                                  <Identity name={row.agentName ?? row.agentId} size="sm" />
+                                  {row.agentStatus === "terminated" ? <StatusBadge status="terminated" /> : null}
+                                </div>
+                                <div className="text-right text-sm tabular-nums">
+                                  <div className="font-medium">{formatCents(row.costCents)}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    in {formatTokens(row.inputTokens + row.cachedInputTokens)} · out {formatTokens(row.outputTokens)}
+                                  </div>
+                                  {(row.apiRunCount > 0 || row.subscriptionRunCount > 0) ? (
+                                    <div className="text-xs text-muted-foreground">
+                                      {row.apiRunCount > 0 ? `${row.apiRunCount} api` : "0 api"}
+                                      {" · "}
+                                      {row.subscriptionRunCount > 0
+                                        ? `${row.subscriptionRunCount} subscription`
+                                        : "0 subscription"}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              {isExpanded && modelRows.length > 0 ? (
+                                <div className="mt-3 space-y-2 border-l border-border pl-4">
+                                  {modelRows.map((modelRow) => {
+                                    const sharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
+                                    return (
+                                      <div
+                                        key={`${modelRow.provider}:${modelRow.model}:${modelRow.billingType}`}
+                                        className="flex items-start justify-between gap-3 text-xs"
+                                      >
+                                        <div className="min-w-0">
+                                          <div className="truncate font-medium text-foreground">
+                                            {providerDisplayName(modelRow.provider)}
+                                            <span className="mx-1 text-border">/</span>
+                                            <span className="font-mono">{modelRow.model}</span>
+                                          </div>
+                                          <div className="truncate text-muted-foreground">
+                                            {providerDisplayName(modelRow.biller)} · {billingTypeDisplayName(modelRow.billingType)}
+                                          </div>
+                                        </div>
+                                        <div className="text-right tabular-nums">
+                                          <div className="font-medium">
+                                            {formatCents(modelRow.costCents)}
+                                            <span className="ml-1 font-normal text-muted-foreground">({sharePct}%)</span>
+                                          </div>
+                                          <div className="text-muted-foreground">
+                                            {formatTokens(modelRow.inputTokens + modelRow.cachedInputTokens + modelRow.outputTokens)} tok
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })
                       )}
                     </CardContent>
                   </Card>
-                  <FinanceTimelineCard rows={topFinanceEvents} />
-                </div>
 
-                <FinanceKindCard rows={financeData?.byKind ?? []} />
-              </div>
-            </>
-          )}
-        </TabsContent>
-      </Tabs>
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader className="px-5 pt-5 pb-2">
+                        <CardTitle className="text-base">By project</CardTitle>
+                        <CardDescription>Run costs attributed through project-linked issues.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2 px-5 pb-5 pt-2">
+                        {(spendData?.byProject.length ?? 0) === 0 ? (
+                          <p className="text-sm text-muted-foreground">No project-attributed run costs yet.</p>
+                        ) : (
+                          spendData?.byProject.map((row, index) => (
+                            <div
+                              key={row.projectId ?? `unattributed-${index}`}
+                              className="flex items-center justify-between gap-3 border border-border px-3 py-2 text-sm"
+                            >
+                              <span className="truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
+                              <span className="font-medium tabular-nums">{formatCents(row.costCents)}</span>
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <FinanceTimelineCard rows={topFinanceEvents.slice(0, 6)} emptyMessage="No finance events yet. Add account-level charges once biller invoices or credits land." />
+                  </div>
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="budgets" className="mt-4 space-y-4">
+            {budgetLoading ? (
+              <PageSkeleton variant="costs" />
+            ) : budgetError ? (
+              <p className="text-sm text-destructive">{(budgetError as Error).message}</p>
+            ) : (
+              <>
+                <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]">
+                  <CardHeader className="px-5 pt-5 pb-3">
+                    <CardTitle className="text-base">Budget control plane</CardTitle>
+                    <CardDescription>
+                      Hard-stop spend limits for agents and projects. Provider subscription quota stays separate and appears under Providers.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-3 px-5 pb-5 pt-0 md:grid-cols-4">
+                    <MetricTile
+                      label="Active incidents"
+                      value={String(activeBudgetIncidents.length)}
+                      subtitle="Open soft or hard threshold crossings"
+                      icon={ReceiptText}
+                    />
+                    <MetricTile
+                      label="Pending approvals"
+                      value={String(budgetData?.pendingApprovalCount ?? 0)}
+                      subtitle="Budget override approvals awaiting board action"
+                      icon={ArrowUpRight}
+                    />
+                    <MetricTile
+                      label="Paused agents"
+                      value={String(budgetData?.pausedAgentCount ?? 0)}
+                      subtitle="Agent heartbeats blocked by budget"
+                      icon={Coins}
+                    />
+                    <MetricTile
+                      label="Paused projects"
+                      value={String(budgetData?.pausedProjectCount ?? 0)}
+                      subtitle="Project execution blocked by budget"
+                      icon={DollarSign}
+                    />
+                  </CardContent>
+                </Card>
+
+                {activeBudgetIncidents.length > 0 ? (
+                  <div className="space-y-3">
+                    <div>
+                      <h2 className="text-lg font-semibold">Active incidents</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Resolve hard stops here by raising the budget or explicitly keeping the scope paused.
+                      </p>
+                    </div>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      {activeBudgetIncidents.map((incident) => (
+                        <BudgetIncidentCard
+                          key={incident.id}
+                          incident={incident}
+                          isMutating={incidentMutation.isPending}
+                          onKeepPaused={() => incidentMutation.mutate({ incidentId: incident.id, action: "keep_paused" })}
+                          onRaiseAndResume={(amount) =>
+                            incidentMutation.mutate({
+                              incidentId: incident.id,
+                              action: "raise_budget_and_resume",
+                              amount,
+                            })}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="space-y-5">
+                  {(["company", "agent", "project"] as const).map((scopeType) => {
+                    const rows = budgetPoliciesByScope[scopeType];
+                    if (rows.length === 0) return null;
+                    return (
+                      <section key={scopeType} className="space-y-3">
+                        <div>
+                          <h2 className="text-lg font-semibold capitalize">{scopeType} budgets</h2>
+                          <p className="text-sm text-muted-foreground">
+                            {scopeType === "company"
+                              ? "Company-wide monthly policy."
+                              : scopeType === "agent"
+                                ? "Recurring monthly spend policies for individual agents."
+                                : "Lifetime spend policies for execution-bound projects."}
+                          </p>
+                        </div>
+                        <div className="grid gap-4 xl:grid-cols-2">
+                          {rows.map((summary) => (
+                            <BudgetPolicyCard
+                              key={summary.policyId}
+                              summary={summary}
+                              isSaving={policyMutation.isPending}
+                              onSave={(amount) =>
+                                policyMutation.mutate({
+                                  scopeType: summary.scopeType,
+                                  scopeId: summary.scopeId,
+                                  amount,
+                                  windowKind: summary.windowKind,
+                                })}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  })}
+
+                  {budgetPolicies.length === 0 ? (
+                    <Card>
+                      <CardContent className="px-5 py-8 text-sm text-muted-foreground">
+                        No budget policies yet. Set agent and project budgets from their detail pages, or use the existing company monthly budget control.
+                      </CardContent>
+                    </Card>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="providers" className="mt-4 space-y-4">
+            {showCustomPrompt ? (
+              <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
+            ) : (
+              <>
+                <Tabs value={effectiveProvider} onValueChange={setActiveProvider}>
+                  <PageTabBar items={providerTabItems} value={effectiveProvider} />
+
+                  <TabsContent value="all" className="mt-4">
+                    {providers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No cost events in this period.</p>
+                    ) : (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {providers.map((provider) => (
+                          <ProviderQuotaCard
+                            key={provider}
+                            provider={provider}
+                            rows={byProvider.get(provider) ?? []}
+                            budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
+                            totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                            weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
+                            windowRows={windowSpendByProvider.get(provider) ?? []}
+                            showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
+                            quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
+                            quotaError={quotaErrorsByProvider.get(provider) ?? null}
+                            quotaSource={quotaSourcesByProvider.get(provider) ?? null}
+                            quotaLoading={quotaLoading}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  {providers.map((provider) => (
+                    <TabsContent key={provider} value={provider} className="mt-4">
+                      <ProviderQuotaCard
+                        provider={provider}
+                        rows={byProvider.get(provider) ?? []}
+                        budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
+                        totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                        weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
+                        windowRows={windowSpendByProvider.get(provider) ?? []}
+                        showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
+                        quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
+                        quotaError={quotaErrorsByProvider.get(provider) ?? null}
+                        quotaSource={quotaSourcesByProvider.get(provider) ?? null}
+                        quotaLoading={quotaLoading}
+                      />
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="billers" className="mt-4 space-y-4">
+            {showCustomPrompt ? (
+              <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
+            ) : (
+              <>
+                <Tabs value={effectiveBiller} onValueChange={setActiveBiller}>
+                  <PageTabBar items={billerTabItems} value={effectiveBiller} />
+
+                  <TabsContent value="all" className="mt-4">
+                    {billers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No billable events in this period.</p>
+                    ) : (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {billers.map((biller) => {
+                          const row = (byBiller.get(biller) ?? [])[0];
+                          if (!row) return null;
+                          const providerRows = (providerData ?? []).filter((entry) => entry.biller === biller);
+                          return (
+                            <BillerSpendCard
+                              key={biller}
+                              row={row}
+                              weekSpendCents={weekSpendByBiller.get(biller) ?? 0}
+                              budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
+                              totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                              providerRows={providerRows}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  {billers.map((biller) => {
+                    const row = (byBiller.get(biller) ?? [])[0];
+                    if (!row) return null;
+                    const providerRows = (providerData ?? []).filter((entry) => entry.biller === biller);
+                    return (
+                      <TabsContent key={biller} value={biller} className="mt-4">
+                        <BillerSpendCard
+                          row={row}
+                          weekSpendCents={weekSpendByBiller.get(biller) ?? 0}
+                          budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
+                          totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                          providerRows={providerRows}
+                        />
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="finance" className="mt-4 space-y-4">
+            {showCustomPrompt ? (
+              <p className="text-sm text-muted-foreground">Select a start and end date to load data.</p>
+            ) : financeLoading ? (
+              <PageSkeleton variant="costs" />
+            ) : financeError ? (
+              <p className="text-sm text-destructive">{(financeError as Error).message}</p>
+            ) : (
+              <>
+                <FinanceSummaryCard
+                  debitCents={financeData?.summary.debitCents ?? 0}
+                  creditCents={financeData?.summary.creditCents ?? 0}
+                  netCents={financeData?.summary.netCents ?? 0}
+                  estimatedDebitCents={financeData?.summary.estimatedDebitCents ?? 0}
+                  eventCount={financeData?.summary.eventCount ?? 0}
+                />
+
+                <div className="grid gap-4 xl:grid-cols-[1.2fr,0.95fr]">
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader className="px-5 pt-5 pb-2">
+                        <CardTitle className="text-base">By biller</CardTitle>
+                        <CardDescription>Account-level financial events grouped by who charged or credited them.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="grid gap-4 px-5 pb-5 pt-2 md:grid-cols-2">
+                        {(financeData?.byBiller.length ?? 0) === 0 ? (
+                          <p className="text-sm text-muted-foreground">No finance events yet.</p>
+                        ) : (
+                          financeData?.byBiller.map((row) => <FinanceBillerCard key={row.biller} row={row} />)
+                        )}
+                      </CardContent>
+                    </Card>
+                    <FinanceTimelineCard rows={topFinanceEvents} />
+                  </div>
+
+                  <FinanceKindCard rows={financeData?.byKind ?? []} />
+                </div>
+              </>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
