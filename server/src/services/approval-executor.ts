@@ -1,7 +1,8 @@
 import { agentCredentialService } from "./agent-credentials.js";
 import { logger } from "../middleware/logger.js";
 import type { Db } from "@paperclipai/db";
-import { aygentWhatsappMessages } from "@paperclipai/db";
+import { aygentWhatsappMessages, aygentWhatsappWindows } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
 
 interface ExecutionResult {
   executed: boolean;
@@ -28,6 +29,29 @@ export function approvalExecutorService(db: Db) {
     const message = String(payload.message ?? "");
     if (!phone || !message) {
       return { executed: false, action: "send_whatsapp", error: "Missing phone or message" };
+    }
+
+    // Check 24-hour messaging window — free-form messages require an open window
+    const windowRows = await db
+      .select()
+      .from(aygentWhatsappWindows)
+      .where(
+        and(
+          eq(aygentWhatsappWindows.agentId, agentId),
+          eq(aygentWhatsappWindows.chatJid, phone),
+        ),
+      )
+      .limit(1);
+
+    const windowOpen = windowRows[0] && new Date(windowRows[0].windowExpiresAt) > new Date();
+
+    if (!windowOpen) {
+      return {
+        executed: false,
+        action: "send_whatsapp",
+        blockedReason: "whatsapp_window_closed",
+        error: "24-hour messaging window closed. A template message is required.",
+      };
     }
 
     try {

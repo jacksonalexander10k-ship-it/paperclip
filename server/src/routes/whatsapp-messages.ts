@@ -7,7 +7,7 @@
 
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
-import { aygentWhatsappMessages } from "@paperclipai/db";
+import { aygentWhatsappMessages, aygentWhatsappWindows } from "@paperclipai/db";
 import { and, eq, asc } from "drizzle-orm";
 import { assertCompanyAccess } from "./authz.js";
 
@@ -58,15 +58,36 @@ export function whatsappMessageRoutes(db: Db) {
     const { companyId } = req.params;
     assertCompanyAccess(req, companyId);
 
-    const { chatJid } = req.query;
+    const { chatJid, agentId } = req.query;
 
     if (!chatJid || typeof chatJid !== "string") {
       res.status(400).json({ error: "chatJid query param is required" });
       return;
     }
 
-    // Stub — Task 5 will implement proper 24-hour window tracking
-    res.json({ open: true });
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(aygentWhatsappWindows.companyId, companyId),
+      eq(aygentWhatsappWindows.chatJid, chatJid),
+    ];
+
+    if (agentId && typeof agentId === "string") {
+      conditions.push(eq(aygentWhatsappWindows.agentId, agentId));
+    }
+
+    const windowRows = await db
+      .select()
+      .from(aygentWhatsappWindows)
+      .where(and(...conditions))
+      .limit(1);
+
+    const window = windowRows[0];
+    const open = window ? new Date(window.windowExpiresAt) > new Date() : false;
+
+    res.json({
+      open,
+      expiresAt: window?.windowExpiresAt ?? null,
+      openedAt: window?.windowOpenedAt ?? null,
+    });
   });
 
   return router;

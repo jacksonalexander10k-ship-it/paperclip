@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
-import { aygentWhatsappMessages } from "@paperclipai/db";
+import { aygentWhatsappMessages, aygentWhatsappWindows } from "@paperclipai/db";
 import { agentCredentialService } from "../services/agent-credentials.js";
 import { issueService, agentService } from "../services/index.js";
 import { logActivity } from "../services/activity-log.js";
@@ -105,6 +105,27 @@ export function whatsappWebhookRoutes(db?: Db) {
             });
           } catch (err) {
             logger.error({ err }, "whatsapp-webhook: failed to store message");
+          }
+
+          // Upsert 24-hour messaging window — lead replied, window resets
+          try {
+            const now = new Date();
+            const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            await db
+              .insert(aygentWhatsappWindows)
+              .values({
+                companyId: agent.companyId,
+                agentId: agent.id,
+                chatJid: from,
+                windowOpenedAt: now,
+                windowExpiresAt: expiresAt,
+              })
+              .onConflictDoUpdate({
+                target: [aygentWhatsappWindows.agentId, aygentWhatsappWindows.chatJid],
+                set: { windowOpenedAt: now, windowExpiresAt: expiresAt },
+              });
+          } catch (err) {
+            logger.error({ err }, "whatsapp-webhook: failed to upsert 24h window");
           }
 
           // Create Paperclip issue for the agent to process
