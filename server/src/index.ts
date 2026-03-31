@@ -50,6 +50,7 @@ import { createStorageServiceFromConfig } from "./storage/index.js";
 import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
+import { startTokenRefreshWorker } from "./workers/token-refresh.js";
 
 type BetterAuthSessionUser = {
   id: string;
@@ -733,6 +734,8 @@ export async function startServer(): Promise<StartedServer> {
     });
   });
   
+  startTokenRefreshWorker(db as any);
+
   if (embeddedPostgres && embeddedPostgresStartedByThisProcess) {
     const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
       logger.info({ signal }, "Stopping embedded PostgreSQL");
