@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Send, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Send, Loader2, CheckCircle, XCircle, ArrowUp } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
+import { PageHeader } from "../components/PageHeader";
 import { Button } from "@/components/ui/button";
+import { WhatsAppConnect } from "../components/WhatsAppConnect";
 import type { IssueComment, Issue } from "@paperclipai/shared";
 
 const CEO_CHAT_TITLE = "CEO Chat";
@@ -17,6 +19,7 @@ const CEO_CHAT_TITLE = "CEO Chat";
 interface ApprovalPayload {
   type: "approval_required";
   action: string;
+  approval_id?: string;
   to?: string;
   phone?: string;
   message?: string;
@@ -44,13 +47,16 @@ function parseApprovalBlock(body: string): { pre: string; payload: ApprovalPaylo
 function InlineApprovalCard({ payload }: { payload: ApprovalPayload }) {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
-  const [status, setStatus] = useState<"pending" | "approved" | "rejected">("pending");
+  const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "blocked">("pending");
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => approvalsApi.approve(id),
     onSuccess: () => {
       setStatus("approved");
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
+    },
+    onError: () => {
+      setStatus("blocked");
     },
   });
 
@@ -62,74 +68,105 @@ function InlineApprovalCard({ payload }: { payload: ApprovalPayload }) {
     },
   });
 
+  const approvalId = payload.approval_id;
+
   const actionLabels: Record<string, string> = {
     send_whatsapp: "Send WhatsApp",
     send_email: "Send Email",
     post_to_instagram: "Post to Instagram",
+    post_instagram: "Post to Instagram",
     generate_pitch_deck: "Send Pitch Deck",
+    send_pitch_deck: "Send Pitch Deck",
     schedule_viewing: "Confirm Viewing",
+    confirm_viewing: "Confirm Viewing",
+    hire_agent: "Hire Agent",
   };
 
   return (
-    <div className="mt-2 rounded-lg border border-zinc-700 bg-zinc-800 p-4 text-sm">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <span className="font-medium text-white">
-          {actionLabels[payload.action] ?? payload.action}
-        </span>
-        {payload.lead_score != null && (
-          <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
-            Score {payload.lead_score}/10
+    <div className="chat-msg-enter mt-2 rounded-[10px] border border-border overflow-hidden bg-card">
+      {/* Green header strip */}
+      <div className="h-[3px] bg-primary" />
+      <div className="px-3.5 py-3">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <span className="text-[12px] font-semibold text-foreground">
+            {actionLabels[payload.action] ?? payload.action}
           </span>
+          {payload.lead_score != null && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              Score {payload.lead_score}/10
+            </span>
+          )}
+        </div>
+
+        {payload.to && (
+          <p className="text-[11px] text-muted-foreground mb-1">
+            <span className="text-foreground/70">To:</span> {payload.to}
+            {payload.phone ? ` \u00B7 ${payload.phone}` : ""}
+          </p>
+        )}
+
+        {payload.message && (
+          <div className="mt-2 rounded-[8px] border border-border/60 bg-background px-3 py-2">
+            <p className="text-[11.5px] leading-[1.55] text-foreground/80 whitespace-pre-wrap">
+              {payload.message}
+            </p>
+          </div>
+        )}
+
+        {payload.context && (
+          <p className="mt-2 text-[10.5px] text-muted-foreground italic leading-[1.45]">{payload.context}</p>
+        )}
+
+        {status === "pending" && approvalId && (
+          <div className="flex gap-2 mt-3">
+            <button
+              className="flex items-center gap-1.5 rounded-[7px] bg-primary px-3 py-[6px] text-[11px] font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
+              onClick={() => approveMutation.mutate(approvalId)}
+              disabled={approveMutation.isPending || rejectMutation.isPending}
+            >
+              <CheckCircle className="h-3 w-3" />
+              Approve & Send
+            </button>
+            <button
+              className="flex items-center gap-1.5 rounded-[7px] border border-border px-3 py-[6px] text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
+              onClick={() => rejectMutation.mutate(approvalId)}
+              disabled={approveMutation.isPending || rejectMutation.isPending}
+            >
+              <XCircle className="h-3 w-3" />
+              Decline
+            </button>
+          </div>
+        )}
+
+        {status === "pending" && !approvalId && (
+          <p className="mt-3 text-[10.5px] text-muted-foreground italic">Approval record pending...</p>
+        )}
+
+        {status === "approved" && (
+          <p className="mt-3 text-[11px] font-medium text-primary flex items-center gap-1">
+            <CheckCircle className="h-3 w-3" /> Approved
+          </p>
+        )}
+        {status === "rejected" && (
+          <p className="mt-3 text-[11px] font-medium text-destructive flex items-center gap-1">
+            <XCircle className="h-3 w-3" /> Rejected
+          </p>
+        )}
+        {status === "blocked" && (
+          <div className="mt-3 space-y-2">
+            <p className="text-[11px] text-amber-500 font-medium">
+              Connect WhatsApp to send this message
+            </p>
+            <WhatsAppConnect agentId="" agentName="Agent" />
+            <button
+              className="text-[11px] text-primary hover:underline"
+              onClick={() => setStatus("pending")}
+            >
+              Retry after connecting
+            </button>
+          </div>
         )}
       </div>
-
-      {payload.to && (
-        <p className="text-zinc-400 mb-1">
-          <span className="text-zinc-300">To:</span> {payload.to}
-          {payload.phone ? ` · ${payload.phone}` : ""}
-        </p>
-      )}
-
-      {payload.message && (
-        <p className="text-zinc-300 bg-zinc-900 rounded-md px-3 py-2 mt-2 text-xs leading-relaxed whitespace-pre-wrap">
-          {payload.message}
-        </p>
-      )}
-
-      {payload.context && (
-        <p className="mt-2 text-xs text-zinc-500 italic">{payload.context}</p>
-      )}
-
-      {status === "pending" && (
-        <div className="flex gap-2 mt-3">
-          <Button
-            size="sm"
-            className="bg-green-600 hover:bg-green-700 text-white"
-            onClick={() => approveMutation.mutate(payload.lead_id ?? "")}
-            disabled={approveMutation.isPending || rejectMutation.isPending}
-          >
-            <CheckCircle className="h-3.5 w-3.5 mr-1" />
-            Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-zinc-600 text-zinc-300 hover:bg-zinc-700"
-            onClick={() => rejectMutation.mutate(payload.lead_id ?? "")}
-            disabled={approveMutation.isPending || rejectMutation.isPending}
-          >
-            <XCircle className="h-3.5 w-3.5 mr-1" />
-            Reject
-          </Button>
-        </div>
-      )}
-
-      {status === "approved" && (
-        <p className="mt-3 text-xs font-medium text-green-400">Approved</p>
-      )}
-      {status === "rejected" && (
-        <p className="mt-3 text-xs font-medium text-red-400">Rejected</p>
-      )}
     </div>
   );
 }
@@ -141,19 +178,33 @@ function ChatBubble({ comment }: { comment: IssueComment }) {
   const parsed = !isOwner ? parseApprovalBlock(comment.body) : null;
 
   return (
-    <div className={`flex ${isOwner ? "justify-end" : "justify-start"} mb-3`}>
-      <div className={`max-w-[80%] ${isOwner ? "items-end" : "items-start"} flex flex-col`}>
+    <div className={`chat-msg-enter flex ${isOwner ? "flex-row-reverse" : "flex-row"} items-end gap-2 mb-3`}>
+      {/* Avatar — AI only */}
+      {!isOwner && (
+        <div className="w-[27px] h-[27px] rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shrink-0 mb-[18px]">
+          <span className="text-[10px] font-bold text-primary-foreground leading-none">
+            CEO
+          </span>
+        </div>
+      )}
+
+      <div className={`max-w-[75%] flex flex-col ${isOwner ? "items-end" : "items-start"}`}>
+        {/* Bubble */}
         <div
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+          className={`px-3.5 py-2.5 text-[12.5px] leading-[1.55] whitespace-pre-wrap ${
             isOwner
-              ? "bg-blue-600 text-white rounded-tr-sm"
-              : "bg-zinc-800 text-zinc-100 border border-zinc-700 rounded-tl-sm"
+              ? "bg-primary text-primary-foreground rounded-[13px] rounded-br-[4px]"
+              : "bg-card border border-border text-foreground rounded-[13px] rounded-bl-[4px]"
           }`}
         >
           {parsed ? parsed.pre || null : comment.body}
         </div>
+
+        {/* Inline approval card */}
         {parsed && <InlineApprovalCard payload={parsed.payload} />}
-        <span className="mt-1 text-[10px] text-zinc-500 px-1">
+
+        {/* Timestamp */}
+        <span className="mt-[3px] text-[11px] text-muted-foreground/60 px-1 select-none">
           {new Date(comment.createdAt).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -168,11 +219,17 @@ function ChatBubble({ comment }: { comment: IssueComment }) {
 
 function StreamingBubble({ text }: { text: string }) {
   return (
-    <div className="flex justify-start mb-3">
-      <div className="max-w-[80%] items-start flex flex-col">
-        <div className="rounded-2xl rounded-tl-sm bg-zinc-800 text-zinc-100 border border-zinc-700 px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+    <div className="chat-msg-enter flex flex-row items-end gap-2 mb-3">
+      {/* Avatar */}
+      <div className="w-[27px] h-[27px] rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shrink-0 mb-[18px]">
+        <span className="text-[10px] font-bold text-primary-foreground leading-none">
+          CEO
+        </span>
+      </div>
+      <div className="max-w-[75%] flex flex-col items-start">
+        <div className="bg-card border border-border text-foreground rounded-[13px] rounded-bl-[4px] px-3.5 py-2.5 text-[12.5px] leading-[1.55] whitespace-pre-wrap">
           {text}
-          <span className="inline-block w-0.5 h-3.5 bg-zinc-400 ml-0.5 animate-pulse align-middle" />
+          <span className="inline-block w-[2px] h-[14px] bg-primary/70 ml-0.5 animate-blink align-middle rounded-full" />
         </div>
       </div>
     </div>
@@ -183,24 +240,32 @@ function StreamingBubble({ text }: { text: string }) {
 
 function TypingIndicator() {
   return (
-    <div className="flex justify-start mb-3">
-      <div className="rounded-2xl rounded-tl-sm bg-zinc-800 border border-zinc-700 px-4 py-3">
-        <div className="flex gap-1 items-center h-4">
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
+    <div className="chat-msg-enter flex flex-row items-end gap-2 mb-3">
+      {/* Avatar */}
+      <div className="w-[27px] h-[27px] rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shrink-0 mb-[18px]">
+        <span className="text-[10px] font-bold text-primary-foreground leading-none">
+          CEO
+        </span>
+      </div>
+      <div className="bg-card border border-border rounded-[13px] rounded-bl-[4px] px-3.5 py-2.5">
+        <div className="flex gap-[5px] items-center h-[16px]">
+          <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
+          <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
+          <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
         </div>
       </div>
     </div>
   );
 }
 
-// ── Quick actions bar ──────────────────────────────────────────────────────────
+// ── Quick actions ──────────────────────────────────────────────────────────────
 
 const QUICK_ACTIONS = [
   { label: "Brief me", message: "Give me a morning brief" },
-  { label: "What's pending?", message: "What approvals are pending?" },
+  { label: "What\u2019s pending?", message: "What approvals are pending?" },
   { label: "Pause all agents", message: "Pause all agents immediately" },
+  { label: "Show budget", message: "Show me the current budget and spend" },
+  { label: "Find leads", message: "Find me the hottest leads in the pipeline right now" },
 ];
 
 // ── CEO Chat page ──────────────────────────────────────────────────────────────
@@ -210,14 +275,15 @@ export function CeoChat() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
 
   // Streaming state
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  // Text buffer for smooth drip-feed
-  const textBufferRef = useRef("");
-  const drainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track when stream finishes so we can clear after comment loads
+  const streamingDoneRef = useRef(false);
+  const prevCommentCountRef = useRef(0);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "CEO Chat" }]);
@@ -271,38 +337,18 @@ export function CeoChat() {
   });
   const ceoAgent = agents?.find((a) => a.role === "ceo") ?? null;
 
-  // ── Smooth drip-feed drain ───────────────────────────────────────────────────
-  const startDraining = useCallback(() => {
-    if (drainTimerRef.current) return;
-
-    function drain() {
-      drainTimerRef.current = null;
-      const bufLen = textBufferRef.current.length;
-      if (bufLen === 0) return;
-
-      let chunkSize: number;
-      if (bufLen > 100) chunkSize = 20 + Math.floor(Math.random() * 20);
-      else if (bufLen > 20) chunkSize = 5 + Math.floor(Math.random() * 10);
-      else chunkSize = 2 + Math.floor(Math.random() * 3);
-
-      // Try to break at word boundary
-      if (chunkSize < bufLen) {
-        const nextSpace = textBufferRef.current.indexOf(" ", chunkSize);
-        if (nextSpace !== -1 && nextSpace < chunkSize + 10) chunkSize = nextSpace + 1;
-      }
-
-      const chunk = textBufferRef.current.slice(0, chunkSize);
-      textBufferRef.current = textBufferRef.current.slice(chunkSize);
-
-      setStreamingText((prev) => prev + chunk);
-
-      if (textBufferRef.current.length > 0) {
-        drainTimerRef.current = setTimeout(drain, 30);
+  // ── Clear streaming bubble once the persisted comment loads ─────────────────
+  useEffect(() => {
+    if (streamingDoneRef.current && comments.length > prevCommentCountRef.current) {
+      const last = comments[comments.length - 1];
+      if (last && last.authorAgentId !== null) {
+        setStreamingText("");
+        setIsStreaming(false);
+        streamingDoneRef.current = false;
       }
     }
-
-    drainTimerRef.current = setTimeout(drain, 30);
-  }, []);
+    prevCommentCountRef.current = comments.length;
+  }, [comments]);
 
   // ── Send message via streaming SSE ──────────────────────────────────────────
   const handleSend = useCallback(
@@ -313,7 +359,7 @@ export function CeoChat() {
       setInput("");
       setIsStreaming(true);
       setStreamingText("");
-      textBufferRef.current = "";
+      streamingDoneRef.current = false;
 
       // Optimistically add owner message to local view immediately
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
@@ -351,16 +397,12 @@ export function CeoChat() {
             }
 
             if (event.type === "text") {
-              textBufferRef.current += event.text as string;
-              startDraining();
+              setStreamingText((prev) => prev + (event.text as string));
             }
 
             if (event.type === "done") {
-              // Drain any remaining buffer instantly
-              if (textBufferRef.current.length > 0) {
-                setStreamingText((prev) => prev + textBufferRef.current);
-                textBufferRef.current = "";
-              }
+              streamingDoneRef.current = true;
+              queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
             }
 
             if (event.type === "error") {
@@ -370,71 +412,72 @@ export function CeoChat() {
         }
       } catch (err) {
         console.error("CEO chat fetch error:", err);
-      } finally {
-        // Clear streaming state and refresh persisted comments
+        // On error, clear immediately
         setIsStreaming(false);
         setStreamingText("");
-        textBufferRef.current = "";
-        if (drainTimerRef.current) {
-          clearTimeout(drainTimerRef.current);
-          drainTimerRef.current = null;
-        }
+        streamingDoneRef.current = false;
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
       }
     },
-    [input, issueId, selectedCompanyId, isStreaming, queryClient, startDraining],
+    [input, issueId, selectedCompanyId, isStreaming, queryClient],
   );
 
   // ── Auto-scroll to bottom ────────────────────────────────────────────────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [comments, streamingText, isStreaming]);
 
-  const statusColor = isStreaming
+  const _statusColor = isStreaming
     ? "bg-blue-400 animate-pulse"
     : ceoAgent?.status === "active"
-      ? "bg-green-500"
+      ? "bg-primary"
       : ceoAgent?.status === "paused"
         ? "bg-yellow-500"
-        : "bg-zinc-500";
+        : "bg-muted-foreground/40";
 
-  const statusLabel = isStreaming
+  const _statusLabel = isStreaming
     ? "Responding..."
     : ceoAgent?.status === "active"
-      ? "Running"
+      ? "Live"
       : ceoAgent?.status === "paused"
         ? "Paused"
         : "Idle";
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-        <div className="flex items-center gap-2.5">
-          <MessageSquare className="h-5 w-5 text-blue-400" />
-          <h1 className="text-base font-semibold text-foreground">CEO Chat</h1>
-        </div>
-        {ceoAgent && (
-          <div className="flex items-center gap-1.5">
-            <span className={`inline-block h-2 w-2 rounded-full ${statusColor}`} />
-            <span className="text-xs text-muted-foreground">{statusLabel}</span>
+      {/* ── Page header bar (50px) ─────────────────────────────────────── */}
+      <PageHeader
+        title="CEO Chat"
+        badge={
+          <div className="flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/8 px-2.5 py-[3px]">
+            <span className="relative flex h-[6px] w-[6px]">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-50" />
+              <span className="relative inline-flex h-[6px] w-[6px] rounded-full bg-primary" />
+            </span>
+            <span className="text-[11px] font-medium text-primary">Live</span>
           </div>
-        )}
-      </div>
+        }
+      />
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      {/* ── Chat messages area ─────────────────────────────────────────── */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4">
         {commentsLoading && (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+            <Loader2 className="h-5 w-5 text-muted-foreground/40 animate-spin" />
           </div>
         )}
 
         {!commentsLoading && comments.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-            <MessageSquare className="h-10 w-10 text-zinc-600" />
-            <p className="text-sm text-muted-foreground max-w-xs">
-              Send a message to start talking with your CEO.
+            {/* Empty state avatar */}
+            <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-primary/60 to-primary flex items-center justify-center">
+              <span className="text-[16px] font-bold text-primary-foreground leading-none">
+                CEO
+              </span>
+            </div>
+            <p className="text-[12.5px] text-muted-foreground max-w-[260px] leading-[1.5]">
+              Send a message to start talking with your CEO agent.
             </p>
           </div>
         )}
@@ -443,33 +486,33 @@ export function CeoChat() {
           <ChatBubble key={comment.id} comment={comment} />
         ))}
 
-        {/* Typing indicator — shown while waiting for first streaming token */}
+        {/* Typing indicator -- shown while waiting for first streaming token */}
         {isStreaming && streamingText === "" && <TypingIndicator />}
 
-        {/* Streaming bubble — fills in character by character */}
+        {/* Streaming bubble -- fills in character by character */}
         {streamingText !== "" && <StreamingBubble text={streamingText} />}
 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick actions */}
-      <div className="px-5 py-2 border-t border-border flex gap-2 flex-wrap shrink-0">
+      {/* ── Quick action pills ─────────────────────────────────────────── */}
+      <div className="border-t border-border/40 px-5 py-[7px] flex gap-[5px] overflow-x-auto shrink-0">
         {QUICK_ACTIONS.map((action) => (
           <button
             key={action.label}
             onClick={() => { void handleSend(action.message); }}
             disabled={!issueId || isStreaming}
-            className="rounded-full border border-zinc-700 bg-zinc-800/50 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="whitespace-nowrap rounded-full border border-border/60 px-3 py-[4px] text-[11.5px] text-muted-foreground hover:text-primary hover:border-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
           >
             {action.label}
           </button>
         ))}
       </div>
 
-      {/* Input */}
-      <div className="px-5 pb-5 pt-2 shrink-0">
-        <div className="flex gap-2 items-end">
-          <textarea
+      {/* ── Input bar ──────────────────────────────────────────────────── */}
+      <div className="mx-4 mb-3 mt-[3px] shrink-0">
+        <div className="flex items-center gap-2 rounded-[12px] border border-border bg-background h-[48px] px-3 focus-within:border-primary/50 transition-colors">
+          <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -478,23 +521,22 @@ export function CeoChat() {
                 void handleSend();
               }
             }}
-            placeholder={issueId ? "Message the CEO..." : "Setting up CEO Chat..."}
+            placeholder={issueId ? "Type a message to CEO..." : "Setting up CEO Chat..."}
             disabled={!issueId || isStreaming}
-            rows={2}
-            className="flex-1 resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder-muted-foreground focus:border-blue-500 focus:outline-none transition-colors disabled:opacity-50"
+            className="flex-1 bg-transparent text-[13px] text-foreground placeholder-muted-foreground/50 outline-none disabled:opacity-40"
           />
-          <Button
+          <button
+            aria-label="Send message"
             onClick={() => { void handleSend(); }}
             disabled={!input.trim() || !issueId || isStreaming}
-            size="icon"
-            className="h-11 w-11 rounded-xl bg-blue-500 hover:bg-blue-600 text-white shrink-0"
+            className="w-[30px] h-[30px] rounded-lg bg-primary flex items-center justify-center shrink-0 text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
           >
             {isStreaming ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Send className="h-4 w-4" />
+              <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />
             )}
-          </Button>
+          </button>
         </div>
       </div>
     </div>
