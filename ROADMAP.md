@@ -70,6 +70,43 @@ _(All items done — see git history)_
 
 ---
 
+## Architecture Decisions (from 2026-03-31 session)
+
+### Agent Model
+- Departments are hardcoded (Executive, Sales, Content, Marketing, Operations, Finance)
+- Agents are flexible within departments — CEO assigns tools from pool of 62
+- CEO can add/remove tools from any agent, including cross-department tools
+- Predefined roles are just presets (default tool bundles) — CEO can modify
+- Skills taught via: pre-built library (27), CEO extracts from conversation, owner writes directly
+- Landing pages / pitch decks = template tools, not a Developer Agent. No Opus for customers.
+
+### AI Model Strategy
+- Gemini 2.5 Flash for everything non-customer-facing (free/near-free, better quality than Haiku)
+- Sonnet only for final customer-facing output (WhatsApp drafts, CEO Chat, Instagram, emails)
+- Sonnet receives pre-assembled context and writes ONLY the message ($0.10/run, not $0.35)
+- Opus only for Scale/Enterprise tier (50 runs/month, "Deep Think" toggle in CEO Chat)
+- Ollama (local) for routing/classification — add later when optimising at scale
+- No Haiku anywhere — Gemini Flash is better quality AND cheaper
+
+### Event-Driven Architecture
+- No heartbeat polling — agents only run when triggered by real events
+- Scheduled: only 4 runs/day total (CEO morning brief, Content queue, Marketing check, Finance summary)
+- Everything else: webhook triggers (new lead, WhatsApp reply, CEO message, escalation)
+- Routing decisions made in Node.js code or Gemini Flash — never spawn Sonnet to check if there's work
+
+### WhatsApp / 360dialog
+- 360dialog Partner Platform (€500/mo) — signed up, sandbox tested
+- Embedded Signup via Connect Button for agency onboarding
+- Max 3 numbers before Meta Tech Provider registration (covers demo/early agencies)
+- Phone app disconnects when number connects to API — all messages visible in dashboard only
+- whatsapp_messages table stores all inbound/outbound (zero AI cost)
+
+### Pricing
+- AED 999 / 1,499 / 2,499 / Custom (Starter / Growth / Scale / Enterprise)
+- See PRICING-AND-BUSINESS-MODEL.md for full breakdown
+
+---
+
 ## Remaining (post-launch polish)
 
 ### UI Polish
@@ -89,10 +126,40 @@ _(All items done — see git history)_
 - [ ] Claude Code MCP config auto-generated per agent on heartbeat
 - [ ] Per-agency credential injection in MCP server
 
+### AI Model Integration
+- [ ] Gemini 2.5 Flash integration for non-customer-facing tasks
+- [ ] Sonnet-only-for-final-output pipeline (pre-assemble context, Sonnet writes message only)
+- [ ] Event-driven agent triggers (replace heartbeat polling with webhook + cron)
+- [ ] Opus "Deep Think" toggle for Scale/Enterprise CEO Chat
+
 ### Phase 4 — Future Features
-- [ ] AI Calling (Twilio + Gemini 2.0 Flash Live)
-- [ ] Facebook & Google Ads (Marketing API + Leads webhook)
-- [ ] Portal email parsing (PF, Bayut, Dubizzle)
+
+**4.1 — Facebook & Google Ads (agent-managed, agency's own account)**
+- [ ] OAuth connect flow: agency connects their Facebook Ads account (Settings → Integrations)
+- [ ] Store Facebook ad account token in `agent_credentials` (`ads_management`, `ads_read`, `leads_retrieval`)
+- [ ] Marketing Agent: create campaigns, ad sets, ads via Facebook Marketing API
+- [ ] Marketing Agent: generate ad images with Nanobana 2 (Google Imagen)
+- [ ] Marketing Agent: generate ad videos with Veo 3.1
+- [ ] Marketing Agent: write ad copy (headlines, primary text, descriptions) via Claude
+- [ ] Campaign approval cards in CEO Chat (full preview: targeting, budget, creative, estimated results)
+- [ ] Facebook Leads webhook: lead submits form → webhook receiver → create lead + issue → Sales Agent responds
+- [ ] Marketing Agent: daily performance monitoring, auto-pause underperformers, budget reallocation
+- [ ] Performance reporting in CEO morning brief (CPL, spend, leads, CTR)
+- [ ] Google Ads API (Search, Display, Performance Max) — same pattern, separate OAuth
+
+**4.2 — AI Calling**
+- [ ] Reuse AygentDesk's Twilio + Gemini 2.0 Flash Live implementation
+- [ ] Inbound call handling with real-time AI response
+- [ ] Outbound call lists with owner approval before dialling
+- [ ] Call transcripts stored against lead records
+
+**4.3 — Portal Email Parsing**
+- [ ] Property Finder email notification parsing (real-time via Gmail Push)
+- [ ] Bayut email parsing
+- [ ] Dubizzle email parsing
+- [ ] Auto-create lead + assign to Sales agent
+
+**4.4 — Advanced Features**
 - [ ] White-label enterprise tier
 - [ ] Agency context auto-learning
 - [ ] Gemini Embedding 2 for semantic lead-to-project matching

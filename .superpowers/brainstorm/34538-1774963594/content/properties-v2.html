@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Properties Page — Variations</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    letter-spacing: -0.005em;
+    padding: 24px;
+    min-height: 100vh;
+    transition: all 0.3s;
+  }
+
+  /* Light mode (default) */
+  body {
+    --bg: oklch(0.985 0.002 265);
+    --fg: oklch(0.095 0.012 265);
+    --card: oklch(1 0 0);
+    --card-fg: oklch(0.095 0.012 265);
+    --border: oklch(0.905 0.007 265);
+    --muted-fg: oklch(0.50 0.015 265);
+    --accent: oklch(0.935 0.006 265);
+    --primary: oklch(0.48 0.17 162);
+    --primary-fg: oklch(0.985 0 0);
+    --secondary: oklch(0.95 0.005 265);
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  /* Dark mode */
+  body.dark {
+    --bg: oklch(0.055 0.010 265);
+    --fg: oklch(0.97 0.004 265);
+    --card: oklch(0.095 0.013 265);
+    --card-fg: oklch(0.97 0.004 265);
+    --border: oklch(0.18 0.012 265);
+    --muted-fg: oklch(0.52 0.014 265);
+    --accent: oklch(0.18 0.016 265);
+    --primary: oklch(0.72 0.18 162);
+    --primary-fg: oklch(0.075 0.012 265);
+    --secondary: oklch(0.155 0.013 265);
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 20% 100%, oklch(0.72 0.18 162 / 0.05) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 0%, oklch(0.627 0.265 303.9 / 0.04) 0%, transparent 50%);
+  }
+
+  /* Theme toggle */
+  .theme-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 200;
+    display: flex;
+    gap: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .theme-btn {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--muted-fg);
+    transition: all 0.15s;
+  }
+  .theme-btn.active {
+    background: var(--primary);
+    color: var(--primary-fg);
+  }
+
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; color: var(--fg); }
+  .variation-label {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    background: oklch(from var(--primary) l c h / 0.12);
+    color: var(--primary);
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .variation-label:hover, .variation-label.selected {
+    border-color: var(--primary);
+  }
+  .desc { font-size: 13px; color: var(--muted-fg); margin-bottom: 20px; }
+
+  .variation { margin-bottom: 48px; border-bottom: 1px solid var(--border); padding-bottom: 40px; }
+  .variation:last-child { border-bottom: none; }
+
+  /* App chrome */
+  .app-frame {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--card);
+  }
+
+  /* Page header — exact match */
+  .page-header {
+    height: 50px;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .page-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    flex: 1;
+    color: var(--fg);
+  }
+  .header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+  .header-btn-ghost {
+    background: transparent;
+    color: var(--muted-fg);
+  }
+  .header-btn-ghost:hover { background: var(--accent); color: var(--fg); }
+  .header-btn-primary {
+    background: var(--primary);
+    color: var(--primary-fg);
+  }
+
+  /* Tabs — line style */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 18px;
+  }
+  .tab {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted-fg);
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab.active {
+    color: var(--fg);
+    border-bottom-color: var(--primary);
+  }
+  .tab-count {
+    font-size: 11px;
+    color: var(--muted-fg);
+    margin-left: 4px;
+  }
+
+  /* Pipeline pills */
+  .pipeline-bar {
+    display: flex;
+    gap: 8px;
+    padding: 12px 18px;
+    border-bottom: 1px solid oklch(from var(--border) l c h / 0.6);
+    flex-wrap: wrap;
+  }
+  .pipeline-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  /* Light-friendly pill colors */
+  .pill-available { background: oklch(0.48 0.17 162 / 0.1); color: oklch(0.38 0.15 162); }
+  .pill-viewing { background: oklch(0.55 0.22 280 / 0.1); color: oklch(0.45 0.2 280); }
+  .pill-offer { background: oklch(0.75 0.17 70 / 0.12); color: oklch(0.55 0.15 60); }
+  .pill-negotiation { background: oklch(0.6 0.2 40 / 0.1); color: oklch(0.5 0.18 40); }
+  .pill-sold { background: oklch(0.5 0.015 265 / 0.1); color: var(--muted-fg); }
+  body.dark .pill-available { background: oklch(0.72 0.18 162 / 0.12); color: oklch(0.72 0.18 162); }
+  body.dark .pill-viewing { background: oklch(0.627 0.265 303.9 / 0.12); color: oklch(0.75 0.2 280); }
+  body.dark .pill-offer { background: oklch(0.828 0.189 84.429 / 0.12); color: oklch(0.828 0.189 84.429); }
+  body.dark .pill-sold { background: oklch(0.52 0.014 265 / 0.15); color: oklch(0.52 0.014 265); }
+
+  /* Status badges */
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-available { color: oklch(0.38 0.15 162); }
+  .badge-available .status-dot { background: oklch(0.38 0.15 162); }
+  .badge-viewing { color: oklch(0.45 0.2 280); }
+  .badge-viewing .status-dot { background: oklch(0.45 0.2 280); }
+  .badge-offer { color: oklch(0.55 0.15 60); }
+  .badge-offer .status-dot { background: oklch(0.55 0.15 60); }
+  .badge-sold { color: var(--muted-fg); }
+  .badge-sold .status-dot { background: var(--muted-fg); opacity: 0.5; }
+  body.dark .badge-available { color: oklch(0.72 0.18 162); }
+  body.dark .badge-available .status-dot { background: oklch(0.72 0.18 162); }
+  body.dark .badge-viewing { color: oklch(0.75 0.2 280); }
+  body.dark .badge-viewing .status-dot { background: oklch(0.75 0.2 280); }
+  body.dark .badge-offer { color: oklch(0.828 0.189 84.429); }
+  body.dark .badge-offer .status-dot { background: oklch(0.828 0.189 84.429); }
+
+  /* Content area */
+  .content-area { padding: 16px 18px; }
+
+  /* === VARIATION A: Row-based list === */
+  .prop-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border: 1px solid oklch(from var(--border) l c h / 0.6);
+    border-radius: 12px;
+    background: var(--card);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .prop-row:hover { background: var(--accent); }
+  .prop-thumb {
+    width: 72px;
+    height: 52px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+  }
+  .prop-row-info { flex: 1; min-width: 0; }
+  .prop-row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .prop-price { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); }
+  .prop-location { font-size: 12px; color: var(--muted-fg); }
+  .prop-specs { font-size: 11px; color: oklch(from var(--muted-fg) l c h / 0.7); margin-top: 3px; display: flex; gap: 10px; }
+  .prop-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+  .prop-leads { font-size: 11px; color: var(--primary); }
+  .prop-days { font-size: 10px; color: oklch(from var(--muted-fg) l c h / 0.6); }
+
+  /* === VARIATION B: Card grid === */
+  .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .prop-card {
+    border: 1px solid oklch(from var(--border) l c h / 0.6);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--card);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .prop-card:hover { border-color: oklch(from var(--primary) l c h / 0.35); transform: translateY(-1px); box-shadow: 0 4px 12px oklch(0 0 0 / 0.06); }
+  body.dark .prop-card:hover { box-shadow: 0 4px 12px oklch(0 0 0 / 0.3); }
+  .card-img {
+    height: 140px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+  }
+  .card-img .status-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: oklch(1 0 0 / 0.85);
+    backdrop-filter: blur(4px);
+    padding: 3px 10px;
+    border-radius: 6px;
+  }
+  body.dark .card-img .status-badge {
+    background: oklch(0.055 0.010 265 / 0.8);
+  }
+  .card-img .photo-count {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: oklch(0 0 0 / 0.55);
+    backdrop-filter: blur(4px);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    color: #fff;
+  }
+  .card-body { padding: 12px 14px; }
+  .card-price { font-size: 16px; font-weight: 800; letter-spacing: -0.03em; color: var(--fg); }
+  .card-location { font-size: 12px; color: var(--muted-fg); margin-top: 2px; }
+  .card-specs {
+    display: flex;
+    gap: 12px;
+    font-size: 11.5px;
+    color: oklch(from var(--muted-fg) l c h / 0.8);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+  }
+
+  /* === VARIATION C: Compact table === */
+  .prop-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  .prop-table th {
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--muted-fg);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+  }
+  .prop-table td {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid oklch(from var(--border) l c h / 0.5);
+    vertical-align: middle;
+    color: var(--fg);
+  }
+  .prop-table tr { cursor: pointer; transition: background 0.15s; }
+  .prop-table tbody tr:hover { background: var(--accent); }
+  .table-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .table-property-cell { display: flex; align-items: center; gap: 10px; }
+  .table-price { font-weight: 700; font-size: 13px; letter-spacing: -0.01em; }
+  .table-location { font-size: 12px; color: var(--muted-fg); }
+
+  /* Vote bar */
+  .vote-bar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    z-index: 100;
+    box-shadow: 0 8px 32px oklch(0 0 0 / 0.12);
+  }
+  body.dark .vote-bar { box-shadow: 0 8px 32px oklch(0 0 0 / 0.4); }
+  .vote-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 2px solid transparent;
+    background: var(--secondary);
+    color: var(--fg);
+    transition: all 0.2s;
+  }
+  .vote-btn:hover { border-color: var(--primary); }
+  .vote-btn.selected { border-color: var(--primary); background: oklch(from var(--primary) l c h / 0.12); }
+</style>
+</head>
+<body>
+
+<!-- Theme toggle -->
+<div class="theme-toggle">
+  <button class="theme-btn active" id="btn-light" onclick="setTheme('light')">Light</button>
+  <button class="theme-btn" id="btn-dark" onclick="setTheme('dark')">Dark</button>
+</div>
+
+<!-- ========== VARIATION A: Row List ========== -->
+<div class="variation">
+  <span class="variation-label" onclick="vote('A')">VARIATION A</span>
+  <h1>Row List</h1>
+  <p class="desc">Matches the Agents page pattern — horizontal rows with thumbnail, info, and status. Highest density, most scannable.</p>
+
+  <div class="app-frame">
+    <div class="page-header">
+      <span class="page-title">Properties</span>
+      <button class="header-btn header-btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h10M4 8h6M6 12h2"/></svg>
+        Filter
+      </button>
+      <button class="header-btn header-btn-primary">+ Add Property</button>
+    </div>
+
+    <div class="tab-bar">
+      <div class="tab active">Sales<span class="tab-count">8</span></div>
+      <div class="tab">Rentals<span class="tab-count">14</span></div>
+    </div>
+
+    <div class="pipeline-bar">
+      <span class="pipeline-pill pill-available">Available &middot; 4</span>
+      <span class="pipeline-pill pill-viewing">Viewing Scheduled &middot; 2</span>
+      <span class="pipeline-pill pill-offer">Offer Received &middot; 1</span>
+      <span class="pipeline-pill pill-sold">Sold &middot; 1</span>
+    </div>
+
+    <div class="content-area">
+      <div class="prop-row">
+        <div class="prop-thumb" style="background: linear-gradient(135deg, #064e3b, #047857);">🏢</div>
+        <div class="prop-row-info">
+          <div class="prop-row-top">
+            <span class="prop-price">AED 1,850,000</span>
+            <span class="prop-location">Binghatti Hills &middot; JVC</span>
+            <span class="status-badge badge-available"><span class="status-dot"></span>Available</span>
+          </div>
+          <div class="prop-specs"><span>2 Beds</span><span>2 Baths</span><span>1,245 sqft</span><span>Apartment</span></div>
+        </div>
+        <div class="prop-row-right">
+          <span class="prop-leads">3 leads</span>
+          <span class="prop-days">12d listed</span>
+        </div>
+      </div>
+      <div class="prop-row">
+        <div class="prop-thumb" style="background: linear-gradient(135deg, #3730a3, #4f46e5);">🏙️</div>
+        <div class="prop-row-info">
+          <div class="prop-row-top">
+            <span class="prop-price">AED 3,200,000</span>
+            <span class="prop-location">The Address &middot; Downtown</span>
+            <span class="status-badge badge-viewing"><span class="status-dot"></span>Viewing Scheduled</span>
+          </div>
+          <div class="prop-specs"><span>3 Beds</span><span>3 Baths</span><span>2,100 sqft</span><span>Apartment</span></div>
+        </div>
+        <div class="prop-row-right">
+          <span class="prop-leads">1 lead</span>
+          <span class="prop-days">5d listed</span>
+        </div>
+      </div>
+      <div class="prop-row">
+        <div class="prop-thumb" style="background: linear-gradient(135deg, #78350f, #b45309);">🏠</div>
+        <div class="prop-row-info">
+          <div class="prop-row-top">
+            <span class="prop-price">AED 950,000</span>
+            <span class="prop-location">Vincitore Palacio &middot; Arjan</span>
+            <span class="status-badge badge-offer"><span class="status-dot"></span>Offer Received</span>
+          </div>
+          <div class="prop-specs"><span>1 Bed</span><span>1 Bath</span><span>780 sqft</span><span>Studio</span></div>
+        </div>
+        <div class="prop-row-right">
+          <span style="font-size:11px; color: oklch(0.55 0.15 60);">Offer: 920K</span>
+          <span class="prop-days">28d listed</span>
+        </div>
+      </div>
+      <div class="prop-row" style="opacity: 0.5;">
+        <div class="prop-thumb" style="background: linear-gradient(135deg, #1e3a5f, #1d4ed8);">🏬</div>
+        <div class="prop-row-info">
+          <div class="prop-row-top">
+            <span class="prop-price">AED 2,400,000</span>
+            <span class="prop-location">Marina Gate &middot; Dubai Marina</span>
+            <span class="status-badge badge-sold"><span class="status-dot"></span>Sold</span>
+          </div>
+          <div class="prop-specs"><span>2 Beds</span><span>2 Baths</span><span>1,580 sqft</span><span>Apartment</span></div>
+        </div>
+        <div class="prop-row-right">
+          <span class="prop-days">Closed 3d ago</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== VARIATION B: Card Grid ========== -->
+<div class="variation">
+  <span class="variation-label" onclick="vote('B')">VARIATION B</span>
+  <h1>Card Grid</h1>
+  <p class="desc">Property Finder / Bayut style — photo-first cards in a grid. More visual, better when photos are uploaded.</p>
+
+  <div class="app-frame">
+    <div class="page-header">
+      <span class="page-title">Properties</span>
+      <button class="header-btn header-btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h10M4 8h6M6 12h2"/></svg>
+        Filter
+      </button>
+      <button class="header-btn header-btn-primary">+ Add Property</button>
+    </div>
+    <div class="tab-bar">
+      <div class="tab active">Sales<span class="tab-count">8</span></div>
+      <div class="tab">Rentals<span class="tab-count">14</span></div>
+    </div>
+    <div class="pipeline-bar">
+      <span class="pipeline-pill pill-available">Available &middot; 4</span>
+      <span class="pipeline-pill pill-viewing">Viewing Scheduled &middot; 2</span>
+      <span class="pipeline-pill pill-offer">Offer Received &middot; 1</span>
+      <span class="pipeline-pill pill-sold">Sold &middot; 1</span>
+    </div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="prop-card">
+          <div class="card-img" style="background: linear-gradient(135deg, #064e3b, #047857);">
+            🏢
+            <span class="status-badge badge-available"><span class="status-dot"></span>Available</span>
+            <span class="photo-count">6 photos</span>
+          </div>
+          <div class="card-body">
+            <div class="card-price">AED 1,850,000</div>
+            <div class="card-location">Binghatti Hills &middot; JVC</div>
+            <div class="card-specs"><span>2 Beds</span><span>2 Baths</span><span>1,245 sqft</span></div>
+            <div class="card-footer">
+              <span class="prop-leads">3 leads</span>
+              <span class="prop-days">12d listed</span>
+            </div>
+          </div>
+        </div>
+        <div class="prop-card">
+          <div class="card-img" style="background: linear-gradient(135deg, #3730a3, #4f46e5);">
+            🏙️
+            <span class="status-badge badge-viewing"><span class="status-dot"></span>Viewing Scheduled</span>
+            <span class="photo-count">4 photos</span>
+          </div>
+          <div class="card-body">
+            <div class="card-price">AED 3,200,000</div>
+            <div class="card-location">The Address &middot; Downtown</div>
+            <div class="card-specs"><span>3 Beds</span><span>3 Baths</span><span>2,100 sqft</span></div>
+            <div class="card-footer">
+              <span class="prop-leads">1 lead</span>
+              <span class="prop-days">5d listed</span>
+            </div>
+          </div>
+        </div>
+        <div class="prop-card">
+          <div class="card-img" style="background: linear-gradient(135deg, #78350f, #b45309);">
+            🏠
+            <span class="status-badge badge-offer"><span class="status-dot"></span>Offer Received</span>
+            <span class="photo-count">8 photos</span>
+          </div>
+          <div class="card-body">
+            <div class="card-price">AED 950,000</div>
+            <div class="card-location">Vincitore Palacio &middot; Arjan</div>
+            <div class="card-specs"><span>1 Bed</span><span>1 Bath</span><span>780 sqft</span></div>
+            <div class="card-footer">
+              <span style="font-size:11px; color: oklch(0.55 0.15 60);">Offer: AED 920K</span>
+              <span class="prop-days">28d listed</span>
+            </div>
+          </div>
+        </div>
+        <div class="prop-card">
+          <div class="card-img" style="background: linear-gradient(135deg, #134e4a, #0f766e);">
+            🏡
+            <span class="status-badge badge-available"><span class="status-dot"></span>Available</span>
+            <span class="photo-count">5 photos</span>
+          </div>
+          <div class="card-body">
+            <div class="card-price">AED 4,500,000</div>
+            <div class="card-location">Sobha Hartland &middot; MBR City</div>
+            <div class="card-specs"><span>4 Beds</span><span>5 Baths</span><span>3,200 sqft</span></div>
+            <div class="card-footer">
+              <span class="prop-leads">5 leads</span>
+              <span class="prop-days">2d listed</span>
+            </div>
+          </div>
+        </div>
+        <div class="prop-card">
+          <div class="card-img" style="background: linear-gradient(135deg, #0c4a6e, #0369a1);">
+            🏢
+            <span class="status-badge badge-available"><span class="status-dot"></span>Available</span>
+            <span class="photo-count">3 photos</span>
+          </div>
+          <div class="card-body">
+            <div class="card-price">AED 1,200,000</div>
+            <div class="card-location">Samana Golf Avenue &middot; DSC</div>
+            <div class="card-specs"><span>1 Bed</span><span>2 Baths</span><span>890 sqft</span></div>
+            <div class="card-footer">
+              <span class="prop-leads">2 leads</span>
+              <span class="prop-days">8d listed</span>
+            </div>
+          </div>
+        </div>
+        <div class="prop-card" style="opacity: 0.5;">
+          <div class="card-img" style="background: linear-gradient(135deg, #1e3a5f, #1d4ed8);">
+            🏬
+            <span class="status-badge badge-sold"><span class="status-dot"></span>Sold</span>
+          </div>
+          <div class="card-body">
+            <div class="card-price">AED 2,400,000</div>
+            <div class="card-location">Marina Gate &middot; Dubai Marina</div>
+            <div class="card-specs"><span>2 Beds</span><span>2 Baths</span><span>1,580 sqft</span></div>
+            <div class="card-footer">
+              <span class="prop-days">Closed 3d ago</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== VARIATION C: Table ========== -->
+<div class="variation">
+  <span class="variation-label" onclick="vote('C')">VARIATION C</span>
+  <h1>Compact Table</h1>
+  <p class="desc">Spreadsheet-style density. Most properties visible at once. Best for 50+ listings with sortable columns.</p>
+
+  <div class="app-frame">
+    <div class="page-header">
+      <span class="page-title">Properties</span>
+      <button class="header-btn header-btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h10M4 8h6M6 12h2"/></svg>
+        Filter
+      </button>
+      <button class="header-btn header-btn-primary">+ Add Property</button>
+    </div>
+    <div class="tab-bar">
+      <div class="tab active">Sales<span class="tab-count">8</span></div>
+      <div class="tab">Rentals<span class="tab-count">14</span></div>
+    </div>
+    <div class="pipeline-bar">
+      <span class="pipeline-pill pill-available">Available &middot; 4</span>
+      <span class="pipeline-pill pill-viewing">Viewing Scheduled &middot; 2</span>
+      <span class="pipeline-pill pill-offer">Offer Received &middot; 1</span>
+      <span class="pipeline-pill pill-sold">Sold &middot; 1</span>
+    </div>
+    <div>
+      <table class="prop-table">
+        <thead>
+          <tr>
+            <th style="padding-left: 18px;">Property</th>
+            <th>Price</th>
+            <th>Specs</th>
+            <th>Status</th>
+            <th>Leads</th>
+            <th style="padding-right: 18px;">Listed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding-left: 18px;">
+              <div class="table-property-cell">
+                <div class="table-thumb" style="background: linear-gradient(135deg, #064e3b, #047857);">🏢</div>
+                <div>
+                  <div style="font-weight: 600; font-size: 13px;">Binghatti Hills</div>
+                  <div class="table-location">JVC &middot; Apartment</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="table-price">AED 1,850,000</span></td>
+            <td style="font-size: 11.5px; color: var(--muted-fg);">2 Bed &middot; 2 Bath &middot; 1,245 sqft</td>
+            <td><span class="status-badge badge-available"><span class="status-dot"></span>Available</span></td>
+            <td><span class="prop-leads">3</span></td>
+            <td style="padding-right: 18px;"><span class="prop-days">12d</span></td>
+          </tr>
+          <tr>
+            <td style="padding-left: 18px;">
+              <div class="table-property-cell">
+                <div class="table-thumb" style="background: linear-gradient(135deg, #3730a3, #4f46e5);">🏙️</div>
+                <div>
+                  <div style="font-weight: 600; font-size: 13px;">The Address</div>
+                  <div class="table-location">Downtown &middot; Apartment</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="table-price">AED 3,200,000</span></td>
+            <td style="font-size: 11.5px; color: var(--muted-fg);">3 Bed &middot; 3 Bath &middot; 2,100 sqft</td>
+            <td><span class="status-badge badge-viewing"><span class="status-dot"></span>Viewing Sched.</span></td>
+            <td><span class="prop-leads">1</span></td>
+            <td style="padding-right: 18px;"><span class="prop-days">5d</span></td>
+          </tr>
+          <tr>
+            <td style="padding-left: 18px;">
+              <div class="table-property-cell">
+                <div class="table-thumb" style="background: linear-gradient(135deg, #78350f, #b45309);">🏠</div>
+                <div>
+                  <div style="font-weight: 600; font-size: 13px;">Vincitore Palacio</div>
+                  <div class="table-location">Arjan &middot; Studio</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="table-price">AED 950,000</span></td>
+            <td style="font-size: 11.5px; color: var(--muted-fg);">1 Bed &middot; 1 Bath &middot; 780 sqft</td>
+            <td><span class="status-badge badge-offer"><span class="status-dot"></span>Offer Received</span></td>
+            <td><span style="font-size:11px; color: oklch(0.55 0.15 60);">920K</span></td>
+            <td style="padding-right: 18px;"><span class="prop-days">28d</span></td>
+          </tr>
+          <tr style="opacity: 0.5;">
+            <td style="padding-left: 18px;">
+              <div class="table-property-cell">
+                <div class="table-thumb" style="background: linear-gradient(135deg, #1e3a5f, #1d4ed8);">🏬</div>
+                <div>
+                  <div style="font-weight: 600; font-size: 13px;">Marina Gate</div>
+                  <div class="table-location">Dubai Marina &middot; Apartment</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="table-price">AED 2,400,000</span></td>
+            <td style="font-size: 11.5px; color: var(--muted-fg);">2 Bed &middot; 2 Bath &middot; 1,580 sqft</td>
+            <td><span class="status-badge badge-sold"><span class="status-dot"></span>Sold</span></td>
+            <td></td>
+            <td style="padding-right: 18px;"><span class="prop-days">3d</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Floating vote bar -->
+<div class="vote-bar">
+  <button class="vote-btn" id="vote-A" onclick="vote('A')">A &mdash; Row List</button>
+  <button class="vote-btn" id="vote-B" onclick="vote('B')">B &mdash; Card Grid</button>
+  <button class="vote-btn" id="vote-C" onclick="vote('C')">C &mdash; Table</button>
+</div>
+
+<div style="height: 80px;"></div>
+
+<script>
+  function setTheme(theme) {
+    if (theme === 'dark') {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
+    document.getElementById('btn-light').classList.toggle('active', theme === 'light');
+    document.getElementById('btn-dark').classList.toggle('active', theme === 'dark');
+  }
+
+  function vote(choice) {
+    document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('.variation-label').forEach(l => l.classList.remove('selected'));
+    document.getElementById('vote-' + choice).classList.add('selected');
+    document.querySelectorAll('.variation-label').forEach(l => {
+      if (l.textContent.includes(choice)) l.classList.add('selected');
+    });
+    if (window.__superpowers_select) window.__superpowers_select(choice);
+  }
+</script>
+
+</body>
+</html>

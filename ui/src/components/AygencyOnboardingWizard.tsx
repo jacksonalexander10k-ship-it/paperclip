@@ -5,16 +5,6 @@ import { ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { companiesApi } from "../api/companies";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
-import type { AgentRole } from "@paperclipai/shared";
-
-const ROLE_OPTIONS: { value: AgentRole; label: string; emoji: string; description: string }[] = [
-  { value: "ceo",      label: "CEO",       emoji: "🏢", description: "Runs the agency & manages the team" },
-  { value: "cmo",      label: "Marketing", emoji: "📣", description: "Leads, content & social media" },
-  { value: "general",  label: "General",   emoji: "⚡", description: "Flexible — handles any task" },
-  { value: "cfo",      label: "Finance",   emoji: "💰", description: "Budgets, costs & reports" },
-  { value: "researcher", label: "Research", emoji: "🔍", description: "Market data & insights" },
-  { value: "engineer", label: "Tech",      emoji: "🛠", description: "Tech setup & integrations" },
-];
 
 interface AygencyOnboardingWizardProps {
   onComplete: () => void;
@@ -25,7 +15,7 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [agencyName, setAgencyName] = useState("");
   const [agentName, setAgentName] = useState("");
-  const [agentRole, setAgentRole] = useState<AgentRole>("ceo");
+  const agentRole = "ceo";
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -143,21 +133,21 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
           </div>
         )}
 
-        {/* ── Step 2: Agent name + role ── */}
+        {/* ── Step 2: CEO name ── */}
         {step === 2 && (
           <div className="flex flex-col gap-8">
             <div className="text-center">
               <p className="text-[32px] font-semibold text-white leading-tight">
-                Name your first agent
+                Name your CEO
               </p>
               <p className="mt-2 text-[15px] text-zinc-500">
-                They'll run {agencyName} from day one
+                Your CEO will run {agencyName}, manage agents, and report to you
               </p>
             </div>
 
             <input
               type="text"
-              placeholder="Give them a name — Alex, Sarah, Max…"
+              placeholder="e.g. Khalid, Sarah, Alex…"
               value={agentName}
               onChange={(e) => setAgentName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleStep2(); }}
@@ -165,34 +155,12 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
               className="w-full bg-transparent border-b-2 border-zinc-800 focus:border-[#10b981] px-0 py-3 text-xl text-white placeholder-zinc-700 outline-none transition-colors text-center"
             />
 
-            <div className="flex flex-col gap-3">
-              <p className="text-xs font-medium text-zinc-600 uppercase tracking-widest text-center">
-                Pick their role
-              </p>
-              <div className="grid grid-cols-3 gap-2.5">
-                {ROLE_OPTIONS.map((opt) => {
-                  const active = agentRole === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => setAgentRole(opt.value)}
-                      className={`flex flex-col items-center gap-1.5 rounded-2xl py-4 px-2 transition-all ${
-                        active
-                          ? "bg-[#10b981]/15 ring-1 ring-[#10b981]/60"
-                          : "bg-zinc-900/60 hover:bg-zinc-900"
-                      }`}
-                    >
-                      <span className="text-2xl">{opt.emoji}</span>
-                      <span className={`text-xs font-semibold ${active ? "text-[#10b981]" : "text-zinc-300"}`}>
-                        {opt.label}
-                      </span>
-                    </button>
-                  );
-                })}
+            <div className="flex items-center justify-center gap-3 rounded-2xl bg-zinc-900/60 py-4 px-6">
+              <span className="text-2xl">👔</span>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-white">Chief Executive Officer</p>
+                <p className="text-xs text-zinc-500">Runs the agency, delegates to agents, reports to you</p>
               </div>
-              <p className="text-xs text-zinc-600 text-center min-h-[1.2em]">
-                {ROLE_OPTIONS.find((o) => o.value === agentRole)?.description}
-              </p>
             </div>
 
             {error && <p className="text-xs text-red-400 text-center">{error}</p>}
