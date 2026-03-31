@@ -5,7 +5,7 @@ import { dashboardApi } from "../api/dashboard";
 import { activityApi } from "../api/activity";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
-import { projectsApi } from "../api/projects";
+import { approvalsApi } from "../api/approvals";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
@@ -13,38 +13,23 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { MetricCard } from "../components/MetricCard";
 import { EmptyState } from "../components/EmptyState";
-import { StatusIcon } from "../components/StatusIcon";
-
 import { ActivityRow } from "../components/ActivityRow";
-import { Identity } from "../components/Identity";
-import { timeAgo } from "../lib/timeAgo";
-import { cn, formatCents } from "../lib/utils";
-import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle } from "lucide-react";
-import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
-import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
+import { AgentStatusCard } from "../components/AgentStatusCard";
+import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
-function getRecentIssues(issues: Issue[]): Issue[] {
-  return [...issues]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-}
-
 export function Dashboard() {
   const { selectedCompanyId, companies } = useCompany();
-  const { openOnboarding } = useDialog();
+  const { openOnboarding, openNewIssue } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [animatedActivityIds, setAnimatedActivityIds] = useState<Set<string>>(new Set());
   const seenActivityIdsRef = useRef<Set<string>>(new Set());
   const hydratedActivityRef = useRef(false);
   const activityAnimationTimersRef = useRef<number[]>([]);
-
-  const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
-  });
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Dashboard" }]);
@@ -53,6 +38,12 @@ export function Dashboard() {
   const { data, isLoading, error } = useQuery({
     queryKey: queryKeys.dashboard(selectedCompanyId!),
     queryFn: () => dashboardApi.summary(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
@@ -68,21 +59,54 @@ export function Dashboard() {
     enabled: !!selectedCompanyId,
   });
 
-  const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!),
-    queryFn: () => projectsApi.list(selectedCompanyId!),
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    refetchInterval: 10_000,
   });
 
-  const { data: runs } = useQuery({
-    queryKey: queryKeys.heartbeats(selectedCompanyId!),
-    queryFn: () => heartbeatsApi.list(selectedCompanyId!),
+  const { data: approvals } = useQuery({
+    queryKey: queryKeys.approvals.list(selectedCompanyId!),
+    queryFn: () => approvalsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
   });
 
-  const recentIssues = issues ? getRecentIssues(issues) : [];
-  const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
+  const { data: billingStatus } = useQuery({
+    queryKey: ["billing-status", selectedCompanyId],
+    queryFn: () => fetch(`/api/companies/${selectedCompanyId}/billing/status`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 60_000,
+  });
 
+  const recentActivity = useMemo(() => (activity ?? []).slice(0, 8), [activity]);
+
+  const runByAgentId = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof liveRuns>[number]>();
+    for (const run of liveRuns ?? []) {
+      if (run.agentId) map.set(run.agentId, run);
+    }
+    return map;
+  }, [liveRuns]);
+
+  const issueById = useMemo(() => {
+    const map = new Map<string, Issue>();
+    for (const i of issues ?? []) map.set(i.id, i);
+    return map;
+  }, [issues]);
+
+  const pendingApprovalsByAgentId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of approvals ?? []) {
+      if ((a.status === "pending" || a.status === "revision_requested") && a.requestedByAgentId) {
+        map.set(a.requestedByAgentId, (map.get(a.requestedByAgentId) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [approvals]);
+
+  // Activity animation logic
   useEffect(() => {
     for (const timer of activityAnimationTimersRef.current) {
       window.clearTimeout(timer);
@@ -125,7 +149,9 @@ export function Dashboard() {
         for (const id of newIds) next.delete(id);
         return next;
       });
-      activityAnimationTimersRef.current = activityAnimationTimersRef.current.filter((t) => t !== timer);
+      activityAnimationTimersRef.current = activityAnimationTimersRef.current.filter(
+        (t) => t !== timer,
+      );
     }, 980);
     activityAnimationTimersRef.current.push(timer);
   }, [recentActivity]);
@@ -146,22 +172,16 @@ export function Dashboard() {
 
   const entityNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const i of issues ?? []) map.set(`issue:${i.id}`, i.identifier ?? i.id.slice(0, 8));
+    for (const i of issues ?? []) map.set(`issue:${i.id}`, i.title ?? i.identifier ?? i.id.slice(0, 8));
     for (const a of agents ?? []) map.set(`agent:${a.id}`, a.name);
-    for (const p of projects ?? []) map.set(`project:${p.id}`, p.name);
     return map;
-  }, [issues, agents, projects]);
+  }, [issues, agents]);
 
   const entityTitleMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const i of issues ?? []) map.set(`issue:${i.id}`, i.title);
     return map;
   }, [issues]);
-
-  const agentName = (id: string | null) => {
-    if (!id || !agents) return null;
-    return agents.find((a) => a.id === id)?.name ?? null;
-  };
 
   if (!selectedCompanyId) {
     if (companies.length === 0) {
@@ -184,142 +204,159 @@ export function Dashboard() {
   }
 
   const hasNoAgents = agents !== undefined && agents.length === 0;
+  const pendingApprovalCount =
+    (data?.pendingApprovals ?? 0) + (data?.budgets?.pendingApprovals ?? 0);
 
   return (
-    <div className="space-y-6">
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
+    <div className="flex flex-col h-full">
+      <PageHeader
+        title="Dashboard"
+        actions={
+          <>
+            <button
+              onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+              className="px-2.5 py-1 rounded-lg text-[11.5px] font-semibold bg-transparent text-muted-foreground border border-border/60 hover:border-border cursor-pointer"
+            >
+              ⌘K
+            </button>
+            <Button size="sm" className="text-[11.5px] h-7" onClick={() => openNewIssue()}>
+              + New Task
+            </Button>
+          </>
+        }
+      />
 
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          What is happening across your agency right now.
-        </p>
-      </div>
+      {/* .cbody — exact from C design: padding:16px 18px, gap:13px */}
+      <div className="flex-1 overflow-y-auto p-[16px_18px] flex flex-col gap-[13px]">
+        {error && <p className="text-sm text-destructive">{error.message}</p>}
 
-      {hasNoAgents && (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-500/25 dark:bg-amber-950/60">
-          <div className="flex items-center gap-2.5">
-            <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <p className="text-sm text-amber-900 dark:text-amber-100">
-              You have no agents yet. Hire your first team to get started.
-            </p>
+        {billingStatus && !billingStatus.active && (
+          <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Your subscription has expired</p>
+            <p className="text-xs text-muted-foreground mt-1">Agents are paused. Subscribe to resume operations.</p>
+            <button
+              className="mt-2 text-xs font-medium text-primary hover:underline"
+              onClick={() => window.location.href = "/billing/checkout"}
+            >
+              Reactivate →
+            </button>
           </div>
-          <button
-            onClick={() => openOnboarding({ initialStep: 2, companyId: selectedCompanyId! })}
-            className="text-sm font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline underline-offset-2 shrink-0"
-          >
-            Hire agents
-          </button>
-        </div>
-      )}
+        )}
 
-      <ActiveAgentsPanel companyId={selectedCompanyId!} />
+        {hasNoAgents && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-950/30 px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <Bot className="h-4 w-4 text-amber-400 shrink-0" />
+              <p className="text-sm text-amber-100">
+                You have no agents yet. Hire your first team to get started.
+              </p>
+            </div>
+            <button
+              onClick={() => openOnboarding({ initialStep: 2, companyId: selectedCompanyId! })}
+              className="text-sm font-medium text-amber-300 hover:text-amber-100 underline underline-offset-2 shrink-0"
+            >
+              Hire agents
+            </button>
+          </div>
+        )}
 
-      {data && (
-        <>
-          {data.budgets.activeIncidents > 0 ? (
-            <div className="flex items-start justify-between gap-3 rounded-xl border border-red-500/20 bg-[linear-gradient(180deg,rgba(255,80,80,0.12),rgba(255,255,255,0.02))] px-4 py-3">
-              <div className="flex items-start gap-2.5">
-                <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
-                <div>
-                  <p className="text-sm font-medium text-red-50">
-                    {data.budgets.activeIncidents} active budget incident{data.budgets.activeIncidents === 1 ? "" : "s"}
-                  </p>
-                  <p className="text-xs text-red-100/70">
-                    {data.budgets.pausedAgents} agents paused · {data.budgets.pausedProjects} projects paused · {data.budgets.pendingApprovals} pending budget approvals
-                  </p>
+        {data && (
+          <>
+            {data.budgets.activeIncidents > 0 && (
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-red-500/20 bg-red-950/30 px-4 py-3">
+                <div className="flex items-start gap-2.5">
+                  <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                  <div>
+                    <p className="text-sm font-medium text-red-200">
+                      {data.budgets.activeIncidents} active budget incident
+                      {data.budgets.activeIncidents === 1 ? "" : "s"}
+                    </p>
+                    <p className="text-xs text-red-300/70">
+                      {data.budgets.pausedAgents} agents paused · {data.budgets.pausedProjects} projects
+                      paused · {data.budgets.pendingApprovals} pending budget approvals
+                    </p>
+                  </div>
+                </div>
+                <Link to="/costs" className="text-sm underline underline-offset-2 text-red-200">
+                  Open budgets
+                </Link>
+              </div>
+            )}
+
+            {/* .m3 — 3 metric cards */}
+            <div className="grid grid-cols-3 gap-[10px]">
+              <MetricCard
+                icon={Bot}
+                value={data.agents.running}
+                label="Working Now"
+                valueColor="green"
+                to="/agents"
+                description={<span>agents running</span>}
+              />
+              <MetricCard
+                icon={ShieldCheck}
+                value={pendingApprovalCount}
+                label="Needs Approval"
+                valueColor="amber"
+                to="/approvals/pending"
+                description={<span>awaiting your OK</span>}
+              />
+              <MetricCard
+                icon={CircleDot}
+                value={data.tasks.open}
+                label="Open Tasks"
+                to="/issues"
+                description={
+                  <span>
+                    {data.tasks.inProgress} in progress
+                    {data.tasks.blocked > 0 ? `, ${data.tasks.blocked} blocked` : ""}
+                  </span>
+                }
+              />
+            </div>
+
+            {/* Your Team — .sec header + .ag2 grid */}
+            {(agents ?? []).length > 0 && (
+              <div>
+                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]">
+                  Your Team
+                </h3>
+                <div className="grid grid-cols-2 gap-[8px]">
+                  {(agents ?? []).filter((a: Agent) => a.status !== "terminated").map((agent: Agent, index: number) => {
+                    const run = runByAgentId.get(agent.id);
+                    const currentAction = run?.issueId
+                      ? (issueById.get(run.issueId)?.title ?? null)
+                      : null;
+                    return (
+                      <AgentStatusCard
+                        key={agent.id}
+                        agent={agent}
+                        index={index}
+                        isRunning={runByAgentId.has(agent.id)}
+                        pendingApprovals={pendingApprovalsByAgentId.get(agent.id) ?? 0}
+                        currentAction={currentAction}
+                        lastActionAt={run?.startedAt ?? null}
+                      />
+                    );
+                  })}
                 </div>
               </div>
-              <Link to="/costs" className="text-sm underline underline-offset-2 text-red-100">
-                Open budgets
-              </Link>
-            </div>
-          ) : null}
+            )}
 
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
-            <MetricCard
-              icon={Bot}
-              value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-              label="Agents Running"
-              to="/agents"
-              description={
-                <span>
-                  {data.agents.running} active{", "}
-                  {data.agents.paused} paused{", "}
-                  {data.agents.error} with errors
-                </span>
-              }
+            <PluginSlotOutlet
+              slotTypes={["dashboardWidget"]}
+              context={{ companyId: selectedCompanyId }}
+              className="grid gap-4 md:grid-cols-2"
+              itemClassName="rounded-lg border bg-card p-4 shadow-sm"
             />
-            <MetricCard
-              icon={CircleDot}
-              value={data.tasks.inProgress}
-              label="Tasks in Progress"
-              to="/issues"
-              description={
-                <span>
-                  {data.tasks.open} open{", "}
-                  {data.tasks.blocked} blocked
-                </span>
-              }
-            />
-            <MetricCard
-              icon={DollarSign}
-              value={formatCents(data.costs.monthSpendCents)}
-              label="Spent This Month"
-              to="/costs"
-              description={
-                <span>
-                  {data.costs.monthBudgetCents > 0
-                    ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
-                    : "No spending limit set"}
-                </span>
-              }
-            />
-            <MetricCard
-              icon={ShieldCheck}
-              value={data.pendingApprovals + data.budgets.pendingApprovals}
-              label="Awaiting Approval"
-              to="/approvals"
-              description={
-                <span>
-                  {data.budgets.pendingApprovals > 0
-                    ? `${data.budgets.pendingApprovals} budget actions need your sign-off`
-                    : "Actions queued for your review"}
-                </span>
-              }
-            />
-          </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <ChartCard title="Agent Activity" subtitle="Last 14 days">
-              <RunActivityChart runs={runs ?? []} />
-            </ChartCard>
-            <ChartCard title="Tasks by Priority" subtitle="Last 14 days">
-              <PriorityChart issues={issues ?? []} />
-            </ChartCard>
-            <ChartCard title="Tasks by Status" subtitle="Last 14 days">
-              <IssueStatusChart issues={issues ?? []} />
-            </ChartCard>
-            <ChartCard title="Success Rate" subtitle="Last 14 days">
-              <SuccessRateChart runs={runs ?? []} />
-            </ChartCard>
-          </div>
-
-          <PluginSlotOutlet
-            slotTypes={["dashboardWidget"]}
-            context={{ companyId: selectedCompanyId }}
-            className="grid gap-4 md:grid-cols-2"
-            itemClassName="rounded-lg border bg-card p-4 shadow-sm"
-          />
-
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* Recent Activity */}
+            {/* What Just Happened — .sec header + activity rows */}
             {recentActivity.length > 0 && (
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  What's happening now
+              <div>
+                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]">
+                  What Just Happened
                 </h3>
-                <div className="border border-border divide-y divide-border overflow-hidden">
+                <div className="flex flex-col gap-px">
                   {recentActivity.map((event) => (
                     <ActivityRow
                       key={event.id}
@@ -331,65 +368,19 @@ export function Dashboard() {
                     />
                   ))}
                 </div>
+                <div className="pt-2">
+                  <Link
+                    to="/activity"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    View full log →
+                  </Link>
+                </div>
               </div>
             )}
-
-            {/* Recent Tasks */}
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Recent Tasks
-              </h3>
-
-              {recentIssues.length === 0 ? (
-                <div className="border border-border p-4">
-                  <p className="text-sm text-muted-foreground">No tasks yet.</p>
-                </div>
-              ) : (
-                <div className="border border-border divide-y divide-border overflow-hidden">
-                  {recentIssues.slice(0, 10).map((issue) => (
-                    <Link
-                      key={issue.id}
-                      to={`/issues/${issue.identifier ?? issue.id}`}
-                      className="px-4 py-3 text-sm cursor-pointer hover:bg-accent/50 transition-colors no-underline text-inherit block"
-                    >
-                      <div className="flex items-start gap-2 sm:items-center sm:gap-3">
-                        {/* Status icon - left column on mobile */}
-                        <span className="shrink-0 sm:hidden">
-                          <StatusIcon status={issue.status} />
-                        </span>
-
-                        {/* Right column on mobile: title + metadata stacked */}
-                        <span className="flex min-w-0 flex-1 flex-col gap-1 sm:contents">
-                          <span className="line-clamp-2 text-sm sm:order-2 sm:flex-1 sm:min-w-0 sm:line-clamp-none sm:truncate">
-                            {issue.title}
-                          </span>
-                          <span className="flex items-center gap-2 sm:order-1 sm:shrink-0">
-                            <span className="hidden sm:inline-flex"><StatusIcon status={issue.status} /></span>
-                            <span className="text-xs font-mono text-muted-foreground">
-                              {issue.identifier ?? issue.id.slice(0, 8)}
-                            </span>
-                            {issue.assigneeAgentId && (() => {
-                              const name = agentName(issue.assigneeAgentId);
-                              return name
-                                ? <span className="hidden sm:inline-flex"><Identity name={name} size="sm" /></span>
-                                : null;
-                            })()}
-                            <span className="text-xs text-muted-foreground sm:hidden">&middot;</span>
-                            <span className="text-xs text-muted-foreground shrink-0 sm:order-last">
-                              {timeAgo(issue.updatedAt)}
-                            </span>
-                          </span>
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

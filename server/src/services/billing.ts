@@ -285,5 +285,23 @@ export function billingService(db: Db) {
       // In production, this would use Stripe Meters API
       logger.info({ companyId, runs }, "billing: usage reported");
     },
+
+    /** Check whether a company's subscription is active (including grace period) */
+    isActive: async (companyId: string): Promise<boolean> => {
+      const row = await db
+        .select()
+        .from(companySubscriptions)
+        .where(eq(companySubscriptions.companyId, companyId))
+        .then((rows) => rows[0] ?? null);
+
+      if (!row) return true; // No subscription record = not yet billed (allow during setup)
+      if (row.status === "trialing" || row.status === "active") return true;
+      if (row.status === "past_due") {
+        // 3-day grace period
+        const gracePeriodEnd = new Date((row.currentPeriodEnd ?? new Date()).getTime() + 3 * 24 * 60 * 60 * 1000);
+        return new Date() < gracePeriodEnd;
+      }
+      return false;
+    },
   };
 }
