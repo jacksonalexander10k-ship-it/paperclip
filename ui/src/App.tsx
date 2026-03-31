@@ -41,6 +41,7 @@ import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
 import { CeoChat } from "./pages/CeoChat";
+import { Properties } from "./pages/Properties";
 import Landing from "./pages/Landing";
 import { AuthPage } from "./pages/Auth";
 import BillingCheckout from "./pages/BillingCheckout";
@@ -172,6 +173,10 @@ function boardRoutes() {
       <Route path="costs" element={<Costs />} />
       <Route path="activity" element={<Activity />} />
       <Route path="deliverables" element={<Deliverables />} />
+      <Route path="properties" element={<Navigate to="/properties/sale" replace />} />
+      <Route path="properties/sale" element={<Properties />} />
+      <Route path="properties/rental" element={<Properties />} />
+      <Route path="properties/new" element={<Properties />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />
