@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Loader2, CheckCircle, XCircle, ArrowUp } from "lucide-react";
+import { Send, Loader2, CheckCircle, XCircle, ArrowUp, MessageCircle } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
@@ -10,6 +10,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { WhatsAppConnect } from "../components/WhatsAppConnect";
+import { WhatsAppConversationDrawer } from "../components/WhatsAppConversationDrawer";
 import type { IssueComment, Issue } from "@paperclipai/shared";
 
 const CEO_CHAT_TITLE = "CEO Chat";
@@ -44,7 +45,13 @@ function parseApprovalBlock(body: string): { pre: string; payload: ApprovalPaylo
   return null;
 }
 
-function InlineApprovalCard({ payload }: { payload: ApprovalPayload }) {
+function InlineApprovalCard({
+  payload,
+  onViewConversation,
+}: {
+  payload: ApprovalPayload;
+  onViewConversation?: (chatJid: string, contactName?: string) => void;
+}) {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "blocked">("pending");
@@ -117,6 +124,17 @@ function InlineApprovalCard({ payload }: { payload: ApprovalPayload }) {
           <p className="mt-2 text-[10.5px] text-muted-foreground italic leading-[1.45]">{payload.context}</p>
         )}
 
+        {/* View conversation link — only for WhatsApp actions with a phone number */}
+        {(payload.action === "send_whatsapp") && payload.phone && onViewConversation && (
+          <button
+            className="flex items-center gap-1 mt-2 text-[10.5px] text-primary hover:underline transition-opacity"
+            onClick={() => onViewConversation(payload.phone!, payload.to ?? undefined)}
+          >
+            <MessageCircle className="h-3 w-3" />
+            View conversation
+          </button>
+        )}
+
         {status === "pending" && approvalId && (
           <div className="flex gap-2 mt-3">
             <button
@@ -173,7 +191,13 @@ function InlineApprovalCard({ payload }: { payload: ApprovalPayload }) {
 
 // ── Chat message bubble ────────────────────────────────────────────────────────
 
-function ChatBubble({ comment }: { comment: IssueComment }) {
+function ChatBubble({
+  comment,
+  onViewConversation,
+}: {
+  comment: IssueComment;
+  onViewConversation?: (chatJid: string, contactName?: string) => void;
+}) {
   const isOwner = comment.authorUserId !== null && comment.authorAgentId === null;
   const parsed = !isOwner ? parseApprovalBlock(comment.body) : null;
 
@@ -201,7 +225,12 @@ function ChatBubble({ comment }: { comment: IssueComment }) {
         </div>
 
         {/* Inline approval card */}
-        {parsed && <InlineApprovalCard payload={parsed.payload} />}
+        {parsed && (
+          <InlineApprovalCard
+            payload={parsed.payload}
+            onViewConversation={onViewConversation}
+          />
+        )}
 
         {/* Timestamp */}
         <span className="mt-[3px] text-[11px] text-muted-foreground/60 px-1 select-none">
@@ -277,6 +306,18 @@ export function CeoChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
+
+  // Conversation drawer state
+  const [conversationDrawer, setConversationDrawer] = useState<{
+    open: boolean;
+    chatJid: string;
+    agentId?: string;
+    contactName?: string;
+  } | null>(null);
+
+  const handleViewConversation = useCallback((chatJid: string, contactName?: string) => {
+    setConversationDrawer({ open: true, chatJid, contactName });
+  }, []);
 
   // Streaming state
   const [isStreaming, setIsStreaming] = useState(false);
@@ -483,7 +524,11 @@ export function CeoChat() {
         )}
 
         {comments.map((comment: IssueComment) => (
-          <ChatBubble key={comment.id} comment={comment} />
+          <ChatBubble
+            key={comment.id}
+            comment={comment}
+            onViewConversation={handleViewConversation}
+          />
         ))}
 
         {/* Typing indicator -- shown while waiting for first streaming token */}
@@ -539,6 +584,17 @@ export function CeoChat() {
           </button>
         </div>
       </div>
+
+      {/* ── WhatsApp Conversation Drawer ───────────────────────────────── */}
+      {conversationDrawer && (
+        <WhatsAppConversationDrawer
+          open={conversationDrawer.open}
+          onClose={() => setConversationDrawer(null)}
+          chatJid={conversationDrawer.chatJid}
+          agentId={conversationDrawer.agentId}
+          contactName={conversationDrawer.contactName}
+        />
+      )}
     </div>
   );
 }

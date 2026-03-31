@@ -109,6 +109,10 @@ export const queryKeys = {
   dashboard: (companyId: string) => ["dashboard", companyId] as const,
   sidebarBadges: (companyId: string) => ["sidebar-badges", companyId] as const,
   activity: (companyId: string) => ["activity", companyId] as const,
+  whatsapp: {
+    messages: (companyId: string, chatJid: string, agentId?: string) =>
+      ["whatsapp", "messages", companyId, chatJid, agentId] as const,
+  },
   deliverables: (companyId: string) => ["deliverables", companyId] as const,
   costs: (companyId: string, from?: string, to?: string) =>
     ["costs", companyId, from, to] as const,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "../api/approvals";
@@ -11,11 +11,12 @@ import { PageHeader } from "../components/PageHeader";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, CheckCircle2, Clock, History } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock, History, MessageCircle } from "lucide-react";
 import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } from "../components/ApprovalPayload";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { WhatsAppConversationDrawer } from "../components/WhatsAppConversationDrawer";
 import type { Approval, Agent } from "@paperclipai/shared";
 
 type StatusFilter = "pending" | "all";
@@ -31,6 +32,7 @@ function LayoutCApprovalCard({
   isPending,
   justApproved,
   justRejected,
+  onViewConversation,
 }: {
   approval: Approval;
   requesterAgent: Agent | null;
@@ -39,6 +41,7 @@ function LayoutCApprovalCard({
   isPending: boolean;
   justApproved?: boolean;
   justRejected?: boolean;
+  onViewConversation?: (chatJid: string, contactName?: string) => void;
 }) {
   const Icon = typeIcon[approval.type] ?? defaultTypeIcon;
   const label = approvalLabel(approval.type, approval.payload as Record<string, unknown> | null);
@@ -50,11 +53,11 @@ function LayoutCApprovalCard({
 
   // Extract a message preview from the payload if available
   const payload = approval.payload as Record<string, unknown> | null;
-  const messagePreview =
-    (payload?.message as string) ??
-    (payload?.body as string) ??
-    (payload?.content as string) ??
-    (payload?.description as string) ??
+  const messagePreview: string | null =
+    (typeof payload?.message === "string" ? payload.message : null) ??
+    (typeof payload?.body === "string" ? payload.body : null) ??
+    (typeof payload?.content === "string" ? payload.content : null) ??
+    (typeof payload?.description === "string" ? payload.description : null) ??
     null;
 
   return (
@@ -116,6 +119,24 @@ function LayoutCApprovalCard({
             </p>
           </div>
         )}
+
+        {/* View conversation link — WhatsApp approvals with a phone number */}
+        {(payload?.action as string | undefined) === "send_whatsapp" &&
+          typeof payload?.phone === "string" &&
+          onViewConversation && (
+            <button
+              className="flex items-center gap-1 mt-2 text-[11px] text-primary hover:underline transition-opacity"
+              onClick={() =>
+                onViewConversation(
+                  payload.phone as string,
+                  (payload.to as string | undefined) ?? undefined,
+                )
+              }
+            >
+              <MessageCircle className="h-3 w-3" />
+              View conversation
+            </button>
+          )}
 
         {/* Decision note */}
         {approval.decisionNote && (
@@ -179,6 +200,17 @@ export function Approvals() {
   const statusFilter: StatusFilter = pathSegment === "all" ? "all" : "pending";
   const [actionError, setActionError] = useState<string | null>(null);
   const [resolvedIds, setResolvedIds] = useState<Map<string, "approved" | "rejected">>(new Map());
+
+  // Conversation drawer state
+  const [conversationDrawer, setConversationDrawer] = useState<{
+    open: boolean;
+    chatJid: string;
+    contactName?: string;
+  } | null>(null);
+
+  const handleViewConversation = useCallback((chatJid: string, contactName?: string) => {
+    setConversationDrawer({ open: true, chatJid, contactName });
+  }, []);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Approvals" }]);
@@ -310,11 +342,22 @@ export function Approvals() {
                 isPending={approveMutation.isPending || rejectMutation.isPending}
                 justApproved={resolvedIds.get(approval.id) === "approved"}
                 justRejected={resolvedIds.get(approval.id) === "rejected"}
+                onViewConversation={handleViewConversation}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* WhatsApp Conversation Drawer */}
+      {conversationDrawer && (
+        <WhatsAppConversationDrawer
+          open={conversationDrawer.open}
+          onClose={() => setConversationDrawer(null)}
+          chatJid={conversationDrawer.chatJid}
+          contactName={conversationDrawer.contactName}
+        />
+      )}
     </div>
   );
 }
