@@ -11,7 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, CheckCircle2, Clock, History, MessageCircle } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock, History, MessageCircle, Pencil } from "lucide-react";
 import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } from "../components/ApprovalPayload";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
@@ -28,6 +28,7 @@ function LayoutCApprovalCard({
   approval,
   requesterAgent,
   onApprove,
+  onApproveWithEdit,
   onReject,
   isPending,
   justApproved,
@@ -37,6 +38,7 @@ function LayoutCApprovalCard({
   approval: Approval;
   requesterAgent: Agent | null;
   onApprove: () => void;
+  onApproveWithEdit?: (editedPayload: Record<string, unknown>) => void;
   onReject: () => void;
   isPending: boolean;
   justApproved?: boolean;
@@ -59,6 +61,9 @@ function LayoutCApprovalCard({
     (typeof payload?.content === "string" ? payload.content : null) ??
     (typeof payload?.description === "string" ? payload.description : null) ??
     null;
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedMessage, setEditedMessage] = useState(messagePreview ?? "");
 
   return (
     <div className="rounded-xl border border-border/50 overflow-hidden transition-all hover:border-border">
@@ -111,13 +116,24 @@ function LayoutCApprovalCard({
         {/* Payload details */}
         <ApprovalPayloadRenderer type={approval.type} payload={approval.payload} />
 
-        {/* Message preview */}
+        {/* Message preview — static or editable */}
         {messagePreview && (
-          <div className="mt-2.5 rounded-lg bg-muted p-2.5">
-            <p className="text-[12px] text-muted-foreground italic line-clamp-3 m-0">
-              {messagePreview}
-            </p>
-          </div>
+          isEditing ? (
+            <div className="mt-2.5">
+              <textarea
+                value={editedMessage}
+                onChange={(e) => setEditedMessage(e.target.value)}
+                rows={4}
+                className="w-full rounded-lg border border-primary/50 bg-background px-3 py-2 text-[12px] leading-[1.55] text-foreground outline-none resize-none focus:border-primary transition-colors"
+              />
+            </div>
+          ) : (
+            <div className="mt-2.5 rounded-lg bg-muted p-2.5">
+              <p className="text-[12px] text-muted-foreground italic line-clamp-3 m-0">
+                {editedMessage || messagePreview}
+              </p>
+            </div>
+          )
         )}
 
         {/* View conversation link — WhatsApp approvals with a phone number */}
@@ -161,25 +177,66 @@ function LayoutCApprovalCard({
 
         {/* Action buttons */}
         {showResolutionButtons && (
-          <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
-            <Button
-              size="sm"
-              className="flex-1 h-8 bg-primary text-white hover:bg-primary/90 text-[12px] font-medium"
-              onClick={onApprove}
-              disabled={isPending}
-            >
-              Approve & Send
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-3 text-[12px] border border-border/50 hover:bg-muted"
-              onClick={onReject}
-              disabled={isPending}
-            >
-              Decline
-            </Button>
-          </div>
+          isEditing ? (
+            <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
+              <Button
+                size="sm"
+                className="flex-1 h-8 bg-primary text-white hover:bg-primary/90 text-[12px] font-medium"
+                onClick={() => {
+                  setIsEditing(false);
+                  if (onApproveWithEdit) {
+                    onApproveWithEdit({ message: editedMessage });
+                  } else {
+                    onApprove();
+                  }
+                }}
+                disabled={isPending}
+              >
+                Approve Edited
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-3 text-[12px] border border-border/50 hover:bg-muted"
+                onClick={() => { setIsEditing(false); setEditedMessage(messagePreview ?? ""); }}
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
+              <Button
+                size="sm"
+                className="flex-1 h-8 bg-primary text-white hover:bg-primary/90 text-[12px] font-medium"
+                onClick={onApprove}
+                disabled={isPending}
+              >
+                Approve & Send
+              </Button>
+              {messagePreview && onApproveWithEdit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-3 text-[12px] border border-border/50 hover:bg-muted gap-1"
+                  onClick={() => setIsEditing(true)}
+                  disabled={isPending}
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-3 text-[12px] border border-border/50 hover:bg-muted"
+                onClick={onReject}
+                disabled={isPending}
+              >
+                Decline
+              </Button>
+            </div>
+          )
         )}
       </div>
     </div>
@@ -229,8 +286,9 @@ export function Approvals() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: (id: string) => approvalsApi.approve(id),
-    onSuccess: (_approval, id) => {
+    mutationFn: ({ id, editedPayload }: { id: string; editedPayload?: Record<string, unknown> }) =>
+      approvalsApi.approve(id, undefined, editedPayload),
+    onSuccess: (_approval, { id }) => {
       setActionError(null);
       setResolvedIds((prev) => new Map(prev).set(id, "approved"));
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
@@ -337,7 +395,8 @@ export function Approvals() {
                     ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null
                     : null
                 }
-                onApprove={() => approveMutation.mutate(approval.id)}
+                onApprove={() => approveMutation.mutate({ id: approval.id })}
+                onApproveWithEdit={(editedPayload) => approveMutation.mutate({ id: approval.id, editedPayload })}
                 onReject={() => rejectMutation.mutate(approval.id)}
                 isPending={approveMutation.isPending || rejectMutation.isPending}
                 justApproved={resolvedIds.get(approval.id) === "approved"}

@@ -121,10 +121,15 @@ export function approvalRoutes(db: Db) {
   router.post("/approvals/:id/approve", validate(resolveApprovalSchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const editedPayload =
+      req.body.editedPayload && typeof req.body.editedPayload === "object"
+        ? (req.body.editedPayload as Record<string, unknown>)
+        : undefined;
     const { approval, applied } = await svc.approve(
       id,
       req.body.decidedByUserId ?? "board",
       req.body.decisionNote,
+      editedPayload,
     );
 
     if (applied) {

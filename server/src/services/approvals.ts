@@ -100,7 +100,22 @@ export function approvalService(db: Db) {
         .returning()
         .then((rows) => rows[0]),
 
-    approve: async (id: string, decidedByUserId: string, decisionNote?: string | null) => {
+    approve: async (
+      id: string,
+      decidedByUserId: string,
+      decisionNote?: string | null,
+      editedPayload?: Record<string, unknown>,
+    ) => {
+      // If the owner edited message content, merge it into the payload before resolving
+      if (editedPayload && Object.keys(editedPayload).length > 0) {
+        const existing = await getExistingApproval(id);
+        const mergedPayload = { ...(existing.payload as Record<string, unknown>), ...editedPayload };
+        await db
+          .update(approvals)
+          .set({ payload: mergedPayload, updatedAt: new Date() })
+          .where(eq(approvals.id, id));
+      }
+
       const { approval: updated, applied } = await resolveApproval(
         id,
         "approved",

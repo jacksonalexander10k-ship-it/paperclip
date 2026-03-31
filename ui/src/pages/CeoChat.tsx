@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Loader2, CheckCircle, XCircle, ArrowUp, MessageCircle } from "lucide-react";
+import { Send, Loader2, CheckCircle, XCircle, ArrowUp, MessageCircle, Pencil } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
@@ -55,11 +55,19 @@ function InlineApprovalCard({
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "blocked">("pending");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedMessage, setEditedMessage] = useState(payload.message ?? "");
 
   const approveMutation = useMutation({
-    mutationFn: (id: string) => approvalsApi.approve(id),
+    mutationFn: ({ id, edited }: { id: string; edited?: string }) =>
+      approvalsApi.approve(
+        id,
+        undefined,
+        edited !== undefined ? { message: edited } : undefined,
+      ),
     onSuccess: () => {
       setStatus("approved");
+      setIsEditing(false);
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
     },
     onError: () => {
@@ -76,6 +84,7 @@ function InlineApprovalCard({
   });
 
   const approvalId = payload.approval_id;
+  const hasMessage = payload.message != null && payload.message !== "";
 
   const actionLabels: Record<string, string> = {
     send_whatsapp: "Send WhatsApp",
@@ -112,12 +121,24 @@ function InlineApprovalCard({
           </p>
         )}
 
-        {payload.message && (
-          <div className="mt-2 rounded-[8px] border border-border/60 bg-background px-3 py-2">
-            <p className="text-[11.5px] leading-[1.55] text-foreground/80 whitespace-pre-wrap">
-              {payload.message}
-            </p>
-          </div>
+        {/* Message — static or editable textarea */}
+        {hasMessage && (
+          isEditing ? (
+            <div className="mt-2">
+              <textarea
+                value={editedMessage}
+                onChange={(e) => setEditedMessage(e.target.value)}
+                rows={4}
+                className="w-full rounded-[8px] border border-primary/50 bg-background px-3 py-2 text-[11.5px] leading-[1.55] text-foreground/90 outline-none resize-none focus:border-primary transition-colors"
+              />
+            </div>
+          ) : (
+            <div className="mt-2 rounded-[8px] border border-border/60 bg-background px-3 py-2">
+              <p className="text-[11.5px] leading-[1.55] text-foreground/80 whitespace-pre-wrap">
+                {editedMessage || payload.message}
+              </p>
+            </div>
+          )
         )}
 
         {payload.context && (
@@ -135,25 +156,56 @@ function InlineApprovalCard({
           </button>
         )}
 
+        {/* Action buttons */}
         {status === "pending" && approvalId && (
-          <div className="flex gap-2 mt-3">
-            <button
-              className="flex items-center gap-1.5 rounded-[7px] bg-primary px-3 py-[6px] text-[11px] font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
-              onClick={() => approveMutation.mutate(approvalId)}
-              disabled={approveMutation.isPending || rejectMutation.isPending}
-            >
-              <CheckCircle className="h-3 w-3" />
-              Approve & Send
-            </button>
-            <button
-              className="flex items-center gap-1.5 rounded-[7px] border border-border px-3 py-[6px] text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
-              onClick={() => rejectMutation.mutate(approvalId)}
-              disabled={approveMutation.isPending || rejectMutation.isPending}
-            >
-              <XCircle className="h-3 w-3" />
-              Decline
-            </button>
-          </div>
+          isEditing ? (
+            <div className="flex gap-2 mt-3">
+              <button
+                className="flex items-center gap-1.5 rounded-[7px] bg-primary px-3 py-[6px] text-[11px] font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
+                onClick={() => approveMutation.mutate({ id: approvalId, edited: editedMessage })}
+                disabled={approveMutation.isPending}
+              >
+                <CheckCircle className="h-3 w-3" />
+                Approve Edited
+              </button>
+              <button
+                className="flex items-center gap-1.5 rounded-[7px] border border-border px-3 py-[6px] text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
+                onClick={() => { setIsEditing(false); setEditedMessage(payload.message ?? ""); }}
+                disabled={approveMutation.isPending}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2 mt-3">
+              <button
+                className="flex items-center gap-1.5 rounded-[7px] bg-primary px-3 py-[6px] text-[11px] font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
+                onClick={() => approveMutation.mutate({ id: approvalId })}
+                disabled={approveMutation.isPending || rejectMutation.isPending}
+              >
+                <CheckCircle className="h-3 w-3" />
+                Approve & Send
+              </button>
+              {hasMessage && (
+                <button
+                  className="flex items-center gap-1.5 rounded-[7px] border border-border px-3 py-[6px] text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
+                  onClick={() => setIsEditing(true)}
+                  disabled={approveMutation.isPending || rejectMutation.isPending}
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </button>
+              )}
+              <button
+                className="flex items-center gap-1.5 rounded-[7px] border border-border px-3 py-[6px] text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
+                onClick={() => rejectMutation.mutate(approvalId)}
+                disabled={approveMutation.isPending || rejectMutation.isPending}
+              >
+                <XCircle className="h-3 w-3" />
+                Decline
+              </button>
+            </div>
+          )
         )}
 
         {status === "pending" && !approvalId && (
