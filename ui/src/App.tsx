@@ -42,6 +42,7 @@ import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
 import { CeoChat } from "./pages/CeoChat";
 import { Properties } from "./pages/Properties";
+import { PropertyDetail } from "./pages/PropertyDetail";
 import Landing from "./pages/Landing";
 import { AuthPage } from "./pages/Auth";
 import BillingCheckout from "./pages/BillingCheckout";
@@ -177,6 +178,7 @@ function boardRoutes() {
       <Route path="properties/sale" element={<Properties />} />
       <Route path="properties/rental" element={<Properties />} />
       <Route path="properties/new" element={<Properties />} />
+      <Route path="properties/:propertyId" element={<PropertyDetail />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />
