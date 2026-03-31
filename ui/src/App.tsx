@@ -24,6 +24,7 @@ import { Approvals } from "./pages/Approvals";
 import { ApprovalDetail } from "./pages/ApprovalDetail";
 import { Costs } from "./pages/Costs";
 import { Activity } from "./pages/Activity";
+import { Deliverables } from "./pages/Deliverables";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { CompanySkills } from "./pages/CompanySkills";
@@ -40,6 +41,7 @@ import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
 import { CeoChat } from "./pages/CeoChat";
+import Landing from "./pages/Landing";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
@@ -168,6 +170,7 @@ function boardRoutes() {
       <Route path="approvals/:approvalId" element={<ApprovalDetail />} />
       <Route path="costs" element={<Costs />} />
       <Route path="activity" element={<Activity />} />
+      <Route path="deliverables" element={<Deliverables />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />
@@ -306,9 +309,10 @@ function AygencyOnboardingGate() {
   const { companies, loading } = useCompany();
   const [dismissed, setDismissed] = useState(false);
 
-  const isComplete = localStorage.getItem("aygency_onboarding_complete") === "true";
+  const preview = typeof window !== "undefined" && window.location.search.includes("onboarding=1");
 
-  if (loading || isComplete || dismissed || companies.length > 0) return null;
+  if (loading || dismissed) return null;
+  if (!preview && companies.length > 0) return null;
 
   return <AygencyOnboardingWizard onComplete={() => setDismissed(true)} />;
 }
@@ -317,6 +321,7 @@ export function App() {
   return (
     <>
       <Routes>
+        <Route path="/" element={<Landing />} />
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
@@ -335,11 +340,24 @@ export function App() {
             <Route path="plugins/:pluginId" element={<PluginSettings />} />
           </Route>
           <Route path="ceo-chat" element={<UnprefixedBoardRedirect />} />
+          <Route path="dashboard" element={<UnprefixedBoardRedirect />} />
           <Route path="companies" element={<UnprefixedBoardRedirect />} />
+          <Route path="inbox" element={<UnprefixedBoardRedirect />} />
+          <Route path="inbox/:tab" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
+          <Route path="approvals" element={<UnprefixedBoardRedirect />} />
+          <Route path="approvals/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="routines" element={<UnprefixedBoardRedirect />} />
           <Route path="routines/:routineId" element={<UnprefixedBoardRedirect />} />
+          <Route path="deliverables" element={<UnprefixedBoardRedirect />} />
+          <Route path="costs" element={<UnprefixedBoardRedirect />} />
+          <Route path="activity" element={<UnprefixedBoardRedirect />} />
+          <Route path="goals" element={<UnprefixedBoardRedirect />} />
+          <Route path="goals/:goalId" element={<UnprefixedBoardRedirect />} />
+          <Route path="company/settings" element={<UnprefixedBoardRedirect />} />
+          <Route path="company/export/*" element={<UnprefixedBoardRedirect />} />
+          <Route path="company/import" element={<UnprefixedBoardRedirect />} />
           <Route path="skills/*" element={<UnprefixedBoardRedirect />} />
           <Route path="settings" element={<LegacySettingsRedirect />} />
           <Route path="settings/*" element={<LegacySettingsRedirect />} />
@@ -354,6 +372,7 @@ export function App() {
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
+          <Route path="org" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>
             {boardRoutes()}
