@@ -31,3 +31,4 @@ export { publishLiveEvent, subscribeCompanyLiveEvents } from "./live-events.js";
 export { reconcilePersistedRuntimeServicesOnStartup } from "./workspace-runtime.js";
 export { ceoCommandService, extractCommands, minutesToCron } from "./ceo-commands.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";
+export { propertyService } from "./properties.js";
