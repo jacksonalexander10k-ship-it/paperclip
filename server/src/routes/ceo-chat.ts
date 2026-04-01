@@ -11,6 +11,7 @@ import {
   activityService,
   dashboardService,
   ceoCommandService,
+  pushNotificationService,
 } from "../services/index.js";
 import { assertCompanyAccess } from "./authz.js";
 import { logger } from "../middleware/logger.js";
@@ -345,6 +346,14 @@ You can also use these commands:
         await isvc.addComment(ceoChatIssue.id, savedText, {}).catch((err: unknown) => {
           logger.error({ err }, "ceo-chat: failed to persist assistant reply");
         });
+
+        // Send push notification for CEO reply
+        pushNotificationService(db).sendToCompany(companyId, {
+          title: "CEO Update",
+          body: "New message from your CEO agent",
+          url: "/ceo-chat",
+          tag: "ceo-chat",
+        }).catch(() => {});
 
         // Execute any CEO commands (hire_team, pause_agent, create_task, etc.)
         if (ceoAgent) {

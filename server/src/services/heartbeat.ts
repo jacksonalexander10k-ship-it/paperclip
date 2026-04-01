@@ -53,6 +53,7 @@ import {
 import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
 import { knowledgeBaseService } from "./knowledge-base.js";
+import { pushNotificationService } from "./push-notifications.js";
 import {
   hasSessionCompactionThresholds,
   resolveSessionCompactionPolicy,
@@ -1727,6 +1728,15 @@ export function heartbeatService(db: Db) {
           outcome,
         },
       });
+
+      if (nextStatus === "error") {
+        pushNotificationService(db).sendToCompany(updated.companyId, {
+          title: "Agent Error",
+          body: `${updated.name} encountered an error`,
+          url: "/inbox",
+          tag: "agent-error",
+        }).catch(() => {});
+      }
     }
   }
 

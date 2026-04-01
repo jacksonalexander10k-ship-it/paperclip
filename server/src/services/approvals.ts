@@ -8,6 +8,7 @@ import { approvalExecutorService } from "./approval-executor.js";
 import { budgetService } from "./budgets.js";
 import { notifyHireApproved } from "./hire-hook.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { pushNotificationService } from "./push-notifications.js";
 
 export function approvalService(db: Db) {
   const agentsSvc = agentService(db);
@@ -93,12 +94,26 @@ export function approvalService(db: Db) {
         .where(eq(approvals.id, id))
         .then((rows) => rows[0] ?? null),
 
-    create: (companyId: string, data: Omit<typeof approvals.$inferInsert, "companyId">) =>
-      db
+    create: async (companyId: string, data: Omit<typeof approvals.$inferInsert, "companyId">) => {
+      const row = await db
         .insert(approvals)
         .values({ ...data, companyId })
         .returning()
-        .then((rows) => rows[0]),
+        .then((rows) => rows[0]);
+
+      // Send push notification for new approval
+      const payload = data.payload as Record<string, unknown> | null;
+      const action = String(payload?.action ?? data.type ?? "action");
+      const agentName = String(payload?.agentName ?? "An agent");
+      pushNotificationService(db).sendToCompany(companyId, {
+        title: "Approval Needed",
+        body: `${agentName} wants to ${action}`,
+        url: "/approvals/pending",
+        tag: "approval",
+      }).catch(() => {});
+
+      return row;
+    },
 
     approve: async (
       id: string,
