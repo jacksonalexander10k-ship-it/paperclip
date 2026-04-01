@@ -43,41 +43,41 @@ function buildCeoResponse(agentMap: Map<string, DemoAgent>) {
   const nour = agentMap.get("content")?.name ?? "Nour";
 
   // The text the CEO streams — natural language, no markdown formatting
-  const spokenText = `On it. Here's what I'm doing right now.
+  const spokenText = `Good call. With the geopolitical situation shifting, now's the right time to re-engage the full pipeline.
 
-I've asked ${omar} to pull the latest JVC transaction data from DLD. He just confirmed — 1BR prices dropped 12% this week. Binghatti Hills is now starting from AED 748K.
+I've asked ${omar} to pull together a quick market snapshot — how the conflict is affecting Dubai demand, any changes in transaction volume, and what the sentiment looks like for foreign buyers.
 
-${layla} cross-referenced your pipeline and found 6 leads who stalled on JVC pricing. She's drafted messages for the two highest-scoring leads — Ahmed Al Hashimi (score 8, Arabic) and Elena Kuznetsova (score 7, Russian). Both personalised to their language and style.
+${layla} is going through every lead in the pipeline. She's segmenting them into buyers and sellers, and drafting personalised check-in messages. Not a hard sell — just a warm, genuine "the market's changed, are you still interested?" tailored to each person's language and situation.
 
-${nour} is preparing an Instagram post about the price drop to drive more inbound.
+${nour} is putting together a market update post — something that positions us as the agency that keeps clients informed, not just the one that sells.
 
-All three are below for your approval. One tap to send.`;
+Here are the first two ready for your review. ${layla} will work through the rest of the pipeline over the next few hours.`;
 
   const approval1 = {
     type: "approval_required",
     action: "send_whatsapp",
     to: "Ahmed Al Hashimi",
     phone: "+971501234567",
-    message: "Dear Mr. Al Hashimi, great news — JVC 1BR prices have dropped 12% this week. Binghatti Hills now starts from AED 748,000 with a 60/40 payment plan. Would you like to view the updated options this week?",
+    message: "Dear Mr. Al Hashimi, I hope you and your family are well. With recent developments in the region, the Dubai property market has seen some notable shifts — increased demand from international buyers looking for stability, and some interesting movement on pricing. I wanted to check in and see if you're still considering the Dubai market, whether buying or selling. Happy to share a quick update if it's helpful.",
     lead_score: 8,
-    context: "Re-engagement triggered by Market Agent price drop alert. Ahmed previously stalled on JVC pricing.",
+    context: "High-value lead, previously interested in JVC. Formal Arabic greeting. Warm re-engagement, not a hard sell.",
   };
 
   const approval2 = {
     type: "approval_required",
     action: "send_whatsapp",
-    to: "Elena Kuznetsova",
-    phone: "+971552223344",
-    message: "Елена, добрый день. Цены на 1BR в JVC снизились на 12% — от AED 748K. ROI 8.4% годовых при текущей арендной ставке. Интересно обсудить?",
-    lead_score: 7,
-    context: "Russian-speaking lead, metrics-first approach. Price drop creates re-engagement opportunity.",
+    to: "Dmitri Volkov",
+    phone: "+971555678901",
+    message: "Дмитрий, добрый день. В связи с последними событиями на Ближнем Востоке рынок Дубая заметно изменился — увеличился спрос со стороны международных инвесторов, ищущих стабильность. Хотел узнать, актуален ли для вас вопрос покупки или продажи недвижимости в Дубае? Могу подготовить краткий обзор текущей ситуации.",
+    lead_score: 9,
+    context: "Russian investor, score 9, was in negotiation stage. Geopolitical angle highly relevant. Metrics-focused follow-up.",
   };
 
   const approval3 = {
     type: "approval_required",
     action: "post_instagram",
-    caption: "JVC 1BR prices just dropped 12% 📉\n\nBinghatti Hills — now from AED 748K\n60/40 payment plan | Q3 2026 handover\nBest entry point this year.\n\nDM 'JVC' for floor plans.\n\n#JVC #DubaiRealEstate #OffPlan #BinghattiHills #DubaiProperty",
-    context: "Market Agent detected JVC price drop. Content designed for maximum engagement based on previous post performance.",
+    caption: "The world is changing. Dubai's property market is responding.\n\nWith global uncertainty driving demand for safe-haven assets, Dubai continues to attract international investors.\n\nWhether you're looking to buy, sell, or simply understand what's happening — we're here.\n\nDM us for a confidential market update.\n\n#DubaiRealEstate #PropertyMarket #DubaiInvestment #SafeHaven #MarketUpdate",
+    context: "Market shift content. Positions the agency as informed and advisory, not salesy. Designed to generate inbound enquiries.",
   };
 
   // The full saved text includes JSON blocks (rendered as cards after save)
@@ -157,84 +157,84 @@ async function runBackgroundSequence(
     summary: string;
   }> = [
     {
-      delayMs: 3000,
+      delayMs: 4000,
       from: ceo,
       to: omar,
       priority: "action",
-      messageType: "data_request",
-      summary: `@${O} can you pull the latest JVC 1BR numbers from DLD? Owner wants to push JVC hard this week. Need current market rate asap`,
+      messageType: "market_brief",
+      summary: `@${O} owner wants to warm up the entire pipeline. Can you put together a quick market snapshot? How the conflict's affecting Dubai demand, transaction volumes, foreign buyer sentiment. Need it fast so @${L} can use it in her outreach`,
     },
     {
-      delayMs: 7000,
+      delayMs: 11000,
       from: omar,
       to: ceo,
       priority: "info",
-      messageType: "acknowledgement",
-      summary: `@${K} on it, pulling DLD data now. Give me 30 seconds`,
+      messageType: "market_update",
+      summary: `@${K} got it. Quick summary: DLD transactions up 8% month-on-month, international buyer enquiries spiked 23% since the tensions started. Dubai being seen as a safe haven — same pattern we saw in 2022. Capital inflows from CIS countries especially. I'll write this up properly for @${N} to use in content`,
     },
     {
-      delayMs: 14000,
-      from: omar,
+      delayMs: 18000,
+      from: ceo,
       to: layla,
       priority: "action",
-      messageType: "price_alert",
-      summary: `@${L} heads up — just pulled the DLD numbers. JVC 1BR dropped 12% this week. Binghatti Hills now starting from 748K. You've got 6 leads sitting on JVC who went cold on pricing. This could be the hook to bring them back`,
+      messageType: "pipeline_reengagement",
+      summary: `@${L} here's the play — go through every lead in the pipeline and send a warm check-in. Not a hard sell. The angle is: "the market's shifted because of what's happening globally, wanted to see if you're still interested in Dubai — buying or selling." Personalise by language and previous interest. Start with score 7+ and work your way down`,
     },
     {
-      delayMs: 19000,
+      delayMs: 24000,
       from: layla,
-      to: omar,
-      priority: "info",
-      messageType: "acknowledgement",
-      summary: `Nice one @${O}, that's exactly what I needed 👍 Pulling up the JVC pipeline now. Ahmed and Elena are the top two — drafting messages for both`,
-    },
-    {
-      delayMs: 25000,
-      from: ceo,
-      to: layla,
-      priority: "action",
-      messageType: "campaign_request",
-      summary: `@${L} prioritise score 7 and above. @${N} can you get a post ready about the JVC price drop? We need to capitalise on this today`,
-    },
-    {
-      delayMs: 30000,
-      from: nour,
       to: ceo,
       priority: "info",
       messageType: "acknowledgement",
-      summary: `On it @${K}. @${L} what angle works best — lead with the price drop percentage or the actual AED number?`,
+      summary: `@${K} on it. I've got 15 leads in the pipeline. Starting with Ahmed (score 8, was looking at JVC), Dmitri (score 9, was mid-negotiation on Marina Gate), and Hassan (score 10, the Downtown penthouse buyer). These three could be hot again with the right message`,
     },
     {
-      delayMs: 36000,
+      delayMs: 31000,
       from: layla,
       to: nour,
-      priority: "info",
-      messageType: "content_guidance",
-      summary: `@${N} lead with the price drop — "12% down" is the hook. Then the 748K number. The 60/40 payment plan as the backup detail. That combo worked best with Ahmed's segment last time`,
+      priority: "action",
+      messageType: "content_request",
+      summary: `@${N} we're doing a full pipeline warm-up. Can you draft a market update post for Instagram? Something that positions us as the informed agency — not "BUY NOW" energy, more like "the world's changing, here's what it means for Dubai property, DM us if you want to talk." @${O} has the data`,
     },
     {
-      delayMs: 44000,
+      delayMs: 38000,
       from: nour,
       to: layla,
       priority: "info",
-      messageType: "content_ready",
-      summary: `Done @${L} — drafted the post. Used the same carousel format that got 520 likes last week. @${K} it's queued for the owner to approve`,
+      messageType: "acknowledgement",
+      summary: `Love that angle @${L}. Less salesy, more advisory. I'll use @${O}'s numbers about the 23% spike in international enquiries. Give me a few minutes`,
     },
     {
-      delayMs: 49000,
+      delayMs: 45000,
+      from: omar,
+      to: nour,
+      priority: "info",
+      messageType: "data_share",
+      summary: `@${N} here's the key stats for your post: DLD transactions +8% MoM, international enquiries +23%, CIS buyer registrations doubled since March. Dubai ranked #1 for capital preservation in the MENA region. Use whatever you need`,
+    },
+    {
+      delayMs: 52000,
+      from: nour,
+      to: ceo,
+      priority: "info",
+      messageType: "content_ready",
+      summary: `@${K} post is drafted and queued for approval. Went with the "safe haven" angle — felt right given the sentiment. @${L} I kept it soft enough that it won't put off anyone who's nervous about the region`,
+    },
+    {
+      delayMs: 58000,
       from: layla,
       to: ceo,
       priority: "info",
       messageType: "status_update",
-      summary: `@${K} all done. Drafted WhatsApp for Ahmed (score 8, formal Arabic) and Elena (score 7, Russian — led with ROI numbers). @${N}'s Instagram post is queued too. Everything's waiting for the owner to approve. Pretty quick turnaround if I say so myself 😏`,
+      summary: `@${K} first two messages are drafted — Ahmed and Dmitri. Both personalised. Ahmed gets formal Arabic with a "checking in on you" tone. Dmitri gets the investor angle in Russian with the numbers @${O} pulled. Working through the rest of the pipeline now, should have all 15 done within the hour`,
     },
     {
-      delayMs: 54000,
+      delayMs: 64000,
       from: ceo,
       to: layla,
       priority: "info",
       messageType: "acknowledgement",
-      summary: `Good work team. @${L} @${O} @${N} — owner has 3 approval cards waiting. Let's see if we can close Ahmed this week, he's been sitting on this for too long`,
+      summary: `Perfect @${L}. First two plus @${N}'s post are up for the owner to approve. @${O} @${N} @${L} — good work, this was fast. Let's see which leads bite 🎯`,
     },
   ];
 
