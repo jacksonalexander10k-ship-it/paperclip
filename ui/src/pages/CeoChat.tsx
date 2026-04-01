@@ -264,7 +264,7 @@ function ChatBubble({
         </div>
       )}
 
-      <div className={`max-w-[75%] flex flex-col ${isOwner ? "items-end" : "items-start"}`}>
+      <div className={`max-w-[88%] md:max-w-[75%] flex flex-col ${isOwner ? "items-end" : "items-start"}`}>
         {/* Bubble */}
         <div
           className={`px-3.5 py-2.5 text-[12.5px] leading-[1.55] whitespace-pre-wrap ${
@@ -307,7 +307,7 @@ function StreamingBubble({ text }: { text: string }) {
           CEO
         </span>
       </div>
-      <div className="max-w-[75%] flex flex-col items-start">
+      <div className="max-w-[88%] md:max-w-[75%] flex flex-col items-start">
         <div className="bg-card border border-border text-foreground rounded-[13px] rounded-bl-[4px] px-3.5 py-2.5 text-[12.5px] leading-[1.55] whitespace-pre-wrap">
           {text}
           <span className="inline-block w-[2px] h-[14px] bg-primary/70 ml-0.5 animate-blink align-middle rounded-full" />
@@ -564,7 +564,7 @@ export function CeoChat() {
       />
 
       {/* ── Chat messages area ─────────────────────────────────────────── */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 mb-14 md:mb-0">
         {commentsLoading && (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-5 w-5 text-muted-foreground/40 animate-spin" />
@@ -603,7 +603,7 @@ export function CeoChat() {
       </div>
 
       {/* ── Quick action pills ─────────────────────────────────────────── */}
-      <div className="border-t border-border/40 px-5 py-[7px] flex gap-[5px] overflow-x-auto shrink-0">
+      <div className="border-t border-border/40 px-5 py-[7px] flex gap-[5px] overflow-x-auto shrink-0 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
         {QUICK_ACTIONS.map((action) => (
           <button
             key={action.label}
@@ -617,7 +617,7 @@ export function CeoChat() {
       </div>
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
-      <div className="mx-4 mb-3 mt-[3px] shrink-0">
+      <div className="mx-4 mb-3 mt-[3px] shrink-0 pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-center gap-2 rounded-[12px] border border-border bg-background h-[48px] px-3 focus-within:border-primary/50 transition-colors">
           <input
             value={input}
