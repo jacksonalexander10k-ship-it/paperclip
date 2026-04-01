@@ -1,4 +1,5 @@
 import { agentCredentialService } from "./agent-credentials.js";
+import { facebookAdsService } from "./facebook-ads.js";
 import { logger } from "../middleware/logger.js";
 import type { Db } from "@paperclipai/db";
 import { aygentWhatsappMessages, aygentWhatsappWindows } from "@paperclipai/db";
@@ -13,6 +14,7 @@ interface ExecutionResult {
 
 export function approvalExecutorService(db: Db) {
   const credSvc = agentCredentialService(db);
+  const fbAds = facebookAdsService();
 
   async function executeWhatsApp(
     approvalId: string,
@@ -143,6 +145,55 @@ export function approvalExecutorService(db: Db) {
           return executeInstagram(agentId, companyId, payload);
         case "hire_agent":
           return { executed: true, action: "hire_agent" };
+        case "launch_fb_campaign": {
+          const fbCred = await credSvc.getByAgentAndService(agentId, "facebook");
+          if (!fbCred?.accessToken || !fbCred?.providerAccountId) {
+            return { executed: false, action, blockedReason: "no_facebook_credentials" };
+          }
+
+          const { campaignName, objective, dailyBudget, targeting } = payload as {
+            campaignName?: string;
+            objective?: string;
+            dailyBudget?: number;
+            targeting?: Record<string, unknown>;
+          };
+
+          try {
+            const campaign = await fbAds.createCampaign(fbCred.accessToken, fbCred.providerAccountId, {
+              name: campaignName ?? "Campaign",
+              objective: objective ?? "OUTCOME_LEADS",
+              status: "ACTIVE",
+              special_ad_categories: ["HOUSING"],
+            });
+            logger.info({ campaignId: campaign.id, campaignName }, "approval-executor: Facebook campaign launched");
+            return { executed: true, action, result: { campaignId: campaign.id } } as ExecutionResult & { result: unknown };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error({ err, campaignName }, "approval-executor: Facebook campaign launch failed");
+            return { executed: false, action, error: msg };
+          }
+        }
+        case "pause_fb_campaign": {
+          const fbCred = await credSvc.getByAgentAndService(agentId, "facebook");
+          if (!fbCred?.accessToken) {
+            return { executed: false, action, blockedReason: "no_facebook_credentials" };
+          }
+
+          const { campaignId } = payload as { campaignId?: string };
+          if (!campaignId) {
+            return { executed: false, action, error: "Missing campaignId" };
+          }
+
+          try {
+            await fbAds.pauseCampaign(fbCred.accessToken, campaignId);
+            logger.info({ campaignId }, "approval-executor: Facebook campaign paused");
+            return { executed: true, action };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error({ err, campaignId }, "approval-executor: Facebook campaign pause failed");
+            return { executed: false, action, error: msg };
+          }
+        }
         default:
           logger.info({ action, approvalId }, "approval-executor: unknown action, marking executed");
           return { executed: true, action };
