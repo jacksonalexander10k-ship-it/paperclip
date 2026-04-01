@@ -33,6 +33,7 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { whatsappWebhookRoutes } from "./routes/whatsapp-webhook.js";
 import { gmailWebhookRoutes } from "./routes/gmail-webhook.js";
+import { facebookWebhookRoutes } from "./routes/facebook-webhook.js";
 import { agentCredentialRoutes } from "./routes/agent-credentials.js";
 import { whatsappConnectRoutes } from "./routes/whatsapp-connect.js";
 import { facebookConnectRoutes } from "./routes/facebook-connect.js";
@@ -101,6 +102,8 @@ export async function createApp(
   app.use(whatsappWebhookRoutes(db));
   // Gmail Pub/Sub webhook — mounted before auth so Google Cloud can POST freely
   app.use(gmailWebhookRoutes(db));
+  // Facebook Lead Ads webhook — mounted before auth so Meta can POST freely
+  app.use(facebookWebhookRoutes(db));
   // Stripe webhook — mounted before auth so Stripe can POST freely
   app.use(stripeWebhookRoutes(db));
 
