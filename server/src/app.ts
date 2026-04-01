@@ -35,6 +35,7 @@ import { whatsappWebhookRoutes } from "./routes/whatsapp-webhook.js";
 import { gmailWebhookRoutes } from "./routes/gmail-webhook.js";
 import { agentCredentialRoutes } from "./routes/agent-credentials.js";
 import { whatsappConnectRoutes } from "./routes/whatsapp-connect.js";
+import { facebookConnectRoutes } from "./routes/facebook-connect.js";
 import { billingRoutes, stripeWebhookRoutes } from "./routes/billing.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { brokerRoutes } from "./routes/broker.js";
@@ -175,6 +176,7 @@ export async function createApp(
   api.use(ceoChatRoutes(db));
   api.use(agentCredentialRoutes(db));
   api.use(whatsappConnectRoutes(db));
+  api.use(facebookConnectRoutes(db));
   api.use(billingRoutes(db));
   api.use(analyticsRoutes(db));
   api.use(brokerRoutes(db));

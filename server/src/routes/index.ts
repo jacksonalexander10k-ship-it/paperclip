@@ -18,3 +18,4 @@ export { instanceSettingsRoutes } from "./instance-settings.js";
 export { propertyRoutes } from "./properties.js";
 export { gmailWebhookRoutes } from "./gmail-webhook.js";
 export { leadRoutes } from "./leads.js";
+export { facebookConnectRoutes } from "./facebook-connect.js";
