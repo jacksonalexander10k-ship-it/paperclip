@@ -34,3 +34,4 @@ export { createStorageServiceFromConfig, getStorageService } from "../storage/in
 export { propertyService } from "./properties.js";
 export { leadService, type LeadFilters } from "./leads.js";
 export { facebookAdsService } from "./facebook-ads.js";
+export { knowledgeBaseService } from "./knowledge-base.js";
