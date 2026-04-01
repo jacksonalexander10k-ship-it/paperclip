@@ -183,8 +183,10 @@ export function approvalRoutes(db: Db) {
 
       // Demo trigger: when a plan approval is approved, fire the demo agent sequence
       if (approval.type === "approve_plan") {
+        const payload = approval.payload as Record<string, unknown> | null;
+        const ceoChatIssueId = typeof payload?.ceoChatIssueId === "string" ? payload.ceoChatIssueId : undefined;
         import("./demo-orchestrator.js").then(({ runDemoAfterPlanApproval }) => {
-          runDemoAfterPlanApproval(db, approval.companyId).catch((err) => {
+          runDemoAfterPlanApproval(db, approval.companyId, ceoChatIssueId).catch((err) => {
             logger.warn({ err }, "demo trigger: failed to run post-approval sequence");
           });
         }).catch(() => {});

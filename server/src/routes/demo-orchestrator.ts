@@ -67,6 +67,7 @@ export async function handleDemoChat(
   db: Db,
   companyId: string,
   message: string,
+  clientIssueId: string | null,
   req: import("express").Request,
   res: import("express").Response,
 ) {
@@ -76,7 +77,9 @@ export async function handleDemoChat(
   const omar = agentMap.get("marketing");
 
   const allIssues = await db.select().from(issues).where(eq(issues.companyId, companyId));
-  const ceoChatIssue = allIssues.find((i) => i.title === CEO_CHAT_TITLE);
+  const ceoChatIssue = clientIssueId
+    ? allIssues.find((i) => i.id === clientIssueId) ?? null
+    : allIssues.find((i) => i.title.startsWith(CEO_CHAT_TITLE)) ?? null;
 
   if (!ceoChatIssue || !ceo || !layla || !omar) {
     res.status(404).json({ error: "CEO Chat issue or agents not found" });
@@ -114,6 +117,7 @@ Shall I go ahead with this?`;
     action: "approve_plan",
     plan: "Full pipeline re-engagement: market data pull + personalised check-in messages to all 15 leads",
     context: "CEO proposes warming up the entire pipeline based on geopolitical market shift. Nothing starts until approved.",
+    ceoChatIssueId: ceoChatIssue.id,
   };
 
   const [planApproval] = await db.insert(approvals).values({
@@ -139,14 +143,16 @@ Shall I go ahead with this?`;
 // PHASE 2: Agents work (called from approvals.ts AFTER plan is approved)
 // ---------------------------------------------------------------------------
 
-export async function runDemoAfterPlanApproval(db: Db, companyId: string) {
+export async function runDemoAfterPlanApproval(db: Db, companyId: string, ceoChatIssueId?: string) {
   const agentMap = await resolveAgents(db, companyId);
   const ceo = agentMap.get("ceo");
   const layla = agentMap.get("sales");
   const omar = agentMap.get("marketing");
 
   const allIssues = await db.select().from(issues).where(eq(issues.companyId, companyId));
-  const ceoChatIssue = allIssues.find((i) => i.title === CEO_CHAT_TITLE);
+  const ceoChatIssue = ceoChatIssueId
+    ? allIssues.find((i) => i.id === ceoChatIssueId) ?? null
+    : allIssues.find((i) => i.title.startsWith(CEO_CHAT_TITLE)) ?? null;
 
   if (!ceo || !layla || !omar || !ceoChatIssue) return;
 
@@ -249,9 +255,9 @@ export function demoOrchestratorRoutes(db: Db) {
   const router = Router();
   router.post("/companies/:companyId/demo-chat", async (req, res) => {
     const { companyId } = req.params;
-    const { message } = req.body as { message?: string };
+    const { message, issueId } = req.body as { message?: string; issueId?: string };
     if (!message) { res.status(400).json({ error: "message required" }); return; }
-    await handleDemoChat(db, companyId, message.trim(), req, res);
+    await handleDemoChat(db, companyId, message.trim(), issueId ?? null, req, res);
   });
   return router;
 }

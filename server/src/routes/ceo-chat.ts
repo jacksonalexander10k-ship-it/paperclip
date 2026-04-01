@@ -70,7 +70,7 @@ export function ceoChatRoutes(db: Db) {
       return;
     }
 
-    const { message, deepThink } = req.body as { message?: string; deepThink?: boolean };
+    const { message, deepThink, issueId: clientIssueId } = req.body as { message?: string; deepThink?: boolean; issueId?: string };
     if (!message || typeof message !== "string" || !message.trim()) {
       res.status(400).json({ error: "message is required" });
       return;
@@ -83,7 +83,7 @@ export function ceoChatRoutes(db: Db) {
       const [company] = await db.select({ issuePrefix: companies.issuePrefix }).from(companies).where(eqOp(companies.id, companyId));
       if (company?.issuePrefix === "DPP") {
         const { handleDemoChat } = await import("./demo-orchestrator.js");
-        await handleDemoChat(db, companyId, message.trim(), req, res);
+        await handleDemoChat(db, companyId, message.trim(), clientIssueId ?? null, req, res);
         return;
       }
     } catch (err) {
@@ -129,9 +129,11 @@ export function ceoChatRoutes(db: Db) {
     const activitySvc = activityService(db);
     const dashSvc = dashboardService(db);
 
-    // Find the CEO Chat issue
+    // Find the CEO Chat issue — use client-provided issueId or fall back to title search
     const allIssues = await isvc.list(companyId);
-    const ceoChatIssue = allIssues.find((i) => i.title === CEO_CHAT_TITLE) ?? null;
+    const ceoChatIssue = clientIssueId
+      ? allIssues.find((i) => i.id === clientIssueId) ?? null
+      : allIssues.find((i) => i.title.startsWith("CEO Chat")) ?? null;
 
     if (!ceoChatIssue) {
       res.status(404).json({ error: "CEO Chat issue not found. Please open the CEO Chat page first." });
