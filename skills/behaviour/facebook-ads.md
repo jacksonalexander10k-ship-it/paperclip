@@ -12,6 +12,45 @@ description: >
 
 # Facebook & Instagram Ads — Dubai Real Estate Playbook
 
+## API Tools Available
+
+### Launch a Campaign (via Approval)
+To launch a Facebook campaign, create an approval:
+```bash
+curl -X POST "$AYGENCY_URL/api/companies/$COMPANY_ID/approvals" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "launch_fb_campaign",
+    "payload": {
+      "campaignName": "JVC Off-Plan — Lead Gen",
+      "objective": "OUTCOME_LEADS",
+      "dailyBudget": 15000,
+      "targeting": {
+        "geo_locations": { "countries": ["AE"] },
+        "age_min": 25,
+        "age_max": 55
+      }
+    }
+  }'
+```
+
+### Pause a Campaign (via Approval)
+```bash
+curl -X POST "$AYGENCY_URL/api/companies/$COMPANY_ID/approvals" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "pause_fb_campaign",
+    "payload": { "campaignId": "act_123456/campaigns/789" }
+  }'
+```
+
+### Lead Ingestion
+Facebook Lead Ad form submissions are automatically ingested via webhook. No agent action needed — leads appear as issues assigned to the Sales Agent.
+
+---
+
 ## Overview
 
 Facebook/Instagram Lead Ads are the primary paid lead generation channel for Dubai real estate.
