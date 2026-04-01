@@ -35,3 +35,4 @@ export { propertyService } from "./properties.js";
 export { leadService, type LeadFilters } from "./leads.js";
 export { facebookAdsService } from "./facebook-ads.js";
 export { knowledgeBaseService } from "./knowledge-base.js";
+export { pushNotificationService, type PushPayload } from "./push-notifications.js";
