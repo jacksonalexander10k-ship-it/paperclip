@@ -15,6 +15,7 @@ import {
   issueApprovalService,
   logActivity,
   secretService,
+  agentLearningService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
@@ -33,6 +34,7 @@ export function approvalRoutes(db: Db) {
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
+  const learnings = agentLearningService(db);
 
   router.get("/companies/:companyId/approvals", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -125,12 +127,40 @@ export function approvalRoutes(db: Db) {
       req.body.editedPayload && typeof req.body.editedPayload === "object"
         ? (req.body.editedPayload as Record<string, unknown>)
         : undefined;
+    // Capture original payload BEFORE approve merges the edit
+    let originalPayload: Record<string, unknown> | null = null;
+    if (editedPayload && Object.keys(editedPayload).length > 0) {
+      try {
+        const existing = await svc.getById(id);
+        originalPayload = existing?.payload as Record<string, unknown> | null;
+      } catch { /* non-critical */ }
+    }
+
     const { approval, applied } = await svc.approve(
       id,
       req.body.decidedByUserId ?? "board",
       req.body.decisionNote,
       editedPayload,
     );
+
+    // Capture the edit as a learning (correction signal)
+    if (applied && editedPayload && originalPayload && approval.requestedByAgentId) {
+      const originalMessage = String(originalPayload.message ?? originalPayload.caption ?? originalPayload.body ?? "");
+      const correctedMessage = String(editedPayload.message ?? editedPayload.caption ?? editedPayload.body ?? "");
+      if (originalMessage && correctedMessage && originalMessage !== correctedMessage) {
+        learnings.captureCorrection(approval.companyId, {
+          agentId: approval.requestedByAgentId,
+          approvalId: approval.id,
+          actionType: approval.type,
+          context: `To: ${String(originalPayload.to ?? "")}`.trim() || undefined,
+          original: originalMessage,
+          corrected: correctedMessage,
+          reason: req.body.decisionNote ?? undefined,
+        }).catch((err) => {
+          logger.warn({ err, approvalId: approval.id }, "failed to capture approval correction as learning");
+        });
+      }
+    }
 
     if (applied) {
       const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
@@ -306,6 +336,24 @@ export function approvalRoutes(db: Db) {
     );
 
     if (applied) {
+      // Capture the rejection as a learning
+      if (approval.requestedByAgentId) {
+        const payload = approval.payload as Record<string, unknown> | null;
+        const originalMessage = String(payload?.message ?? payload?.caption ?? payload?.body ?? "");
+        if (originalMessage) {
+          learnings.captureRejection(approval.companyId, {
+            agentId: approval.requestedByAgentId,
+            approvalId: approval.id,
+            actionType: approval.type,
+            context: `To: ${String(payload?.to ?? "")}`.trim() || undefined,
+            original: originalMessage,
+            reason: req.body.decisionNote ?? undefined,
+          }).catch((err) => {
+            logger.warn({ err, approvalId: approval.id }, "failed to capture approval rejection as learning");
+          });
+        }
+      }
+
       await logActivity(db, {
         companyId: approval.companyId,
         actorType: "user",

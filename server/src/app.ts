@@ -45,6 +45,8 @@ import { leadRoutes } from "./routes/leads.js";
 import { whatsappMessageRoutes } from "./routes/whatsapp-messages.js";
 import { knowledgeBaseRoutes } from "./routes/knowledge-base.js";
 import { pushSubscriptionRoutes } from "./routes/push-subscriptions.js";
+import { agentLearningRoutes } from "./routes/agent-learnings.js";
+import { agentMessageRoutes } from "./routes/agent-messages.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -190,6 +192,8 @@ export async function createApp(
   api.use(whatsappMessageRoutes(db));
   api.use(knowledgeBaseRoutes(db, opts.storageService));
   api.use(pushSubscriptionRoutes(db));
+  api.use(agentLearningRoutes(db));
+  api.use(agentMessageRoutes(db));
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();

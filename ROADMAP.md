@@ -127,6 +127,48 @@ _(All items done — see git history)_
 
 ---
 
+## Phase 4 — Production Hardening & Model Optimisation
+
+Goal: Cut costs, improve reliability, and wire up the AI model tier strategy so the platform is sustainable at scale before adding new intelligence features.
+
+### 4.1 Gemini Flash Integration (non-customer-facing tasks)
+- [ ] Gemini 2.5 Flash as default model for: lead scoring, lead enrichment, outcome summarisation, internal agent reasoning, bulletin board messages
+- [ ] Model router: decides per-task whether to use Gemini Flash or Claude Sonnet based on task type
+- [ ] Sonnet only for: final customer-facing output (WhatsApp drafts, emails, Instagram captions, CEO Chat responses, pitch decks)
+- [ ] Estimated cost reduction: 60-70% on non-customer-facing agent runs
+
+### 4.2 Sonnet-Only-for-Final-Output Pipeline
+- [ ] Split agent runs into two stages: (1) Gemini Flash assembles context, reasons, and prepares structured output → (2) Claude Sonnet receives pre-assembled context and writes ONLY the final message
+- [ ] Sonnet stage receives: lead profile, conversation history, agency tone rules, task instruction — nothing else
+- [ ] Target: Sonnet usage drops from full-run (~$0.35) to final-draft-only (~$0.10 per customer-facing output)
+- [ ] Fallback: if Gemini Flash is unavailable, full run on Sonnet (no silent failures)
+
+### 4.3 Opus "Deep Think" Mode
+- [ ] Scale and Enterprise tiers only: toggle in CEO Chat settings
+- [ ] When enabled, CEO agent uses Claude Opus for strategic analysis (morning briefs, org recommendations, complex escalation handling)
+- [ ] Cap: 50 Opus runs/month per agency (hard limit, visible in Budget page)
+- [ ] UI: "Deep Think" badge on CEO messages that used Opus
+
+### 4.4 Semantic Lead-to-Project Matching
+- [ ] Gemini Embedding 2 for embedding lead profiles and property/project listings
+- [ ] Semantic match: when a new listing is added or a lead is qualified, run vector similarity to find top matches
+- [ ] Results surfaced to Lead Agent during runs: "These 3 projects are the best match for this lead's profile"
+- [ ] Results surfaced on Properties detail page: "5 leads in your pipeline match this property"
+
+### 4.5 Agent Reliability
+- [ ] Retry logic: if an agent run fails (API timeout, rate limit), auto-retry up to 3x with exponential backoff
+- [ ] Graceful degradation: if Claude API is down, queue tasks and process when it recovers (no lost work)
+- [ ] Agent health monitoring: track success rate per agent over 7 days, flag if below 90%
+- [ ] Health status visible on Organisation page per agent (green/yellow/red dot)
+- [ ] Dead letter queue: failed tasks that exhausted retries go to a review queue visible in Inbox
+
+### 4.6 Knowledge Base Enhancements
+- [ ] `agency_context` auto-learning: agents write observations to a staging table, CEO reviews and promotes to knowledge base
+- [ ] Knowledge base versioning: track what changed and when
+- [ ] Knowledge base visible and editable by owner in Settings → Knowledge Base (already have the page, wire up agent write path)
+
+---
+
 ## Phase 5 — Agent Intelligence (Continuous Learning)
 
 Goal: Agents get smarter over time, specific to each agency. Every correction and outcome becomes a training signal.
@@ -284,12 +326,11 @@ Goal: Make inter-agent coordination and learning visible to the owner. If they c
 
 ---
 
-## Remaining (no priority)
+## Remaining (no priority, unscheduled)
 
 - [ ] AI Calling (Twilio + Gemini Live — full rebuild for this stack)
 - [ ] White-label enterprise tier
 - [ ] Google Ads API (Search, Display, Performance Max)
-- [ ] Gemini 2.5 Flash integration for non-customer-facing tasks
-- [ ] Sonnet-only-for-final-output pipeline
-- [ ] Opus "Deep Think" toggle for Scale/Enterprise
+- [ ] AygentDesk ↔ Aygency World shared lead DB (unified view across both products)
 - [ ] Claude Code MCP config auto-generated per agent on heartbeat
+- [ ] Native mobile app (beyond current PWA)

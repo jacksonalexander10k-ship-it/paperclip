@@ -1,1050 +1,379 @@
-import { createDb } from "./client.js";
+/**
+ * Demo Seed Script — creates a fully populated demo agency
+ * that showcases every Phase 4-8 feature.
+ *
+ * Run from server package: pnpm --filter @paperclipai/db exec tsx ../../server/scripts/seed-demo.ts
+ */
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { randomUUID } from "node:crypto";
 import {
   companies,
   agents,
-  goals,
-  projects,
   issues,
-  issueComments,
   approvals,
-  activityLog,
   costEvents,
-  heartbeatRuns,
-  routines,
-  routineTriggers,
-  issueWorkProducts,
+  aygentLeads,
   aygentProperties,
+  aygentWhatsappMessages,
+  aygentAgentLearnings,
+  aygentAgentMessages,
 } from "./schema/index.js";
-import { eq } from "drizzle-orm";
 
-const url =
-  process.env.DATABASE_URL ??
-  "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
+// Embedded Postgres used by Paperclip (default port 54329)
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
 
-const db = createDb(url);
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Minutes ago → Date */
-const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000);
-
-/** Hours ago → Date */
-const hoursAgo = (h: number) => ago(h * 60);
-
-/** Days ago → Date */
-const daysAgo = (d: number) => ago(d * 24 * 60);
+const sql = postgres(DATABASE_URL, { max: 1 });
+const db = drizzle(sql);
 
 // ---------------------------------------------------------------------------
-// Idempotency: skip if demo company already exists
+// IDs
 // ---------------------------------------------------------------------------
+const COMPANY_ID = randomUUID();
+const CEO_ID = randomUUID();
+const SALES_ID = randomUUID();
+const CONTENT_ID = randomUUID();
+const MARKET_ID = randomUUID();
+const VIEWING_ID = randomUUID();
 
-const existing = await db
-  .select({ id: companies.id })
-  .from(companies)
-  .where(eq(companies.name, "Dubai Premium Properties"))
-  .limit(1);
+const LEADS = Array.from({ length: 15 }, () => randomUUID());
+const PROPERTIES = Array.from({ length: 8 }, () => randomUUID());
+const CEO_CHAT_ISSUE_ID = randomUUID();
 
-if (existing.length > 0) {
-  console.log("Demo data already seeded (Dubai Premium Properties exists). Skipping.");
-  process.exit(0);
+function ago(hours: number) {
+  return new Date(Date.now() - hours * 60 * 60 * 1000);
 }
 
-console.log("Seeding demo data for Dubai Premium Properties...\n");
+function daysAgo(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
 
-// ---------------------------------------------------------------------------
-// 1. Company
-// ---------------------------------------------------------------------------
+async function seed() {
+  console.log("🌱 Seeding demo agency...\n");
 
-const [company] = await db
-  .insert(companies)
-  .values({
-    name: "Dubai Premium Properties",
-    description:
-      "Full-service Dubai real estate agency specialising in off-plan sales across JVC, Downtown, and Dubai Marina. AI-powered operations since 2026.",
+  // Clean up any previous demo data using deferred FK checks
+  console.log("  Cleaning previous demo data...");
+  const oldCompanies = await sql`SELECT id FROM companies WHERE issue_prefix = 'DPP'`;
+  for (const row of oldCompanies) {
+    const cid = row.id;
+    // Disable FK checks temporarily for clean deletion
+    await sql`SET session_replication_role = replica`;
+    // Get all tables that have company_id and delete from them
+    const tables = await sql`
+      SELECT DISTINCT table_name FROM information_schema.columns
+      WHERE column_name = 'company_id' AND table_schema = 'public'
+    `;
+    for (const t of tables) {
+      try {
+        await sql.unsafe(`DELETE FROM "${t.table_name}" WHERE company_id = '${cid}'`);
+      } catch { /* table might not have data */ }
+    }
+    await sql`DELETE FROM companies WHERE id = ${cid}`;
+    await sql`SET session_replication_role = DEFAULT`;
+  }
+  console.log("  ✓ Clean\n");
+
+  // ── Company ────────────────────────────────────────────────
+  await db.insert(companies).values({
+    id: COMPANY_ID,
+    name: "Dubai Prestige Properties",
+    description: "Premium off-plan and secondary real estate in Dubai",
     status: "active",
     issuePrefix: "DPP",
-    budgetMonthlyCents: 25000, // $250/month budget
-    spentMonthlyCents: 12400, // $124 spent so far
-    requireBoardApprovalForNewAgents: false,
-    brandColor: "#6366f1",
-  })
-  .returning();
-
-const cid = company!.id;
-console.log(`  ✓ Company: ${company!.name} (${cid})`);
-
-// ---------------------------------------------------------------------------
-// 2. Agents (5 — CEO, Sales, Content, Marketing, Finance)
-// ---------------------------------------------------------------------------
-
-const [ceo] = await db
-  .insert(agents)
-  .values({
-    companyId: cid,
-    name: "Khalid",
-    role: "ceo",
-    title: "Chief Executive Officer",
-    icon: "👔",
-    status: "idle",
-    adapterType: "claude_local",
-    adapterConfig: { model: "claude-sonnet-4-5-20250514" },
-    runtimeConfig: { heartbeatIntervalSec: 14400 }, // every 4h
-    budgetMonthlyCents: 8000,
-    spentMonthlyCents: 4200,
-    permissions: { canCreateAgents: true, canAssignTasks: true },
-    lastHeartbeatAt: hoursAgo(2),
-    metadata: {
-      soulFile: "ceo/SOUL.md",
-      gradient: "from-indigo-500 to-purple-600",
-      areas: ["all"],
-    },
-  })
-  .returning();
-
-const [layla] = await db
-  .insert(agents)
-  .values({
-    companyId: cid,
-    name: "Layla",
-    role: "sales",
-    title: "Lead Sales Agent — JVC & Sports City",
-    icon: "💬",
-    status: "idle",
-    reportsTo: ceo!.id,
-    adapterType: "claude_local",
-    adapterConfig: { model: "claude-sonnet-4-5-20250514" },
-    runtimeConfig: { heartbeatIntervalSec: 0, wakeOnDemand: true },
-    budgetMonthlyCents: 6000,
-    spentMonthlyCents: 3800,
-    capabilities:
-      "Lead capture, scoring, enrichment, WhatsApp follow-ups, pipeline management, lead-to-broker handoff",
-    permissions: { canAssignTasks: false },
-    lastHeartbeatAt: ago(45),
-    metadata: {
-      gradient: "from-emerald-500 to-teal-600",
-      areas: ["JVC", "Sports City", "Al Furjan"],
-      languages: ["English", "Arabic"],
-    },
-  })
-  .returning();
-
-const [nour] = await db
-  .insert(agents)
-  .values({
-    companyId: cid,
-    name: "Nour",
-    role: "content",
-    title: "Content & Social Media Agent",
-    icon: "🎨",
-    status: "idle",
-    reportsTo: ceo!.id,
-    adapterType: "claude_local",
-    adapterConfig: { model: "claude-sonnet-4-5-20250514" },
-    runtimeConfig: { heartbeatIntervalSec: 0, wakeOnDemand: true },
-    budgetMonthlyCents: 5000,
-    spentMonthlyCents: 2400,
-    capabilities:
-      "Instagram content, pitch decks, landing pages, drip campaigns, social media scheduling",
-    permissions: { canAssignTasks: false },
-    lastHeartbeatAt: hoursAgo(6),
-    metadata: {
-      gradient: "from-pink-500 to-rose-600",
-      areas: ["all"],
-      languages: ["English", "Arabic"],
-    },
-  })
-  .returning();
-
-const [reem] = await db
-  .insert(agents)
-  .values({
-    companyId: cid,
-    name: "Reem",
-    role: "marketing",
-    title: "Market Intelligence Agent",
-    icon: "📊",
-    status: "idle",
-    reportsTo: ceo!.id,
-    adapterType: "claude_local",
-    adapterConfig: { model: "claude-sonnet-4-5-20250514" },
-    runtimeConfig: { heartbeatIntervalSec: 7200, wakeOnDemand: true }, // every 2h
-    budgetMonthlyCents: 4000,
-    spentMonthlyCents: 1400,
-    capabilities:
-      "DLD transaction monitoring, listing surveillance, news aggregation, investment analysis, competitor tracking",
-    permissions: { canAssignTasks: false },
-    lastHeartbeatAt: hoursAgo(1),
-    metadata: {
-      gradient: "from-amber-500 to-orange-600",
-      areas: ["JVC", "Downtown", "Dubai Marina", "Business Bay"],
-      languages: ["English"],
-    },
-  })
-  .returning();
-
-const [omar] = await db
-  .insert(agents)
-  .values({
-    companyId: cid,
-    name: "Omar",
-    role: "finance",
-    title: "Finance & Portfolio Agent",
-    icon: "💰",
-    status: "idle",
-    reportsTo: ceo!.id,
-    adapterType: "claude_local",
-    adapterConfig: { model: "claude-sonnet-4-5-20250514" },
-    runtimeConfig: { heartbeatIntervalSec: 0, wakeOnDemand: true },
-    budgetMonthlyCents: 2000,
-    spentMonthlyCents: 600,
-    capabilities:
-      "Agency cost analysis, landlord management, tenancy renewals, rent tracking, RERA calculations, budget monitoring",
-    permissions: { canAssignTasks: false },
-    lastHeartbeatAt: daysAgo(1),
-    metadata: {
-      gradient: "from-cyan-500 to-blue-600",
-      areas: ["all"],
-      languages: ["English", "Arabic"],
-    },
-  })
-  .returning();
-
-const allAgents = [ceo!, layla!, nour!, reem!, omar!];
-console.log(`  ✓ Agents: ${allAgents.map((a) => a.name).join(", ")}`);
-
-// ---------------------------------------------------------------------------
-// 3. Goal & Project
-// ---------------------------------------------------------------------------
-
-const [goal] = await db
-  .insert(goals)
-  .values({
-    companyId: cid,
-    title: "Scale to 50 qualified leads per month",
-    description:
-      "Increase qualified lead pipeline from current ~20/month to 50/month through improved response times, content marketing, and market intelligence.",
-    level: "company",
-    status: "active",
-    ownerAgentId: ceo!.id,
-  })
-  .returning();
-
-const [project] = await db
-  .insert(projects)
-  .values({
-    companyId: cid,
-    goalId: goal!.id,
-    name: "Agency Operations",
-    description: "Day-to-day agency operations — lead management, content, market intel, portfolio",
-    status: "in_progress",
-    leadAgentId: ceo!.id,
-    color: "#6366f1",
-  })
-  .returning();
-
-console.log(`  ✓ Goal: ${goal!.title}`);
-console.log(`  ✓ Project: ${project!.name}`);
-
-// ---------------------------------------------------------------------------
-// 4. Heartbeat Runs (recent history — mix of success/fail)
-// ---------------------------------------------------------------------------
-
-const runs = await db
-  .insert(heartbeatRuns)
-  .values([
-    {
-      companyId: cid,
-      agentId: ceo!.id,
-      invocationSource: "scheduled",
-      status: "succeeded",
-      startedAt: hoursAgo(6),
-      finishedAt: new Date(hoursAgo(6).getTime() + 45_000),
-      usageJson: { inputTokens: 8200, outputTokens: 1840, cachedInputTokens: 3100, costCents: 18 },
-      resultJson: { summary: "Morning brief generated. 3 approvals queued. Delegated follow-up batch to Layla." },
-      contextSnapshot: { wakeReason: "scheduled", taskCount: 3 },
-    },
-    {
-      companyId: cid,
-      agentId: layla!.id,
-      invocationSource: "assignment",
-      status: "succeeded",
-      startedAt: ago(45),
-      finishedAt: new Date(ago(45).getTime() + 62_000),
-      usageJson: { inputTokens: 6400, outputTokens: 2100, cachedInputTokens: 1800, costCents: 14 },
-      resultJson: { summary: "Drafted WhatsApp follow-ups for 4 leads. Queued 2 approvals. Scored 1 new lead at 7/10." },
-      contextSnapshot: { wakeReason: "assignment", issueIds: [] },
-    },
-    {
-      companyId: cid,
-      agentId: nour!.id,
-      invocationSource: "scheduled",
-      status: "succeeded",
-      startedAt: hoursAgo(6),
-      finishedAt: new Date(hoursAgo(6).getTime() + 38_000),
-      usageJson: { inputTokens: 5100, outputTokens: 3200, cachedInputTokens: 900, costCents: 12 },
-      resultJson: { summary: "Generated Instagram carousel for Damac Lagoons. Created pitch deck for Binghatti Aurora." },
-      contextSnapshot: { wakeReason: "scheduled" },
-    },
-    {
-      companyId: cid,
-      agentId: reem!.id,
-      invocationSource: "scheduled",
-      status: "failed",
-      startedAt: hoursAgo(3),
-      finishedAt: new Date(hoursAgo(3).getTime() + 120_000),
-      error: "Timeout: DLD transaction API took longer than 120s to respond",
-      exitCode: 1,
-      stderrExcerpt: "Error: Request to dld.gov.ae timed out after 120000ms",
-      usageJson: { inputTokens: 2100, outputTokens: 400, cachedInputTokens: 800, costCents: 4 },
-      contextSnapshot: { wakeReason: "scheduled" },
-    },
-    {
-      companyId: cid,
-      agentId: reem!.id,
-      invocationSource: "scheduled",
-      status: "succeeded",
-      startedAt: hoursAgo(1),
-      finishedAt: new Date(hoursAgo(1).getTime() + 52_000),
-      usageJson: { inputTokens: 4800, outputTokens: 1600, cachedInputTokens: 2200, costCents: 10 },
-      resultJson: { summary: "DLD report complete. 142 transactions in JVC this week (+12% WoW). Average price AED 1,180/sqft." },
-      contextSnapshot: { wakeReason: "scheduled" },
-    },
-    {
-      companyId: cid,
-      agentId: omar!.id,
-      invocationSource: "assignment",
-      status: "succeeded",
-      startedAt: daysAgo(1),
-      finishedAt: new Date(daysAgo(1).getTime() + 28_000),
-      usageJson: { inputTokens: 3200, outputTokens: 1100, cachedInputTokens: 600, costCents: 6 },
-      resultJson: { summary: "Q1 cost analysis complete. Total agency AI spend: $124. Projected Q2: $380." },
-      contextSnapshot: { wakeReason: "assignment" },
-    },
-  ])
-  .returning();
-
-console.log(`  ✓ Heartbeat runs: ${runs.length}`);
-
-// ---------------------------------------------------------------------------
-// 5. Issues / Tasks (10 across agents)
-// ---------------------------------------------------------------------------
-
-const taskValues = [
-  {
-    companyId: cid,
-    projectId: project!.id,
-    goalId: goal!.id,
-    title: "Follow up with Ahmed Al Hashimi — JVC 2BR enquiry",
-    description:
-      "Ahmed enquired about 2BR apartments in JVC via Property Finder 48h ago. First response sent. No reply yet. Draft a WhatsApp follow-up with Binghatti Hills pricing.",
-    status: "in_progress",
-    priority: "high" as const,
-    assigneeAgentId: layla!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 1,
-    identifier: "DPP-1",
-    originKind: "agent",
-    createdAt: daysAgo(2),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    title: "Draft Instagram carousel — Damac Lagoons Q2 launch",
-    description:
-      "Create a 5-slide carousel for Instagram highlighting Damac Lagoons Maldives phase. Include: renders, starting price, payment plan, location map, CTA.",
-    status: "todo",
-    priority: "medium" as const,
-    assigneeAgentId: nour!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 2,
-    identifier: "DPP-2",
-    originKind: "agent",
-    createdAt: daysAgo(1),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    goalId: goal!.id,
-    title: "Weekly DLD transaction report — JVC, Downtown, Marina",
-    description:
-      "Pull DLD transaction data for the past 7 days. Summarise volume, average price per sqft, notable deals. Flag any developer price changes.",
-    status: "done",
-    priority: "medium" as const,
-    assigneeAgentId: reem!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 3,
-    identifier: "DPP-3",
-    originKind: "agent",
-    completedAt: hoursAgo(1),
-    createdAt: daysAgo(2),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    goalId: goal!.id,
-    title: "Reactivate stale leads — 30+ days no contact",
-    description:
-      "Search for leads with last_contact_at > 30 days ago and score >= 5. Draft personalised reactivation WhatsApp templates. Queue for approval.",
-    status: "todo",
-    priority: "high" as const,
-    assigneeAgentId: layla!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 4,
-    identifier: "DPP-4",
-    originKind: "agent",
-    createdAt: hoursAgo(4),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    title: "Generate pitch deck — Binghatti Aurora Downtown",
-    description:
-      "Create a branded PDF pitch deck for Binghatti Aurora. Include: project overview, floor plans, payment plan comparison, ROI projection, location highlights, developer track record.",
-    status: "in_progress",
-    priority: "medium" as const,
-    assigneeAgentId: nour!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 5,
-    identifier: "DPP-5",
-    originKind: "agent",
-    startedAt: hoursAgo(6),
-    createdAt: daysAgo(1),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    title: "Q1 agency cost analysis",
-    description:
-      "Compile total AI agent costs for Q1 2026. Break down by agent, by tool usage, by lead outcome. Compare against revenue generated. Project Q2 costs at current trajectory.",
-    status: "in_review",
-    priority: "low" as const,
-    assigneeAgentId: omar!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 6,
-    identifier: "DPP-6",
-    originKind: "agent",
-    createdAt: daysAgo(3),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    title: "Connect Google Calendar for viewing scheduling",
-    description: "Set up Google Calendar OAuth integration so the Viewing Agent can manage appointments.",
-    status: "backlog",
-    priority: "low" as const,
-    assigneeAgentId: ceo!.id,
-    issueNumber: 7,
-    identifier: "DPP-7",
-    originKind: "manual",
-    createdAt: daysAgo(5),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    title: "Morning brief — March 31",
-    description:
-      "Daily briefing: overnight lead activity, pending approvals, agent costs, key metrics, today's priorities.",
-    status: "done",
-    priority: "medium" as const,
-    assigneeAgentId: ceo!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 8,
-    identifier: "DPP-8",
-    originKind: "agent",
-    completedAt: hoursAgo(6),
-    createdAt: hoursAgo(6),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    title: "Review Property Finder listing performance — March",
-    description:
-      "Analyse PF listing views, enquiry rates, and lead quality for our active listings. Recommend changes to listing descriptions or photos.",
-    status: "todo",
-    priority: "medium" as const,
-    assigneeAgentId: reem!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 9,
-    identifier: "DPP-9",
-    originKind: "agent",
-    createdAt: hoursAgo(3),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    title: "Process tenancy renewal — Unit 1204, Binghatti Stars JVC",
-    description:
-      "Tenancy for Mr. Hassan expires April 15. RERA rent calculator shows 0% increase is fair. Draft renewal offer at same rate. Send via email for landlord approval.",
-    status: "todo",
-    priority: "high" as const,
-    assigneeAgentId: omar!.id,
-    createdByAgentId: ceo!.id,
-    issueNumber: 10,
-    identifier: "DPP-10",
-    originKind: "agent",
-    createdAt: hoursAgo(8),
-  },
-];
-
-const issuesToInsert = taskValues.map(({ ...v }) => v);
-const insertedIssues = await db.insert(issues).values(issuesToInsert).returning();
-console.log(`  ✓ Tasks: ${insertedIssues.length}`);
-
-// ---------------------------------------------------------------------------
-// 6. CEO Chat thread (persistent issue + recent messages)
-// ---------------------------------------------------------------------------
-
-const [ceoChatIssue] = await db
-  .insert(issues)
-  .values({
-    companyId: cid,
-    projectId: project!.id,
-    title: "CEO Chat",
-    description: "Persistent chat thread between agency owner and CEO agent.",
-    status: "in_progress",
-    priority: "medium",
-    assigneeAgentId: ceo!.id,
-    issueNumber: 100,
-    identifier: "DPP-100",
-    originKind: "system",
-    createdAt: daysAgo(7),
-  })
-  .returning();
-
-// Seed some chat messages
-await db.insert(issueComments).values([
-  {
-    companyId: cid,
-    issueId: ceoChatIssue!.id,
-    authorAgentId: ceo!.id,
-    body: `Good morning! Here's your daily brief for March 31.\n\n**📊 Overnight Activity**\n- 3 new leads came in (2 from Property Finder, 1 from Instagram DM)\n- Layla responded to all 3 within 4 minutes\n- 1 lead scored 7/10 — Ahmed Al Hashimi, looking for 2BR in JVC, budget AED 1.2M\n\n**⏳ Pending Approvals (3)**\n- WhatsApp follow-up to Ahmed Al Hashimi (Layla)\n- Instagram carousel — Damac Lagoons (Nour)\n- Hire Viewing Agent request\n\n**💰 Costs Yesterday:** $18.40\n- Khalid: $4.20 | Layla: $6.80 | Nour: $4.40 | Reem: $2.10 | Omar: $0.90\n\n**🎯 Today's Priorities**\n1. Approve the Ahmed follow-up — he's a hot lead\n2. Review Nour's Damac Lagoons content before posting\n3. Decide on hiring a Viewing Agent — we're getting 3+ viewing requests/week`,
-    createdAt: hoursAgo(6),
-  },
-  {
-    companyId: cid,
-    issueId: ceoChatIssue!.id,
-    authorUserId: "board",
-    body: "What's Ahmed's full profile? Is he worth prioritising?",
-    createdAt: hoursAgo(5),
-  },
-  {
-    companyId: cid,
-    issueId: ceoChatIssue!.id,
-    authorAgentId: ceo!.id,
-    body: `Here's Ahmed Al Hashimi's profile:\n\n**Score:** 7/10\n**Source:** Property Finder — enquired about Binghatti Hills JVC\n**Budget:** AED 1.0–1.4M\n**Type:** 2BR apartment, off-plan preferred\n**Timeline:** "Within 3 months"\n**Language:** English + Arabic\n**Financing:** Cash buyer (mentioned "no mortgage")\n\n**Why he's worth prioritising:**\n- Cash buyer with a clear budget and timeline\n- JVC 2BR off-plan at AED 1.0–1.4M matches 6 active projects\n- Responded to Layla's first message within 20 minutes — high engagement\n- DLD check: no prior Dubai purchases — first-time buyer (motivated)\n\nI recommend approving Layla's follow-up immediately. She's drafted a personalised message with Binghatti Hills floor plans and payment plan.`,
-    createdAt: hoursAgo(5),
-  },
-  {
-    companyId: cid,
-    issueId: ceoChatIssue!.id,
-    authorUserId: "board",
-    body: "Yes, approve it. And brief me on the Damac Lagoons post before it goes out.",
-    createdAt: hoursAgo(4),
-  },
-  {
-    companyId: cid,
-    issueId: ceoChatIssue!.id,
-    authorAgentId: ceo!.id,
-    body: `Done — Layla's follow-up to Ahmed is approved and queued for sending.\n\nRegarding the Damac Lagoons carousel, Nour has prepared a 5-slide Instagram post:\n\n1. **Hero render** — Maldives-inspired waterfront villas\n2. **Starting price** — AED 1.8M, 60/40 payment plan\n3. **Location map** — 20 min to Downtown, Dubai Marina nearby\n4. **Amenities** — crystal lagoon, beach club, floating restaurants\n5. **CTA** — "DM us for exclusive pricing 📩"\n\nCaption: "Live the island life without leaving Dubai 🌴 Damac Lagoons Maldives — starting AED 1.8M..."\n\nShall I show you the full content for approval?`,
-    createdAt: hoursAgo(4),
-  },
-]);
-
-console.log(`  ✓ CEO Chat thread with 5 messages`);
-
-// ---------------------------------------------------------------------------
-// 7. Approvals (3 pending)
-// ---------------------------------------------------------------------------
-
-await db.insert(approvals).values([
-  {
-    companyId: cid,
-    type: "send_whatsapp",
-    requestedByAgentId: layla!.id,
-    status: "pending",
-    payload: {
-      action: "send_whatsapp",
-      to: "Ahmed Al Hashimi",
-      phone: "+971501234567",
-      leadScore: 7,
-      message:
-        "Hi Ahmed! 👋 Following up on your interest in JVC apartments. I've put together the Binghatti Hills floor plans and payment plan for the 2BR units within your budget.\n\nStarting from AED 1.05M with a 60/40 payment plan — 1% monthly during construction.\n\nWould you like to schedule a viewing this week? I have availability Thursday or Saturday.\n\n— Layla, Dubai Premium Properties",
-      context:
-        "Lead enquired 48h ago via Property Finder. First message sent — lead replied within 20 min. Cash buyer, first-time Dubai purchase. Score 7/10.",
-    },
-    createdAt: ago(45),
-  },
-  {
-    companyId: cid,
-    type: "post_instagram",
-    requestedByAgentId: nour!.id,
-    status: "pending",
-    payload: {
-      action: "post_instagram",
-      contentType: "carousel",
-      slides: 5,
-      caption:
-        "Live the island life without leaving Dubai 🌴\n\nDamac Lagoons Maldives phase — waterfront villas starting AED 1.8M with a 60/40 payment plan.\n\n✨ Crystal lagoon & beach club\n📍 20 min to Downtown Dubai\n🏠 2-5 BR villas\n\nDM us for exclusive pricing and floor plans 📩\n\n#DubaiRealEstate #DamacLagoons #OffPlanDubai #DubaiProperty #InvestInDubai #DubaiVillas",
-      bestTimeToPost: "7:00 PM GST (peak Dubai Instagram engagement)",
-      hashtags: 6,
-    },
-    createdAt: hoursAgo(5),
-  },
-  {
-    companyId: cid,
-    type: "hire_agent",
-    requestedByAgentId: ceo!.id,
-    status: "pending",
-    payload: {
-      action: "hire_agent",
-      agentName: "Farah",
-      role: "viewing",
-      title: "Viewing & Calendar Agent",
-      reason:
-        "We're averaging 3+ viewing requests per week and currently handling them manually. A dedicated Viewing Agent can automate scheduling, send confirmations, manage calendar conflicts, and do post-viewing follow-ups.",
-      estimatedMonthlyCost: "$15-25",
-      capabilities: "Viewing scheduling, calendar management, confirmation messages, post-viewing follow-up",
-    },
-    createdAt: hoursAgo(4),
-  },
-]);
-
-console.log(`  ✓ Approvals: 3 pending`);
-
-// ---------------------------------------------------------------------------
-// 8. Cost Events (realistic per-agent breakdown totalling ~$124)
-// ---------------------------------------------------------------------------
-
-// Spread cost events across the last 7 days
-const costData = [
-  // CEO runs
-  { agentId: ceo!.id, provider: "anthropic", model: "claude-sonnet-4-5", inputTokens: 52000, outputTokens: 12400, cachedInputTokens: 18000, costCents: 4200, daysBack: 0 },
-  // Layla runs
-  { agentId: layla!.id, provider: "anthropic", model: "claude-sonnet-4-5", inputTokens: 41000, outputTokens: 14200, cachedInputTokens: 11000, costCents: 3800, daysBack: 0 },
-  // Nour runs
-  { agentId: nour!.id, provider: "anthropic", model: "claude-sonnet-4-5", inputTokens: 28000, outputTokens: 18600, cachedInputTokens: 5000, costCents: 2400, daysBack: 0 },
-  // Reem runs
-  { agentId: reem!.id, provider: "anthropic", model: "claude-sonnet-4-5", inputTokens: 22000, outputTokens: 6800, cachedInputTokens: 9000, costCents: 1400, daysBack: 0 },
-  // Omar runs
-  { agentId: omar!.id, provider: "anthropic", model: "claude-sonnet-4-5", inputTokens: 8000, outputTokens: 3200, cachedInputTokens: 2000, costCents: 600, daysBack: 1 },
-];
-
-await db.insert(costEvents).values(
-  costData.map((c) => ({
-    companyId: cid,
-    agentId: c.agentId,
-    provider: c.provider,
-    biller: "anthropic",
-    billingType: "token_usage",
-    model: c.model,
-    inputTokens: c.inputTokens,
-    cachedInputTokens: c.cachedInputTokens,
-    outputTokens: c.outputTokens,
-    costCents: c.costCents,
-    occurredAt: daysAgo(c.daysBack),
-  })),
-);
-
-console.log(`  ✓ Cost events: $${(costData.reduce((s, c) => s + c.costCents, 0) / 100).toFixed(2)} total`);
-
-// ---------------------------------------------------------------------------
-// 9. Activity Log (25+ entries over past 48h)
-// ---------------------------------------------------------------------------
-
-const activities = [
-  // Day 2 ago
-  { actorType: "agent", actorId: ceo!.id, action: "agent.created", entityType: "agent", entityId: omar!.id, agentId: ceo!.id, details: { agentName: "Omar", role: "finance" }, createdAt: daysAgo(2) },
-  { actorType: "agent", actorId: ceo!.id, action: "issue.created", entityType: "issue", entityId: insertedIssues[0]!.id, agentId: ceo!.id, details: { title: "Follow up with Ahmed Al Hashimi" }, createdAt: daysAgo(2) },
-  { actorType: "agent", actorId: ceo!.id, action: "issue.assigned", entityType: "issue", entityId: insertedIssues[0]!.id, agentId: layla!.id, details: { assignee: "Layla" }, createdAt: daysAgo(2) },
-
-  // Day 1 ago
-  { actorType: "agent", actorId: ceo!.id, action: "issue.created", entityType: "issue", entityId: insertedIssues[1]!.id, agentId: ceo!.id, details: { title: "Draft Instagram carousel — Damac Lagoons" }, createdAt: daysAgo(1) },
-  { actorType: "agent", actorId: ceo!.id, action: "issue.assigned", entityType: "issue", entityId: insertedIssues[1]!.id, agentId: nour!.id, details: { assignee: "Nour" }, createdAt: daysAgo(1) },
-  { actorType: "agent", actorId: nour!.id, action: "run.started", entityType: "heartbeat_run", entityId: runs[2]!.id, agentId: nour!.id, details: { source: "scheduled" }, createdAt: daysAgo(1) },
-  { actorType: "agent", actorId: nour!.id, action: "run.completed", entityType: "heartbeat_run", entityId: runs[2]!.id, agentId: nour!.id, details: { summary: "Generated Instagram carousel and pitch deck" }, createdAt: daysAgo(1) },
-  { actorType: "agent", actorId: omar!.id, action: "run.started", entityType: "heartbeat_run", entityId: runs[5]!.id, agentId: omar!.id, details: { source: "assignment" }, createdAt: daysAgo(1) },
-  { actorType: "agent", actorId: omar!.id, action: "run.completed", entityType: "heartbeat_run", entityId: runs[5]!.id, agentId: omar!.id, details: { summary: "Q1 cost analysis complete" }, createdAt: daysAgo(1) },
-  { actorType: "agent", actorId: omar!.id, action: "issue.status_changed", entityType: "issue", entityId: insertedIssues[5]!.id, agentId: omar!.id, details: { from: "in_progress", to: "in_review" }, createdAt: daysAgo(1) },
-
-  // Today — morning
-  { actorType: "agent", actorId: ceo!.id, action: "run.started", entityType: "heartbeat_run", entityId: runs[0]!.id, agentId: ceo!.id, details: { source: "scheduled" }, createdAt: hoursAgo(6) },
-  { actorType: "agent", actorId: ceo!.id, action: "comment.created", entityType: "issue", entityId: ceoChatIssue!.id, agentId: ceo!.id, details: { summary: "Morning brief posted" }, createdAt: hoursAgo(6) },
-  { actorType: "agent", actorId: ceo!.id, action: "run.completed", entityType: "heartbeat_run", entityId: runs[0]!.id, agentId: ceo!.id, details: { summary: "Morning brief generated, 3 approvals queued" }, createdAt: hoursAgo(6) },
-  { actorType: "agent", actorId: ceo!.id, action: "issue.created", entityType: "issue", entityId: insertedIssues[3]!.id, agentId: ceo!.id, details: { title: "Reactivate stale leads" }, createdAt: hoursAgo(4) },
-  { actorType: "agent", actorId: ceo!.id, action: "approval.requested", entityType: "approval", entityId: "pending", agentId: ceo!.id, details: { type: "hire_agent", agentName: "Farah" }, createdAt: hoursAgo(4) },
-
-  // Today — Reem's failed then successful run
-  { actorType: "agent", actorId: reem!.id, action: "run.started", entityType: "heartbeat_run", entityId: runs[3]!.id, agentId: reem!.id, details: { source: "scheduled" }, createdAt: hoursAgo(3) },
-  { actorType: "agent", actorId: reem!.id, action: "run.failed", entityType: "heartbeat_run", entityId: runs[3]!.id, agentId: reem!.id, details: { error: "DLD API timeout" }, createdAt: hoursAgo(3) },
-  { actorType: "agent", actorId: reem!.id, action: "run.started", entityType: "heartbeat_run", entityId: runs[4]!.id, agentId: reem!.id, details: { source: "scheduled" }, createdAt: hoursAgo(1) },
-  { actorType: "agent", actorId: reem!.id, action: "run.completed", entityType: "heartbeat_run", entityId: runs[4]!.id, agentId: reem!.id, details: { summary: "DLD report complete — 142 JVC transactions" }, createdAt: hoursAgo(1) },
-  { actorType: "agent", actorId: reem!.id, action: "issue.status_changed", entityType: "issue", entityId: insertedIssues[2]!.id, agentId: reem!.id, details: { from: "in_progress", to: "done" }, createdAt: hoursAgo(1) },
-
-  // Today — Layla's run
-  { actorType: "agent", actorId: layla!.id, action: "run.started", entityType: "heartbeat_run", entityId: runs[1]!.id, agentId: layla!.id, details: { source: "assignment" }, createdAt: ago(45) },
-  { actorType: "agent", actorId: layla!.id, action: "approval.requested", entityType: "approval", entityId: "pending", agentId: layla!.id, details: { type: "send_whatsapp", to: "Ahmed Al Hashimi" }, createdAt: ago(45) },
-  { actorType: "agent", actorId: layla!.id, action: "run.completed", entityType: "heartbeat_run", entityId: runs[1]!.id, agentId: layla!.id, details: { summary: "Drafted 4 follow-ups, queued 2 approvals" }, createdAt: ago(44) },
-  { actorType: "agent", actorId: nour!.id, action: "approval.requested", entityType: "approval", entityId: "pending", agentId: nour!.id, details: { type: "post_instagram", content: "Damac Lagoons carousel" }, createdAt: hoursAgo(5) },
-
-  // Budget warning
-  { actorType: "system", actorId: "system", action: "budget.warning", entityType: "agent", entityId: layla!.id, details: { agentName: "Layla", spentPercent: 63, message: "Layla has used 63% of her monthly budget ($38 of $60)" }, createdAt: hoursAgo(2) },
-];
-
-await db.insert(activityLog).values(
-  activities.map((a) => ({
-    companyId: cid,
-    actorType: a.actorType,
-    actorId: String(a.actorId),
-    action: a.action,
-    entityType: a.entityType,
-    entityId: String(a.entityId),
-    agentId: a.agentId && a.actorType === "agent" ? (a.agentId as string) : undefined,
-    details: a.details,
-    createdAt: a.createdAt,
-  })),
-);
-
-console.log(`  ✓ Activity log: ${activities.length} entries`);
-
-// ---------------------------------------------------------------------------
-// 10. Deliverables / Work Products (3)
-// ---------------------------------------------------------------------------
-
-await db.insert(issueWorkProducts).values([
-  {
-    companyId: cid,
-    projectId: project!.id,
-    issueId: insertedIssues[4]!.id, // Pitch deck task
-    type: "document",
-    provider: "internal",
-    title: "Binghatti Aurora — Investor Pitch Deck",
-    status: "draft",
-    isPrimary: true,
-    summary: "12-page branded pitch deck with project overview, floor plans, payment plan comparison, ROI projection.",
-    metadata: { format: "pdf", pages: 12, generatedBy: "Nour" },
-    createdAt: hoursAgo(5),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    issueId: insertedIssues[2]!.id, // DLD report task
-    type: "document",
-    provider: "internal",
-    title: "JVC Market Report — Week of March 24",
-    url: "#",
-    status: "active",
-    isPrimary: true,
-    summary: "142 transactions in JVC. Average AED 1,180/sqft (+3.2% MoM). Top developer: Binghatti (38 units).",
-    metadata: { format: "pdf", pages: 6, generatedBy: "Reem" },
-    createdAt: hoursAgo(1),
-  },
-  {
-    companyId: cid,
-    projectId: project!.id,
-    issueId: insertedIssues[1]!.id, // Instagram carousel task
-    type: "file",
-    provider: "internal",
-    title: "Damac Lagoons Carousel — 5 slides",
-    status: "ready_for_review",
-    isPrimary: true,
-    summary: "5-slide Instagram carousel: hero render, pricing, location map, amenities, CTA. Awaiting approval.",
-    metadata: { format: "png", slides: 5, generatedBy: "Nour" },
-    createdAt: hoursAgo(5),
-  },
-]);
-
-console.log(`  ✓ Deliverables: 3`);
-
-// ---------------------------------------------------------------------------
-// 11. Automations / Routines (5)
-// ---------------------------------------------------------------------------
-
-const routineValues = [
-  {
-    title: "Daily Morning Brief",
-    description:
-      "CEO generates a morning briefing every day at 8am: overnight activity, pending approvals, costs, priorities.",
-    assigneeAgentId: ceo!.id,
-    priority: "high" as const,
-    status: "active",
-    lastTriggeredAt: hoursAgo(6),
-    cronExpression: "0 8 * * *",
-    timezone: "Asia/Dubai",
-  },
-  {
-    title: "Lead Follow-Up Loop",
-    description:
-      "Layla checks for leads requiring follow-up every 4 hours. Drafts WhatsApp messages and queues for approval.",
-    assigneeAgentId: layla!.id,
-    priority: "high" as const,
-    status: "active",
-    lastTriggeredAt: ago(45),
-    cronExpression: "0 */4 * * *",
-    timezone: "Asia/Dubai",
-  },
-  {
-    title: "Instagram Content Scheduler",
-    description:
-      "Nour generates the day's content queue at 9am. Creates carousels, reels concepts, and stories for approval.",
-    assigneeAgentId: nour!.id,
-    priority: "medium" as const,
-    status: "active",
-    lastTriggeredAt: hoursAgo(6),
-    cronExpression: "0 9 * * *",
-    timezone: "Asia/Dubai",
-  },
-  {
-    title: "Tenancy Renewal Check",
-    description:
-      "Omar scans for tenancies expiring within 60 days every Monday. Drafts renewal offers and flags urgent ones.",
-    assigneeAgentId: omar!.id,
-    priority: "medium" as const,
-    status: "active",
-    lastTriggeredAt: daysAgo(3),
-    cronExpression: "0 8 * * 1",
-    timezone: "Asia/Dubai",
-  },
-  {
-    title: "Market Intelligence Sweep",
-    description:
-      "Reem monitors DLD transactions, new listings, and news every 2 hours. Flags notable market movements.",
-    assigneeAgentId: reem!.id,
-    priority: "medium" as const,
-    status: "active",
-    lastTriggeredAt: hoursAgo(1),
-    cronExpression: "0 */2 * * *",
-    timezone: "Asia/Dubai",
-  },
-];
-
-for (const r of routineValues) {
-  const { cronExpression, timezone, lastTriggeredAt, ...routineData } = r;
-
-  const [routine] = await db
-    .insert(routines)
-    .values({
-      companyId: cid,
-      projectId: project!.id,
-      ...routineData,
-      lastTriggeredAt,
-    })
-    .returning();
-
-  await db.insert(routineTriggers).values({
-    companyId: cid,
-    routineId: routine!.id,
-    kind: "cron",
-    label: r.title,
-    enabled: true,
-    cronExpression,
-    timezone,
-    lastFiredAt: lastTriggeredAt,
+    budgetMonthlyCents: 50000,
+    spentMonthlyCents: 3240,
+    brandColor: "#0f766e",
   });
+  console.log("✓ Company: Dubai Prestige Properties");
+
+  // ── Agents ─────────────────────────────────────────────────
+  const agentData = [
+    { id: CEO_ID, name: "Khalid", role: "ceo", title: "CEO Agent", status: "idle", budget: 10000, spent: 840, reportsTo: null },
+    { id: SALES_ID, name: "Layla", role: "sales", title: "Sales Agent — JVC & Downtown", status: "idle", budget: 15000, spent: 1200, reportsTo: CEO_ID },
+    { id: CONTENT_ID, name: "Nour", role: "content", title: "Content Agent", status: "idle", budget: 8000, spent: 560, reportsTo: CEO_ID },
+    { id: MARKET_ID, name: "Omar", role: "marketing", title: "Market Intelligence Agent", status: "idle", budget: 8000, spent: 420, reportsTo: CEO_ID },
+    { id: VIEWING_ID, name: "Sara", role: "operations", title: "Viewing Coordinator", status: "idle", budget: 5000, spent: 220, reportsTo: SALES_ID },
+  ];
+
+  for (const a of agentData) {
+    await db.insert(agents).values({
+      id: a.id,
+      companyId: COMPANY_ID,
+      name: a.name,
+      role: a.role,
+      title: a.title,
+      status: a.status,
+      budgetMonthlyCents: a.budget,
+      spentMonthlyCents: a.spent,
+      reportsTo: a.reportsTo,
+      lastHeartbeatAt: ago(Math.random() * 4),
+    });
+  }
+  console.log("✓ 5 agents: Khalid (CEO), Layla (Sales), Nour (Content), Omar (Market), Sara (Viewing)");
+
+  // ── CEO Chat Issue ─────────────────────────────────────────
+  await db.insert(issues).values({
+    id: CEO_CHAT_ISSUE_ID,
+    companyId: COMPANY_ID,
+    title: "CEO Chat",
+    status: "in_progress",
+    priority: "high",
+    assigneeAgentId: CEO_ID,
+  });
+  console.log("✓ CEO Chat issue");
+
+  // ── Leads ──────────────────────────────────────────────────
+  const leadData = [
+    { name: "Ahmed Al Hashimi", phone: "+971501234567", nationality: "UAE", budget: { min: 800000, max: 1200000, area: "JVC" }, propertyType: "1BR Apartment", score: 8, stage: "qualified", source: "property_finder", language: "Arabic", lastContact: ago(2) },
+    { name: "Maria Petrova", phone: "+971552345678", nationality: "Russian", budget: { min: 1500000, max: 2500000, area: "Downtown" }, propertyType: "2BR Apartment", score: 9, stage: "viewing", source: "instagram", language: "Russian", lastContact: ago(6) },
+    { name: "James Chen", phone: "+971553456789", nationality: "Chinese", budget: { min: 2000000, max: 5000000, area: "Palm Jumeirah" }, propertyType: "Villa", score: 7, stage: "qualified", source: "referral", language: "English", lastContact: daysAgo(3) },
+    { name: "Fatima Al Mansouri", phone: "+971504567890", nationality: "UAE", budget: { min: 600000, max: 900000, area: "JVC" }, propertyType: "Studio", score: 6, stage: "lead", source: "bayut", language: "Arabic", lastContact: daysAgo(1) },
+    { name: "Dmitri Volkov", phone: "+971555678901", nationality: "Russian", budget: { min: 3000000, max: 4000000, area: "Marina" }, propertyType: "3BR Apartment", score: 9, stage: "negotiation", source: "direct", language: "Russian", lastContact: ago(12) },
+    { name: "Sarah Williams", phone: "+971556789012", nationality: "British", budget: { min: 1000000, max: 1500000, area: "Business Bay" }, propertyType: "1BR Apartment", score: 5, stage: "lead", source: "property_finder", language: "English", lastContact: daysAgo(6) },
+    { name: "Ali Hassan", phone: "+971507890123", nationality: "Egyptian", budget: { min: 500000, max: 800000, area: "JVC" }, propertyType: "Studio", score: 4, stage: "lead", source: "facebook_ad", language: "Arabic", lastContact: daysAgo(8) },
+    { name: "Anna Ivanova", phone: "+971558901234", nationality: "Russian", budget: { min: 900000, max: 1300000, area: "JVC" }, propertyType: "1BR Apartment", score: 7, stage: "contacted", source: "bayut", language: "Russian", lastContact: daysAgo(2) },
+    { name: "Michael Brown", phone: "+971509012345", nationality: "American", budget: { min: 2000000, max: 3000000, area: "Creek Harbour" }, propertyType: "2BR Apartment", score: 6, stage: "contacted", source: "landing_page", language: "English", lastContact: daysAgo(4) },
+    { name: "Priya Sharma", phone: "+971550123456", nationality: "Indian", budget: { min: 700000, max: 1000000, area: "Sports City" }, propertyType: "1BR Apartment", score: 5, stage: "lead", source: "dubizzle", language: "English", lastContact: daysAgo(10) },
+    { name: "Hassan Al Qassimi", phone: "+971501112233", nationality: "UAE", budget: { min: 5000000, max: 10000000, area: "Downtown" }, propertyType: "Penthouse", score: 10, stage: "viewing", source: "referral", language: "Arabic", lastContact: ago(3) },
+    { name: "Elena Kuznetsova", phone: "+971552223344", nationality: "Russian", budget: { min: 1200000, max: 1800000, area: "JVC" }, propertyType: "2BR Apartment", score: 7, stage: "qualified", source: "instagram", language: "Russian", lastContact: daysAgo(1) },
+    { name: "Tom Wilson", phone: "+971553334455", nationality: "British", budget: { min: 400000, max: 600000, area: "JVC" }, propertyType: "Studio", score: 3, stage: "lead", source: "property_finder", language: "English", lastContact: daysAgo(15) },
+    { name: "Yuki Tanaka", phone: "+971554445566", nationality: "Japanese", budget: { min: 1500000, max: 2000000, area: "Marina" }, propertyType: "1BR Apartment", score: 6, stage: "contacted", source: "landing_page", language: "English", lastContact: daysAgo(5) },
+    { name: "Amir Khaled", phone: "+971505556677", nationality: "UAE", budget: { min: 800000, max: 1100000, area: "Business Bay" }, propertyType: "1BR Apartment", score: 7, stage: "qualified", source: "whatsapp", language: "Arabic", lastContact: daysAgo(2) },
+  ];
+
+  for (let i = 0; i < leadData.length; i++) {
+    const l = leadData[i]!;
+    await db.insert(aygentLeads).values({
+      id: LEADS[i]!,
+      companyId: COMPANY_ID,
+      agentId: SALES_ID,
+      name: l.name,
+      phone: l.phone,
+      nationality: l.nationality,
+      budget: l.budget,
+      propertyType: l.propertyType,
+      score: l.score,
+      stage: l.stage,
+      source: l.source,
+      language: l.language,
+      lastContactAt: l.lastContact,
+    });
+  }
+  console.log("✓ 15 leads across all stages and nationalities");
+
+  // ── Properties ─────────────────────────────────────────────
+  const propData = [
+    { name: "Binghatti Hills", area: "JVC", type: "1BR Apartment", beds: 1, sqft: 750, sale: 850000, listing: "sale" },
+    { name: "Sobha Hartland II", area: "MBR City", type: "2BR Apartment", beds: 2, sqft: 1200, sale: 1800000, listing: "sale" },
+    { name: "Creek Rise", area: "Creek Harbour", type: "2BR Apartment", beds: 2, sqft: 1100, sale: 2200000, listing: "sale" },
+    { name: "DAMAC Lagoons", area: "DAMAC Hills 2", type: "Villa", beds: 4, sqft: 2800, sale: 3500000, listing: "sale" },
+    { name: "Marina Gate", area: "Dubai Marina", type: "3BR Apartment", beds: 3, sqft: 2100, sale: 4200000, listing: "sale" },
+    { name: "JVC Tower 5", area: "JVC", type: "Studio", beds: 0, sqft: 450, rental: 45000, listing: "rental" },
+    { name: "Bay Avenue", area: "Business Bay", type: "1BR Apartment", beds: 1, sqft: 800, rental: 85000, listing: "rental" },
+    { name: "Palm View West", area: "Palm Jumeirah", type: "2BR Apartment", beds: 2, sqft: 1500, rental: 180000, listing: "rental" },
+  ];
+
+  for (let i = 0; i < propData.length; i++) {
+    const p = propData[i]!;
+    await db.insert(aygentProperties).values({
+      id: PROPERTIES[i]!,
+      companyId: COMPANY_ID,
+      buildingName: p.name,
+      area: p.area,
+      propertyType: p.type,
+      bedrooms: p.beds,
+      sqft: p.sqft,
+      saleValue: (p as any).sale ?? null,
+      rentalPrice: (p as any).rental ?? null,
+      listingType: p.listing,
+      pipelineStatus: "active",
+      status: "active",
+    });
+  }
+  console.log("✓ 8 properties (5 sale, 3 rental)");
+
+  // ── WhatsApp Messages (conversation history) ───────────────
+  const waMessages = [
+    { agent: SALES_ID, jid: "971501234567", fromMe: true, name: "Layla", content: "Hi Ahmed! Thanks for your interest in Binghatti Hills JVC. Would you like to see pricing and floor plans?", time: ago(48) },
+    { agent: SALES_ID, jid: "971501234567", fromMe: false, name: "Ahmed", content: "Yes please, what's the starting price for 1BR?", time: ago(47) },
+    { agent: SALES_ID, jid: "971501234567", fromMe: true, name: "Layla", content: "1BR starts from AED 850,000 with a 60/40 payment plan. Handover Q3 2026. Shall I send the brochure?", time: ago(46) },
+    { agent: SALES_ID, jid: "971501234567", fromMe: false, name: "Ahmed", content: "That's within my budget. Can I visit this week?", time: ago(2) },
+    { agent: SALES_ID, jid: "971552345678", fromMe: true, name: "Layla", content: "Здравствуйте, Мария! Спасибо за интерес к Downtown Dubai. Какой тип недвижимости вас интересует?", time: ago(72) },
+    { agent: SALES_ID, jid: "971552345678", fromMe: false, name: "Maria", content: "2BR в Downtown, бюджет до 2.5M AED. Какие есть варианты?", time: ago(71) },
+    { agent: SALES_ID, jid: "971552345678", fromMe: true, name: "Layla", content: "У нас есть отличные варианты в Creek Rise и Sobha Hartland. Могу организовать просмотр в четверг?", time: ago(6) },
+    { agent: SALES_ID, jid: "971555678901", fromMe: true, name: "Layla", content: "Дмитрий, добрый день! Хотел обсудить условия по Marina Gate. Готов ли застройщик к скидке?", time: ago(12) },
+    { agent: SALES_ID, jid: "971555678901", fromMe: false, name: "Dmitri", content: "Да, давайте обсудим. Я готов закрыть сделку на этой неделе если будет хорошее предложение.", time: ago(11) },
+  ];
+
+  for (const m of waMessages) {
+    await db.insert(aygentWhatsappMessages).values({
+      companyId: COMPANY_ID,
+      agentId: m.agent,
+      chatJid: m.jid,
+      messageId: `demo-${randomUUID().slice(0, 8)}`,
+      fromMe: m.fromMe,
+      senderName: m.name,
+      content: m.content,
+      status: m.fromMe ? "sent" : "received",
+      timestamp: m.time,
+    });
+  }
+  console.log("✓ 9 WhatsApp messages (Arabic + Russian conversations)");
+
+  // ── Agent Learnings (Phase 5) ──────────────────────────────
+  const learningData = [
+    { agent: SALES_ID, type: "correction", action: "send_whatsapp", original: "Hi Ahmed! 😊 Would you like to learn about our amazing properties?", corrected: "Dear Mr. Al Hashimi, thank you for your enquiry about JVC properties. I'd be happy to share pricing details.", reason: "Use formal Arabic greetings. No emojis with UAE nationals.", time: daysAgo(12) },
+    { agent: SALES_ID, type: "correction", action: "send_whatsapp", original: "We have 1BR apartments starting from AED 850K.", corrected: "We have 1BR apartments starting from AED 850,000 with a 60/40 payment plan. Handover Q3 2026.", reason: "Always include payment plan and handover date in first price mention.", time: daysAgo(10) },
+    { agent: SALES_ID, type: "correction", action: "send_whatsapp", original: "Following up on our conversation about Binghatti Hills.", corrected: "Mr. Al Hashimi, just checking in — we have new units available at Binghatti Hills with updated pricing. Would you like the details?", reason: "Follow-ups must add new value, not just 'checking in'.", time: daysAgo(8) },
+    { agent: SALES_ID, type: "rejection", action: "send_whatsapp", original: "Hey! Just wanted to touch base about your property search. Any updates? 🏠", reason: "Too casual for this agency. Never use 'touch base' or house emoji.", time: daysAgo(7) },
+    { agent: SALES_ID, type: "correction", action: "send_whatsapp", original: "Здравствуйте! Как ваши дела?", corrected: "Мария, добрый день. У нас появились новые варианты 2BR в Downtown от AED 1.8M — ROI 7.2% годовых. Интересно?", reason: "Russian clients want metrics immediately. Lead with price and ROI, not pleasantries.", time: daysAgo(6) },
+    { agent: CONTENT_ID, type: "correction", action: "post_instagram", original: "🏠 Amazing new launch in JVC! Starting from just AED 850K! Don't miss out! 🔥 #DubaiRealEstate #Investment", corrected: "Binghatti Hills, JVC — 1BR from AED 850K | 60/40 payment plan | Q3 2026 handover. DM for floor plans. #JVC #DubaiOffPlan #BinghattiHills", reason: "Less hype, more specifics. Include payment plan and project name in post.", time: daysAgo(5) },
+    { agent: CONTENT_ID, type: "correction", action: "post_instagram", original: "Beautiful sunset view from our latest listing! 🌅", corrected: "Creek Rise, Creek Harbour — 2BR with full creek view, 1,100 sqft. Starting AED 2.2M. This view, every evening.", reason: "Every post must include: project name, type, size, price. Pretty photos alone don't sell.", time: daysAgo(4) },
+    { agent: SALES_ID, type: "correction", action: "send_whatsapp", original: "Hi James, are you still looking for a villa in Palm Jumeirah?", corrected: "James, a 4BR villa just listed in Palm West Beach at AED 4.8M — below recent comparables. Your budget fits. Want to see it Saturday?", reason: "Re-engagement messages must reference a specific new opportunity, not ask a yes/no question.", time: daysAgo(3) },
+    { agent: SALES_ID, type: "compacted", action: "general", original: null, corrected: "Always use formal greetings for Arabic-speaking leads (Mr./Mrs. + family name). No emojis in first messages.", reason: null, time: daysAgo(2) },
+    { agent: SALES_ID, type: "compacted", action: "general", original: null, corrected: "Every first price mention must include: AED amount, payment plan split, and handover date.", reason: null, time: daysAgo(2) },
+    { agent: SALES_ID, type: "compacted", action: "general", original: null, corrected: "Russian-speaking leads: lead with price per sqft, ROI %, and rental yield. They decide on numbers, not emotion.", reason: null, time: daysAgo(2) },
+    { agent: CONTENT_ID, type: "compacted", action: "general", original: null, corrected: "Every Instagram post must include: project name, property type, size, price, and one differentiating detail.", reason: null, time: daysAgo(2) },
+  ];
+
+  for (const l of learningData) {
+    await db.insert(aygentAgentLearnings).values({
+      companyId: COMPANY_ID,
+      agentId: l.agent,
+      type: l.type,
+      actionType: l.action,
+      original: l.original,
+      corrected: l.corrected ?? null,
+      reason: l.reason ?? null,
+      active: true,
+      appliedCount: Math.floor(Math.random() * 20) + 1,
+      createdAt: l.time,
+      updatedAt: l.time,
+    });
+  }
+  console.log("✓ 12 agent learnings (corrections, rejections, compacted insights)");
+
+  // ── Inter-Agent Messages (Phase 6) ─────────────────────────
+  const messageData = [
+    { from: MARKET_ID, to: SALES_ID, priority: "action", type: "price_alert", summary: "JVC 1BR prices dropped 12% this week based on DLD transaction data. You have 6 leads interested in JVC.", data: { area: "JVC", propertyType: "1BR", changePercent: -12, period: "7d", source: "DLD" }, time: ago(6) },
+    { from: SALES_ID, to: CONTENT_ID, priority: "action", type: "demand_signal", summary: "4 leads in pipeline asking about JVC 1BR. Need Instagram content and a pitch deck for Binghatti Hills.", data: { area: "JVC", leadCount: 4, projectName: "Binghatti Hills" }, time: ago(5) },
+    { from: CONTENT_ID, to: SALES_ID, priority: "info", type: "content_published", summary: "Published Instagram post about Binghatti Hills JVC — 1BR from AED 850K. You can reference this in follow-ups.", data: { postType: "instagram", project: "Binghatti Hills", engagement: 340 }, time: ago(4) },
+    { from: SALES_ID, to: VIEWING_ID, priority: "action", type: "viewing_request", summary: "Ahmed Al Hashimi wants to view Binghatti Hills JVC this week. Score 8, cash buyer, prefers weekday mornings.", data: { leadId: LEADS[0], leadName: "Ahmed Al Hashimi", property: "Binghatti Hills", score: 8 }, time: ago(3) },
+    { from: VIEWING_ID, to: SALES_ID, priority: "action", type: "viewing_outcome", summary: "Ahmed Al Hashimi viewed Binghatti Hills — very positive. Wants to see 2 more units. Interested in higher floor.", data: { leadId: LEADS[0], outcome: "positive", notes: "Wants higher floor, corner unit preferred" }, time: ago(1) },
+    { from: MARKET_ID, to: SALES_ID, priority: "action", type: "new_launch", summary: "Emaar announcing new phase at Creek Harbour next week. Expected starting AED 2.1M for 2BR. You have 3 leads who match.", data: { developer: "Emaar", project: "Creek Harbour Phase 3", expectedPrice: 2100000, matchingLeads: 3 }, time: ago(8) },
+    { from: MARKET_ID, to: CONTENT_ID, priority: "action", type: "market_event", summary: "Emaar Creek Harbour new phase launching next week. Prepare announcement content and early-bird registration post.", data: { developer: "Emaar", project: "Creek Harbour Phase 3", launchDate: "next Tuesday" }, time: ago(8) },
+    { from: SALES_ID, to: CEO_ID, priority: "urgent", type: "hot_lead", summary: "Hassan Al Qassimi — score 10, AED 5-10M budget, wants Downtown penthouse. Viewed 2 properties today. Ready to sign this week.", data: { leadId: LEADS[10], score: 10, budget: "5-10M AED", timeline: "this week" }, time: ago(3) },
+    { from: VIEWING_ID, to: SALES_ID, priority: "action", type: "viewing_noshow", summary: "Tom Wilson no-showed for the 3rd time. Recommend downgrading score and pausing follow-ups.", data: { leadId: LEADS[12], noShowCount: 3, currentScore: 3 }, time: ago(10) },
+    { from: CONTENT_ID, to: SALES_ID, priority: "info", type: "engagement_spike", summary: "Yesterday's JVC price drop post got 520 likes — 3x our average. JVC content is resonating. Will double down this week.", data: { postType: "instagram", likes: 520, averageLikes: 170, topic: "JVC" }, time: ago(2) },
+    { from: SALES_ID, to: CONTENT_ID, priority: "info", type: "deck_request", summary: "Need a pitch deck for Maria Petrova — Creek Rise 2BR. Include ROI breakdown and payment plan comparison.", data: { leadName: "Maria Petrova", project: "Creek Rise", language: "Russian" }, time: ago(14) },
+    { from: MARKET_ID, to: CEO_ID, priority: "info", type: "competitor_alert", summary: "Allsopp & Allsopp dropped their JVC listing prices by 8%. They may be undercutting on service charges too.", data: { competitor: "Allsopp & Allsopp", area: "JVC", priceChange: -8 }, time: daysAgo(2) },
+  ];
+
+  for (const m of messageData) {
+    const expiresAt = new Date(m.time.getTime() + 48 * 60 * 60 * 1000);
+    await db.insert(aygentAgentMessages).values({
+      companyId: COMPANY_ID,
+      fromAgentId: m.from,
+      toAgentId: m.to,
+      priority: m.priority,
+      messageType: m.type,
+      summary: m.summary,
+      data: m.data,
+      readByAgents: [m.to],
+      actedOn: Math.random() > 0.3,
+      expiresAt,
+      createdAt: m.time,
+    });
+  }
+  console.log("✓ 12 inter-agent messages (price alerts, demand signals, viewing outcomes, hot lead escalation)");
+
+  // ── Pending Approvals ──────────────────────────────────────
+  const approvalData = [
+    { type: "send_whatsapp", agent: SALES_ID, payload: { type: "approval_required", action: "send_whatsapp", to: "Ahmed Al Hashimi", phone: "+971501234567", message: "Dear Mr. Al Hashimi, following your viewing at Binghatti Hills — we have a corner unit on the 18th floor just listed at AED 920,000. 60/40 payment plan. Shall I reserve it for 48 hours?", lead_score: 8, context: "Post-viewing follow-up. Lead expressed interest in higher floor corner unit." } },
+    { type: "send_whatsapp", agent: SALES_ID, payload: { type: "approval_required", action: "send_whatsapp", to: "Elena Kuznetsova", phone: "+971552223344", message: "Елена, добрый день. Цены на 1BR в JVC снизились на 12% за неделю — сейчас от AED 740K. ROI 8.1% годовых. Актуально?", lead_score: 7, context: "Re-engagement triggered by Market Agent's JVC price drop alert." } },
+    { type: "post_instagram", agent: CONTENT_ID, payload: { type: "approval_required", action: "post_instagram", caption: "Creek Harbour Phase 3 by Emaar — early access registration now open.\n\n2BR from AED 2.1M | 70/30 payment plan | Q4 2027 handover\nCreek view guaranteed on floors 15+\n\nDM 'CREEK' for priority access.\n\n#CreekHarbour #Emaar #DubaiOffPlan #NewLaunch", context: "New Emaar launch announcement. Market Agent flagged this as high-opportunity." } },
+    { type: "send_whatsapp", agent: SALES_ID, payload: { type: "approval_required", action: "send_whatsapp", to: "Dmitri Volkov", phone: "+971555678901", message: "Дмитрий, застройщик подтвердил скидку 5% при полной оплате на Marina Gate — финальная цена AED 3,990,000. Это AED 200K ниже рынка. Готовы оформить на этой неделе?", lead_score: 9, context: "Negotiation phase. Developer confirmed 5% cash discount. Dmitri ready to close." } },
+  ];
+
+  for (const a of approvalData) {
+    await db.insert(approvals).values({
+      companyId: COMPANY_ID,
+      type: a.type,
+      requestedByAgentId: a.agent,
+      status: "pending",
+      payload: a.payload,
+    });
+  }
+  console.log("✓ 4 pending approvals (WhatsApp messages + Instagram post)");
+
+  // ── Cost Events (for analytics) ────────────────────────────
+  for (let d = 0; d < 14; d++) {
+    for (const agentId of [CEO_ID, SALES_ID, CONTENT_ID, MARKET_ID, VIEWING_ID]) {
+      const base = agentId === SALES_ID ? 120 : agentId === CEO_ID ? 80 : 50;
+      const costCents = base + Math.floor(Math.random() * 60);
+      await db.insert(costEvents).values({
+        companyId: COMPANY_ID,
+        agentId,
+        provider: "anthropic",
+        biller: "anthropic",
+        billingType: "metered_api",
+        model: "claude-sonnet-4-5",
+        inputTokens: 2000 + Math.floor(Math.random() * 3000),
+        outputTokens: 500 + Math.floor(Math.random() * 1500),
+        costCents,
+        occurredAt: daysAgo(d),
+      });
+    }
+  }
+  console.log("✓ 70 cost events (14 days × 5 agents)");
+
+  // ── CEO Chat Comments (morning brief + conversation) ───────
+  const comments = [
+    { agent: CEO_ID, body: `Good morning. Here's your agency update.
+
+**Headline:** Ahmed Al Hashimi viewed Binghatti Hills yesterday and wants to see more units. He's a cash buyer scoring 8 — this could close this week.
+
+**What your team did overnight:**
+Omar detected a 12% price drop in JVC from DLD transaction data. Layla cross-referenced your pipeline and found 6 leads who stalled on JVC pricing — she's drafted re-engagement messages with the new numbers. Nour is already working on an Instagram post about the price drop.
+
+Separately, Omar flagged an upcoming Emaar launch at Creek Harbour. Nour is preparing early-access content, and Layla identified 3 leads who match the project profile.
+
+**Agent coordination:** 8 messages exchanged between agents overnight. Market → Sales → Content pipeline is working well — price intel turns into outreach within hours.
+
+**Learnings applied:** Layla used formal Arabic greetings with Ahmed (from your correction last week) and led with payment plan details for Russian leads — both patterns you taught her.
+
+**Pending your approval:**
+- 3 WhatsApp messages (Ahmed follow-up, Elena re-engagement, Dmitri negotiation offer)
+- 1 Instagram post (Creek Harbour launch announcement)
+
+**Cost yesterday:** $14.20 across all agents. Layla: $6.40, Nour: $3.80, Omar: $2.60, Khalid: $1.40.`, time: ago(2) },
+    { user: true, body: "Approve all the WhatsApp messages. Hold the Instagram post — I want to add the starting price for studios too.", time: ago(1.5) },
+    { agent: CEO_ID, body: `Done — 3 WhatsApp messages approved and queued for delivery. I've held the Instagram post and asked Nour to add studio pricing before resubmitting.
+
+Also flagging: Hassan Al Qassimi (score 10, AED 5-10M budget) viewed 2 Downtown penthouses today and told Sara he's ready to sign this week. This is your biggest potential deal. I'd recommend you handle this one directly.`, time: ago(1) },
+  ];
+
+  for (const c of comments) {
+    const authorAgentId = (c as any).agent ?? null;
+    const authorUserId = (c as any).user ? "demo-owner" : null;
+    const ts = c.time.toISOString();
+    await sql`INSERT INTO issue_comments (id, company_id, issue_id, body, author_agent_id, author_user_id, created_at, updated_at)
+              VALUES (${randomUUID()}, ${COMPANY_ID}, ${CEO_CHAT_ISSUE_ID}, ${c.body}, ${authorAgentId}, ${authorUserId}, ${ts}, ${ts})`;
+  }
+  console.log("✓ CEO Chat conversation (morning brief + owner interaction)");
+
+  console.log("\n✅ Demo seed complete!");
+  console.log(`\n   Company: Dubai Prestige Properties`);
+  console.log(`   Company ID: ${COMPANY_ID}`);
+  console.log(`   Agents: Khalid (CEO), Layla (Sales), Nour (Content), Omar (Market), Sara (Viewing)`);
+  console.log(`   Leads: 15 | Properties: 8 | Approvals: 4 pending`);
+  console.log(`   Learnings: 12 | Agent Messages: 12 | WhatsApp: 9`);
+  console.log(`\n   Ready for demo! 🚀\n`);
+
+  await sql.end();
 }
 
-console.log(`  ✓ Automations: ${routineValues.length}`);
-
-// ---------------------------------------------------------------------------
-// 12. Properties (5 sales, 5 rentals)
-// ---------------------------------------------------------------------------
-
-console.log("  Seeding properties...");
-
-const propertyData = [
-  {
-    companyId: cid,
-    listingType: "sale",
-    buildingName: "Binghatti Hills",
-    area: "JVC",
-    unit: "1204",
-    propertyType: "apartment",
-    bedrooms: 2,
-    bathrooms: 2,
-    sqft: 1245,
-    floor: "12",
-    viewType: "Pool",
-    parkingSpaces: 1,
-    saleValue: 1_850_000,
-    pipelineStatus: "available",
-    photos: [],
-    createdAt: daysAgo(12),
-  },
-  {
-    companyId: cid,
-    listingType: "sale",
-    buildingName: "The Address Residences",
-    area: "Downtown Dubai",
-    unit: "3502",
-    propertyType: "apartment",
-    bedrooms: 3,
-    bathrooms: 3,
-    sqft: 2100,
-    floor: "35",
-    viewType: "Burj Khalifa",
-    parkingSpaces: 2,
-    saleValue: 3_200_000,
-    pipelineStatus: "viewing_scheduled",
-    photos: [],
-    createdAt: daysAgo(5),
-  },
-  {
-    companyId: cid,
-    listingType: "sale",
-    buildingName: "Vincitore Palacio",
-    area: "Arjan",
-    unit: "507",
-    propertyType: "apartment",
-    bedrooms: 1,
-    bathrooms: 1,
-    sqft: 780,
-    floor: "5",
-    viewType: "Garden",
-    parkingSpaces: 1,
-    saleValue: 950_000,
-    pipelineStatus: "offer_received",
-    photos: [],
-    createdAt: daysAgo(28),
-  },
-  {
-    companyId: cid,
-    listingType: "sale",
-    buildingName: "Marina Gate",
-    area: "Dubai Marina",
-    unit: "2201",
-    propertyType: "apartment",
-    bedrooms: 2,
-    bathrooms: 2,
-    sqft: 1580,
-    floor: "22",
-    viewType: "Marina",
-    parkingSpaces: 1,
-    saleValue: 2_400_000,
-    pipelineStatus: "sold",
-    photos: [],
-    createdAt: daysAgo(45),
-  },
-  {
-    companyId: cid,
-    listingType: "sale",
-    buildingName: "Sobha Hartland Greens",
-    area: "MBR City",
-    unit: "Villa 14",
-    propertyType: "villa",
-    bedrooms: 4,
-    bathrooms: 5,
-    sqft: 3200,
-    floor: "G+1",
-    viewType: "Lagoon",
-    parkingSpaces: 2,
-    saleValue: 4_500_000,
-    pipelineStatus: "available",
-    photos: [],
-    createdAt: daysAgo(2),
-  },
-  {
-    companyId: cid,
-    listingType: "rental",
-    buildingName: "Bloom Towers",
-    area: "JVC",
-    unit: "804",
-    propertyType: "apartment",
-    bedrooms: 1,
-    bathrooms: 1,
-    sqft: 650,
-    floor: "8",
-    viewType: "Community",
-    parkingSpaces: 1,
-    rentalPrice: 55_000,
-    pipelineStatus: "available",
-    photos: [],
-    createdAt: daysAgo(7),
-  },
-  {
-    companyId: cid,
-    listingType: "rental",
-    buildingName: "DAMAC Hills 2",
-    area: "DAMAC Hills",
-    unit: "TH-22",
-    propertyType: "townhouse",
-    bedrooms: 3,
-    bathrooms: 3,
-    sqft: 1800,
-    floor: "G+1",
-    viewType: "Park",
-    parkingSpaces: 2,
-    rentalPrice: 95_000,
-    pipelineStatus: "viewing_scheduled",
-    photos: [],
-    createdAt: daysAgo(10),
-  },
-  {
-    companyId: cid,
-    listingType: "rental",
-    buildingName: "Park Heights",
-    area: "Dubai Hills",
-    unit: "1605",
-    propertyType: "apartment",
-    bedrooms: 2,
-    bathrooms: 2,
-    sqft: 1100,
-    floor: "16",
-    viewType: "Park",
-    parkingSpaces: 1,
-    rentalPrice: 120_000,
-    pipelineStatus: "application_received",
-    photos: [],
-    createdAt: daysAgo(20),
-  },
-  {
-    companyId: cid,
-    listingType: "rental",
-    buildingName: "Al Habtoor City",
-    area: "Business Bay",
-    unit: "4101",
-    propertyType: "apartment",
-    bedrooms: 3,
-    bathrooms: 4,
-    sqft: 2400,
-    floor: "41",
-    viewType: "Canal",
-    parkingSpaces: 2,
-    rentalPrice: 180_000,
-    pipelineStatus: "under_contract",
-    photos: [],
-    createdAt: daysAgo(35),
-  },
-  {
-    companyId: cid,
-    listingType: "rental",
-    buildingName: "Samana Golf Avenue",
-    area: "Dubai Sports City",
-    unit: "302",
-    propertyType: "apartment",
-    bedrooms: 1,
-    bathrooms: 2,
-    sqft: 890,
-    floor: "3",
-    viewType: "Golf Course",
-    parkingSpaces: 1,
-    rentalPrice: 65_000,
-    pipelineStatus: "rented",
-    photos: [],
-    createdAt: daysAgo(60),
-  },
-];
-
-const insertedProperties = await db
-  .insert(aygentProperties)
-  .values(propertyData)
-  .returning({ id: aygentProperties.id });
-
-console.log(`  ✓ ${insertedProperties.length} properties seeded`);
-
-// ---------------------------------------------------------------------------
-// Done
-// ---------------------------------------------------------------------------
-
-console.log("\n✅ Demo seed complete — Dubai Premium Properties is ready.\n");
-process.exit(0);
+seed().catch((err) => {
+  console.error("Seed failed:", err);
+  process.exit(1);
+});

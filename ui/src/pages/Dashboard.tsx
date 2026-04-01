@@ -19,7 +19,9 @@ import { ActivityRow } from "../components/ActivityRow";
 import { AgentStatusCard } from "../components/AgentStatusCard";
 import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle } from "lucide-react";
+import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle, Brain, MessageSquare } from "lucide-react";
+import { agentLearningsApi } from "../api/agent-learnings";
+import { agentMessagesApi } from "../api/agent-messages";
 import { Button } from "@/components/ui/button";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
@@ -93,6 +95,20 @@ export function Dashboard() {
     queryFn: () => analyticsApi.summary(selectedCompanyId!, thirtyDaysAgo),
     enabled: !!selectedCompanyId,
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: learningStats } = useQuery({
+    queryKey: queryKeys.agentLearnings.stats(selectedCompanyId!),
+    queryFn: () => agentLearningsApi.stats(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 60_000,
+  });
+
+  const { data: recentMessages } = useQuery({
+    queryKey: queryKeys.agentMessages.recent(selectedCompanyId!),
+    queryFn: () => agentMessagesApi.listRecent(selectedCompanyId!, 5),
+    enabled: !!selectedCompanyId,
+    staleTime: 30_000,
   });
 
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 8), [activity]);
@@ -329,6 +345,31 @@ export function Dashboard() {
                 }
               />
             </div>
+
+            {/* Agent Intelligence — learning + comms stats */}
+            {(learningStats?.active ?? 0) > 0 || (recentMessages ?? []).length > 0 ? (
+              <div className="grid grid-cols-2 gap-[10px]">
+                <MetricCard
+                  icon={Brain}
+                  value={learningStats?.active ?? 0}
+                  label="Active Learnings"
+                  valueColor="default"
+                  description={
+                    <span>
+                      {learningStats?.totalApplied ?? 0} times applied
+                    </span>
+                  }
+                />
+                <MetricCard
+                  icon={MessageSquare}
+                  value={(recentMessages ?? []).length}
+                  label="Agent Comms"
+                  description={
+                    <span>messages today</span>
+                  }
+                />
+              </div>
+            ) : null}
 
             {/* Your Team — .sec header + .ag2 grid */}
             {(agents ?? []).length > 0 && (

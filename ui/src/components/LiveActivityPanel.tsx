@@ -4,11 +4,12 @@ import { cn, relativeTime } from "../lib/utils";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
 import { activityApi } from "../api/activity";
+import { agentMessagesApi, type AgentMessage } from "../api/agent-messages";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { approvalLabel, typeIcon, defaultTypeIcon } from "./ApprovalPayload";
 import { Button } from "@/components/ui/button";
-import { Shield, Activity } from "lucide-react";
+import { Shield, Activity, MessageSquare, ArrowRight, Zap, AlertTriangle } from "lucide-react";
 import type { Agent } from "@paperclipai/shared";
 
 interface LiveActivityPanelProps {
@@ -241,12 +242,75 @@ function ActivityTab({ companyId }: { companyId: string }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Agent Comms Tab                                                   */
+/* ------------------------------------------------------------------ */
+
+function AgentCommsTab({ companyId }: { companyId: string }) {
+  const { data: messages } = useQuery({
+    queryKey: queryKeys.agentMessages.recent(companyId),
+    queryFn: () => agentMessagesApi.listRecent(companyId, 30),
+    refetchInterval: 15_000,
+  });
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+  });
+
+  const agentName = (id: string) =>
+    (agents as Agent[] | undefined)?.find((a: Agent) => a.id === id)?.name ?? id.slice(0, 8);
+
+  if (!messages || messages.length === 0) {
+    return (
+      <div className="p-4 text-center text-xs text-muted-foreground">
+        No inter-agent messages yet. Agents will start communicating as they coordinate on tasks.
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-border/40">
+      {messages.map((msg: AgentMessage) => {
+        const priorityIcon =
+          msg.priority === "urgent" ? (
+            <AlertTriangle className="h-3 w-3 text-red-500" />
+          ) : msg.priority === "action" ? (
+            <Zap className="h-3 w-3 text-amber-500" />
+          ) : null;
+
+        return (
+          <div key={msg.id} className="px-3 py-2.5 hover:bg-muted/30 transition-colors">
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span className="font-semibold text-foreground">{agentName(msg.fromAgentId)}</span>
+              <ArrowRight className="h-2.5 w-2.5" />
+              <span className="font-semibold text-foreground">
+                {msg.toAgentId ? agentName(msg.toAgentId) : "All"}
+              </span>
+              {priorityIcon}
+              <span className="ml-auto">{relativeTime(msg.createdAt)}</span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1 py-0.5 rounded">
+                {msg.messageType}
+              </span>
+              {msg.summary && (
+                <span className="text-xs text-foreground truncate">{msg.summary}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Panel                                                        */
 /* ------------------------------------------------------------------ */
 
 export function LiveActivityPanel({ className }: LiveActivityPanelProps) {
   const { selectedCompanyId } = useCompany();
-  const [activeTab, setActiveTab] = useState<"pending" | "activity">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "activity" | "comms">("pending");
 
   const { data: approvals } = useQuery({
     queryKey: queryKeys.approvals.list(selectedCompanyId!),
@@ -299,12 +363,26 @@ export function LiveActivityPanel({ className }: LiveActivityPanelProps) {
           <Activity className="h-3.5 w-3.5" />
           Activity
         </button>
+        <button
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold transition-colors border-b-2 -mb-px",
+            activeTab === "comms"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+          onClick={() => setActiveTab("comms")}
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          Comms
+        </button>
       </div>
 
       {/* Scrollable tab content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === "pending" ? (
           <PendingTab companyId={selectedCompanyId} />
+        ) : activeTab === "comms" ? (
+          <AgentCommsTab companyId={selectedCompanyId} />
         ) : (
           <ActivityTab companyId={selectedCompanyId} />
         )}

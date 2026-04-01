@@ -23,6 +23,7 @@ import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { AgentConfigForm } from "../components/AgentConfigForm";
+import { AgentLearningsTab } from "../components/AgentLearningsTab";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { assetsApi } from "../api/assets";
@@ -232,7 +233,7 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "learnings";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "instructions" || value === "prompts") return "instructions";
@@ -240,6 +241,7 @@ function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "skills") return "skills";
   if (value === "budget") return "budget";
   if (value === "runs") return value;
+  if (value === "learnings") return "learnings";
   return "dashboard";
 }
 
@@ -941,6 +943,7 @@ export function AgentDetail() {
           {([
             { value: "dashboard", label: "Overview" },
             { value: "runs", label: "Runs" },
+            { value: "learnings", label: "Learnings" },
             { value: "instructions", label: "Instructions" },
             { value: "configuration", label: "Config" },
           ] as const).map((t) => (
@@ -1066,6 +1069,13 @@ export function AgentDetail() {
             <AgentSkillsTab
               agent={agent}
               companyId={resolvedCompanyId ?? undefined}
+            />
+          )}
+
+          {activeView === "learnings" && resolvedCompanyId && (
+            <AgentLearningsTab
+              agentId={agent.id}
+              companyId={resolvedCompanyId}
             />
           )}
 

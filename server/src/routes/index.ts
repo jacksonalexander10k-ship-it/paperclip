@@ -21,3 +21,5 @@ export { leadRoutes } from "./leads.js";
 export { facebookConnectRoutes } from "./facebook-connect.js";
 export { facebookWebhookRoutes } from "./facebook-webhook.js";
 export { pushSubscriptionRoutes } from "./push-subscriptions.js";
+export { agentLearningRoutes } from "./agent-learnings.js";
+export { agentMessageRoutes } from "./agent-messages.js";

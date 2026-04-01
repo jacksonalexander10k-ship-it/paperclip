@@ -11,6 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { WhatsAppConnect } from "../components/WhatsAppConnect";
 import { WhatsAppConversationDrawer } from "../components/WhatsAppConversationDrawer";
+import { AgentInsightBanner } from "../components/AgentInsightBanner";
 import type { IssueComment, Issue } from "@paperclipai/shared";
 
 const CEO_CHAT_TITLE = "CEO Chat";
@@ -570,6 +571,9 @@ export function CeoChat() {
             <Loader2 className="h-5 w-5 text-muted-foreground/40 animate-spin" />
           </div>
         )}
+
+        {/* Agent insight banners */}
+        {selectedCompanyId && <AgentInsightBanner companyId={selectedCompanyId} />}
 
         {!commentsLoading && comments.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">

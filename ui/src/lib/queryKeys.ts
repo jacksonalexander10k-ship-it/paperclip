@@ -118,6 +118,19 @@ export const queryKeys = {
   knowledgeBase: {
     list: (companyId: string) => ["knowledge-base", companyId] as const,
   },
+  agentLearnings: {
+    list: (companyId: string, agentId?: string) =>
+      ["agent-learnings", companyId, agentId] as const,
+    stats: (companyId: string, agentId?: string) =>
+      ["agent-learnings", "stats", companyId, agentId] as const,
+  },
+  agentMessages: {
+    recent: (companyId: string) => ["agent-messages", companyId] as const,
+    between: (companyId: string, agentA: string, agentB: string) =>
+      ["agent-messages", "between", companyId, agentA, agentB] as const,
+    network: (companyId: string, days?: number) =>
+      ["agent-messages", "network", companyId, days] as const,
+  },
   deliverables: (companyId: string) => ["deliverables", companyId] as const,
   costs: (companyId: string, from?: string, to?: string) =>
     ["costs", companyId, from, to] as const,

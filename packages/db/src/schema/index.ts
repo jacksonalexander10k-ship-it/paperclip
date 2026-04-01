@@ -82,3 +82,5 @@ export { aygentListingWatches } from "./aygent-listing-watches.js";
 export { companySubscriptions } from "./billing.js";
 export { knowledgeBaseFiles } from "./knowledge_base_files.js";
 export { pushSubscriptions } from "./push-subscriptions.js";
+export { aygentAgentLearnings } from "./aygent-agent-learnings.js";
+export { aygentAgentMessages } from "./aygent-agent-messages.js";

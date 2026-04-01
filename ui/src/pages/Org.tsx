@@ -8,7 +8,8 @@ import { queryKeys } from "../lib/queryKeys";
 import { StatusBadge } from "../components/StatusBadge";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { ChevronRight, GitBranch } from "lucide-react";
+import { AgentNetworkGraph } from "../components/AgentNetworkGraph";
+import { ChevronRight, GitBranch, Network } from "lucide-react";
 import { cn } from "../lib/utils";
 
 function OrgTree({
@@ -111,9 +112,39 @@ export function Org() {
     return <PageSkeleton variant="list" />;
   }
 
+  const [view, setView] = useState<"tree" | "network">("tree");
+
   return (
     <div className="space-y-4">
       {error && <p className="text-sm text-destructive">{error.message}</p>}
+
+      {/* View toggle */}
+      <div className="flex gap-1 border-b border-border/40">
+        <button
+          className={cn(
+            "py-2 px-3 text-sm font-semibold border-b-2 transition-colors",
+            view === "tree"
+              ? "text-primary border-primary"
+              : "text-muted-foreground border-transparent hover:text-foreground",
+          )}
+          onClick={() => setView("tree")}
+        >
+          <GitBranch className="h-3.5 w-3.5 inline mr-1.5" />
+          Org Chart
+        </button>
+        <button
+          className={cn(
+            "py-2 px-3 text-sm font-semibold border-b-2 transition-colors",
+            view === "network"
+              ? "text-primary border-primary"
+              : "text-muted-foreground border-transparent hover:text-foreground",
+          )}
+          onClick={() => setView("network")}
+        >
+          <Network className="h-3.5 w-3.5 inline mr-1.5" />
+          Network
+        </button>
+      </div>
 
       {data && data.length === 0 && (
         <EmptyState
@@ -122,10 +153,14 @@ export function Org() {
         />
       )}
 
-      {data && data.length > 0 && (
+      {view === "tree" && data && data.length > 0 && (
         <div className="border border-border py-1">
           <OrgTree nodes={data} hrefFn={(id) => `/agents/${id}`} />
         </div>
+      )}
+
+      {view === "network" && selectedCompanyId && (
+        <AgentNetworkGraph companyId={selectedCompanyId} />
       )}
     </div>
   );

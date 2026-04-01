@@ -46,6 +46,7 @@
     "@anthropic-ai/sdk": "^0.80.0",
     "@aws-sdk/client-s3": "^3.888.0",
     "@aygent/tools": "workspace:^",
+    "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@paperclipai/adapter-claude-local": "workspace:*",
     "@paperclipai/adapter-codex-local": "workspace:*",

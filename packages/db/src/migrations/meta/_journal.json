@@ -379,6 +379,13 @@
       "when": 1775026264767,
       "tag": "0053_large_victor_mancha",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1775033794675,
+      "tag": "0054_bright_carnage",
+      "breakpoints": true
     }
   ]
 }

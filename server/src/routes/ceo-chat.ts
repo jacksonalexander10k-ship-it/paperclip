@@ -12,6 +12,10 @@ import {
   dashboardService,
   ceoCommandService,
   pushNotificationService,
+  agentLearningService,
+  agentMessageService,
+  predictiveActionsService,
+  selfOptimizingTeamsService,
 } from "../services/index.js";
 import { assertCompanyAccess } from "./authz.js";
 import { logger } from "../middleware/logger.js";
@@ -19,9 +23,12 @@ import { logger } from "../middleware/logger.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const CEO_CHAT_TITLE = "CEO Chat";
-const MODEL = "claude-sonnet-4-5";
+const MODEL_SONNET = "claude-sonnet-4-5";
+const MODEL_OPUS = "claude-opus-4";
 const MAX_TOKENS = 4096;
+const MAX_TOKENS_OPUS = 8192;
 const HISTORY_LIMIT = 20;
+const OPUS_MONTHLY_CAP = 50;
 
 let soulMd: string;
 try {
@@ -63,11 +70,44 @@ export function ceoChatRoutes(db: Db) {
       return;
     }
 
-    const { message } = req.body as { message?: string };
+    const { message, deepThink } = req.body as { message?: string; deepThink?: boolean };
     if (!message || typeof message !== "string" || !message.trim()) {
       res.status(400).json({ error: "message is required" });
       return;
     }
+
+    // Resolve model: Opus for Deep Think mode (with monthly cap)
+    let useOpus = false;
+    if (deepThink) {
+      // Check monthly Opus usage via cost events
+      try {
+        const now = new Date();
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        const { costEvents } = await import("@paperclipai/db");
+        const { and: andOp, eq: eqOp, gte, sql } = await import("drizzle-orm");
+        const [row] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(costEvents)
+          .where(
+            andOp(
+              eqOp(costEvents.companyId, companyId),
+              eqOp(costEvents.model, MODEL_OPUS),
+              gte(costEvents.occurredAt, monthStart),
+            ),
+          );
+        const opusUsedThisMonth = row?.count ?? 0;
+        if (opusUsedThisMonth < OPUS_MONTHLY_CAP) {
+          useOpus = true;
+        } else {
+          logger.info({ companyId, opusUsedThisMonth }, "ceo-chat: Opus monthly cap reached, falling back to Sonnet");
+        }
+      } catch (err) {
+        logger.warn({ err }, "ceo-chat: failed to check Opus cap, falling back to Sonnet");
+      }
+    }
+
+    const activeModel = useOpus ? MODEL_OPUS : MODEL_SONNET;
+    const activeMaxTokens = useOpus ? MAX_TOKENS_OPUS : MAX_TOKENS;
 
     const isvc = issueService(db);
     const asvc = agentService(db);
@@ -205,6 +245,46 @@ export function ceoChatRoutes(db: Db) {
       // Non-critical
     }
 
+    // Agent learnings and inter-agent messages
+    const learningSvc = agentLearningService(db);
+    const messageSvc = agentMessageService(db);
+
+    let learningsContext = "";
+    let agentCommsContext = "";
+    try {
+      const ceoAgent = agentsList.find((a) => a.role === "ceo");
+      if (ceoAgent) {
+        learningsContext = await learningSvc.formatForPrompt(companyId, ceoAgent.id);
+      }
+    } catch { /* non-critical */ }
+
+    try {
+      const recentComms = await messageSvc.listRecent(companyId, 10);
+      if (recentComms.length > 0) {
+        const lines = recentComms.map((m) => {
+          const fromAgent = agentsList.find((a) => a.id === m.fromAgentId);
+          const toAgent = m.toAgentId ? agentsList.find((a) => a.id === m.toAgentId) : null;
+          const from = fromAgent?.name ?? "Unknown";
+          const to = toAgent?.name ?? "All agents";
+          const ago = timeAgo(new Date(m.createdAt));
+          return `- ${from} → ${to} (${m.messageType}, ${ago} ago): ${m.summary ?? ""}`;
+        });
+        agentCommsContext = `\n### Recent Agent Communications (${recentComms.length})\n${lines.join("\n")}`;
+      }
+    } catch { /* non-critical */ }
+
+    let predictionsContext = "";
+    let teamRecsContext = "";
+    try {
+      const predSvc = predictiveActionsService(db);
+      predictionsContext = await predSvc.formatForBrief(companyId);
+    } catch { /* non-critical */ }
+
+    try {
+      const teamSvc = selfOptimizingTeamsService(db);
+      teamRecsContext = await teamSvc.formatForBrief(companyId);
+    } catch { /* non-critical */ }
+
     // Build system prompt
     const systemPrompt = `${soulMd}
 
@@ -214,7 +294,7 @@ Today is ${getDubaiDateTime()} (Dubai time).
 
 ### Your Team
 ${agentLines || "No agents hired yet. You're in Builder Mode — interview the owner and propose a team."}
-${dashboardContext}${approvalsContext}${activityContext}${tasksContext}
+${dashboardContext}${approvalsContext}${activityContext}${tasksContext}${learningsContext}${agentCommsContext}${predictionsContext}${teamRecsContext}
 
 ## How to Respond
 
@@ -242,7 +322,22 @@ When you want to send a WhatsApp, email, Instagram post, or any outbound communi
 }
 \`\`\`
 
-Supported actions: send_whatsapp, send_email, post_instagram, send_pitch_deck, confirm_viewing, hire_agent.
+Supported actions: send_whatsapp, send_email, post_instagram, send_pitch_deck, confirm_viewing, hire_agent, skill_amendment.
+
+### When proposing a skill improvement
+When accumulated learnings reveal a pattern worth codifying into a skill file, propose a skill amendment:
+
+\`\`\`json
+{
+  "type": "approval_required",
+  "action": "skill_amendment",
+  "skillFile": "behaviour/lead-response.md",
+  "currentText": "First reply: max 3 sentences, never quote a specific price",
+  "proposedText": "First reply: max 3 sentences, always include payment plan details upfront",
+  "evidence": "Based on 15 corrections where the owner added payment plan info. Messages with payment plans get 35% more replies.",
+  "context": "Updating lead-response skill based on accumulated owner corrections"
+}
+\`\`\`
 
 ### When delegating tasks to agents
 When the owner asks you to assign work ("Follow up with Ahmed", "Get Nour to make a post about Damac"), create a task by emitting a paperclip-command block:
@@ -295,8 +390,8 @@ You can also use these commands:
 
     try {
       const stream = anthropic.messages.stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
+        model: activeModel,
+        max_tokens: activeMaxTokens,
         system: systemPrompt,
         messages: anthropicHistory,
       });
@@ -369,7 +464,7 @@ You can also use these commands:
       if (createdApprovalIds.length > 0) {
         send({ type: "approvals_created", approvalIds: createdApprovalIds });
       }
-      send({ type: "done" });
+      send({ type: "done", model: activeModel, deepThink: useOpus });
     } catch (error) {
       if (!aborted) {
         const msg = error instanceof Error ? error.message : "Streaming error";

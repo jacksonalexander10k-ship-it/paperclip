@@ -51,6 +51,7 @@ import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
 import { startTokenRefreshWorker } from "./workers/token-refresh.js";
+import { startAgentIntelligenceWorker } from "./workers/agent-intelligence.js";
 
 type BetterAuthSessionUser = {
   id: string;
@@ -735,6 +736,7 @@ export async function startServer(): Promise<StartedServer> {
   });
   
   startTokenRefreshWorker(db as any);
+  startAgentIntelligenceWorker(db as any);
 
   if (embeddedPostgres && embeddedPostgresStartedByThisProcess) {
     const shutdown = async (signal: "SIGINT" | "SIGTERM") => {

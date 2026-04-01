@@ -2522,6 +2522,45 @@ export function heartbeatService(db: Db) {
         );
       }
 
+      // Inject agent learnings (corrections from owner) into context
+      try {
+        const { agentLearningService: alSvc } = await import("./agent-learnings.js");
+        const learningsPrompt = await alSvc(db).formatForPrompt(agent.companyId, agent.id);
+        if (learningsPrompt) {
+          context.paperclipAgentLearnings = learningsPrompt;
+        }
+      } catch (err) {
+        logger.warn(
+          { companyId: agent.companyId, agentId: agent.id, runId: run.id, err },
+          "Failed to load agent learnings for run",
+        );
+      }
+
+      // Inject unread inter-agent messages into context
+      try {
+        const { agentMessageService: amSvc } = await import("./agent-messages.js");
+        const messagesPrompt = await amSvc(db, enqueueWakeup).formatForPrompt(agent.companyId, agent.id);
+        if (messagesPrompt) {
+          context.paperclipAgentMessages = messagesPrompt;
+        }
+      } catch (err) {
+        logger.warn(
+          { companyId: agent.companyId, agentId: agent.id, runId: run.id, err },
+          "Failed to load agent messages for run",
+        );
+      }
+
+      // Pre-process context via Gemini Flash to reduce Sonnet token cost
+      try {
+        const { preprocessAgentContext } = await import("./context-preprocessor.js");
+        await preprocessAgentContext(context);
+      } catch (err) {
+        logger.warn(
+          { companyId: agent.companyId, agentId: agent.id, runId: run.id, err },
+          "Context preprocessing failed, using full context",
+        );
+      }
+
       const adapter = getServerAdapter(agent.adapterType);
       const authToken = adapter.supportsLocalAgentJwt
         ? createLocalAgentJwt(agent.id, agent.companyId, agent.adapterType, run.id)
@@ -2713,6 +2752,71 @@ export function heartbeatService(db: Db) {
           },
         });
         await releaseIssueExecutionAndPromote(finalizedRun);
+      }
+
+      // Parse agent-message blocks from stdout and route them
+      if (outcome === "succeeded" && stdoutExcerpt) {
+        try {
+          const msgPattern = /```agent-message\s*([\s\S]*?)```/g;
+          let msgMatch = msgPattern.exec(stdoutExcerpt);
+          const parsedMessages: Array<Record<string, unknown>> = [];
+          while (msgMatch !== null) {
+            try {
+              parsedMessages.push(JSON.parse(msgMatch[1]!));
+            } catch { /* not valid JSON */ }
+            msgMatch = msgPattern.exec(stdoutExcerpt);
+          }
+          if (parsedMessages.length > 0) {
+            const { agentMessageService: amSvc } = await import("./agent-messages.js");
+            const msgSvc = amSvc(db, enqueueWakeup);
+            const agentsList = await db.select({ id: agents.id, name: agents.name }).from(agents).where(eq(agents.companyId, agent.companyId));
+            const agentByName = new Map(agentsList.map(a => [a.name.toLowerCase(), a.id]));
+
+            for (const msg of parsedMessages.slice(0, 5)) {
+              const toName = typeof msg.to === "string" ? msg.to.toLowerCase() : null;
+              const toAgentId = toName ? agentByName.get(toName) ?? null : null;
+              await msgSvc.send(agent.companyId, {
+                fromAgentId: agent.id,
+                toAgentId: toAgentId ?? undefined,
+                priority: (msg.priority as "info" | "action" | "urgent") ?? "info",
+                messageType: String(msg.messageType ?? "general"),
+                summary: typeof msg.summary === "string" ? msg.summary : undefined,
+                data: typeof msg.data === "object" ? msg.data as Record<string, unknown> : undefined,
+              });
+            }
+            logger.info(
+              { companyId: agent.companyId, agentId: agent.id, messageCount: parsedMessages.length },
+              "heartbeat: parsed and routed agent-message blocks from output",
+            );
+          }
+        } catch (err) {
+          logger.warn({ err, agentId: agent.id }, "heartbeat: failed to parse agent-message blocks");
+        }
+      }
+
+      // Parse observation blocks and record them for KB auto-learning
+      if (outcome === "succeeded" && stdoutExcerpt) {
+        try {
+          const obsPattern = /```agent-observation\s*([\s\S]*?)```/g;
+          let obsMatch = obsPattern.exec(stdoutExcerpt);
+          while (obsMatch !== null) {
+            try {
+              const obs = JSON.parse(obsMatch[1]!);
+              if (obs.subject && obs.content) {
+                const { kbAutoLearningService: kbSvc } = await import("./kb-auto-learning.js");
+                await kbSvc(db).recordObservation(
+                  agent.companyId,
+                  agent.id,
+                  String(obs.subject),
+                  String(obs.content),
+                );
+              }
+            } catch { /* not valid JSON */ }
+            obsMatch = obsPattern.exec(stdoutExcerpt);
+          }
+        } catch (err) {
+          logger.warn({ err, agentId: agent.id }, "heartbeat: failed to parse observation blocks");
+        }
       }
 
       if (finalizedRun) {

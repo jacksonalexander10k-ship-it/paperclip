@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { agentCredentialService } from "./agent-credentials.js";
 import { facebookAdsService } from "./facebook-ads.js";
 import { logger } from "../middleware/logger.js";
@@ -191,6 +193,62 @@ export function approvalExecutorService(db: Db) {
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             logger.error({ err, campaignId }, "approval-executor: Facebook campaign pause failed");
+            return { executed: false, action, error: msg };
+          }
+        }
+        case "skill_amendment": {
+          const {
+            skillFile,
+            currentText,
+            proposedText,
+            evidence,
+          } = payload as {
+            skillFile?: string;
+            currentText?: string;
+            proposedText?: string;
+            evidence?: string;
+          };
+
+          if (!skillFile || !proposedText) {
+            return { executed: false, action, error: "Missing skillFile or proposedText" };
+          }
+
+          // Resolve skill path relative to project root skills/ directory
+          const safeName = skillFile.replace(/[^a-zA-Z0-9_\-/.]/g, "");
+          const skillPath = resolve(process.cwd(), "skills", safeName);
+
+          // Security: ensure the resolved path is within the skills directory
+          const skillsDir = resolve(process.cwd(), "skills");
+          if (!skillPath.startsWith(skillsDir)) {
+            return { executed: false, action, error: "Invalid skill file path" };
+          }
+
+          try {
+            // Read current content for versioning
+            let existingContent = "";
+            try {
+              existingContent = await readFile(skillPath, "utf-8");
+            } catch {
+              // File doesn't exist yet — that's fine for new skills
+            }
+
+            // Write the updated skill
+            await writeFile(skillPath, proposedText, "utf-8");
+
+            logger.info(
+              {
+                skillFile: safeName,
+                previousLength: existingContent.length,
+                newLength: proposedText.length,
+                evidence: evidence?.slice(0, 200),
+              },
+              "approval-executor: skill amendment applied",
+            );
+
+            return { executed: true, action };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error({ err, skillFile: safeName }, "approval-executor: skill amendment failed");
             return { executed: false, action, error: msg };
           }
         }
