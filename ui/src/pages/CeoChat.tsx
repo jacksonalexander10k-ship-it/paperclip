@@ -660,37 +660,41 @@ export function CeoChat() {
         }
       />
 
-      {/* ── Conversation tabs ──────────────────────────────────────────── */}
-      {ceoChatConversations.length > 0 && (
-        <div className="border-b border-border/40 px-4 py-1.5 flex items-center gap-1.5 overflow-x-auto shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            onClick={handleNewChat}
-            disabled={createIssuePending}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors shrink-0"
-          >
-            <Plus className="h-3 w-3" />
-            New Chat
-          </button>
-          {ceoChatConversations.slice(0, 10).map((convo: Issue) => {
+      {/* ── Conversation bar ──────────────────────────────────────────── */}
+      <div className="border-b border-border/40 px-4 py-2 flex items-center gap-2 shrink-0">
+        <button
+          onClick={handleNewChat}
+          disabled={createIssuePending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shrink-0 shadow-sm"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          New Chat
+        </button>
+        <div className="h-4 w-px bg-border/60 shrink-0" />
+        <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {ceoChatConversations.slice(0, 8).map((convo: Issue, idx: number) => {
             const isActive = convo.id === ceoChatIssue?.id;
-            const label = convo.title.replace(CEO_CHAT_PREFIX, "").replace(/^[\s—-]+/, "") || "Chat";
+            const dateLabel = new Date(convo.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+            const timeLabel = new Date(convo.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+            const label = convo.title === "CEO Chat" ? `Chat ${dateLabel}` : convo.title.replace(CEO_CHAT_PREFIX, "").replace(/^[\s—-]+/, "") || `Chat ${idx + 1}`;
             return (
               <button
                 key={convo.id}
                 onClick={() => handleSwitchConvo(convo.id)}
                 className={cn(
-                  "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors shrink-0 truncate max-w-[140px]",
+                  "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors shrink-0 truncate max-w-[120px]",
                   isActive
-                    ? "bg-foreground/10 text-foreground"
+                    ? "bg-foreground/10 text-foreground ring-1 ring-foreground/10"
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                 )}
+                title={`${label} · ${timeLabel}`}
               >
                 {label}
               </button>
             );
           })}
         </div>
-      )}
+      </div>
 
       {/* ── Chat messages area ─────────────────────────────────────────── */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 mb-14 md:mb-0">

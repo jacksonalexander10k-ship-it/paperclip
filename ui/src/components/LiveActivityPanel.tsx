@@ -9,7 +9,7 @@ import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { approvalLabel, typeIcon, defaultTypeIcon } from "./ApprovalPayload";
 import { Button } from "@/components/ui/button";
-import { Shield, Activity, MessageSquare, ArrowRight, Zap, AlertTriangle } from "lucide-react";
+import { Shield, Activity, MessageSquare, ArrowRight, Zap, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import type { Agent } from "@paperclipai/shared";
 
 interface LiveActivityPanelProps {
@@ -179,19 +179,20 @@ function PendingTab({ companyId }: { companyId: string }) {
 /* ------------------------------------------------------------------ */
 
 function ActivityTab({ companyId }: { companyId: string }) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const { data: activity } = useQuery({
     queryKey: queryKeys.activity(companyId),
     queryFn: () => activityApi.list(companyId),
     refetchInterval: 3_000,
   });
 
-  const { data: agents } = useQuery({
+  const { data: agentsList } = useQuery({
     queryKey: queryKeys.agents.list(companyId),
     queryFn: () => agentsApi.list(companyId),
   });
 
   const agentMap = new Map<string, Agent>();
-  for (const a of agents ?? []) agentMap.set(a.id, a);
+  for (const a of agentsList ?? []) agentMap.set(a.id, a);
 
   const entries = (activity ?? []).slice(0, 30);
 
@@ -206,34 +207,115 @@ function ActivityTab({ companyId }: { companyId: string }) {
     );
   }
 
+  // Map raw events to agent thinking/reasoning display
+  function describeEvent(event: typeof entries[0]) {
+    const details = (event as { details?: Record<string, unknown> }).details ?? {};
+    const action = (event as { action?: string }).action ?? "";
+    const summary = details.summary ?? details.title ?? "";
+
+    // Map action types to thinking descriptions
+    if (action === "agent.message_sent") {
+      const from = String(details.fromAgent ?? "Agent");
+      const to = String(details.toAgent ?? "");
+      const msgType = String(details.messageType ?? "");
+      return {
+        label: `${from} messaged ${to}`,
+        icon: "💬",
+        thinking: String(summary).slice(0, 200) || `Sent ${msgType} to ${to}`,
+        category: "communication",
+      };
+    }
+    if (action.includes("approval")) {
+      return {
+        label: action.replace("approval.", "Approval ").replace(/_/g, " "),
+        icon: action.includes("approved") ? "✅" : action.includes("rejected") ? "❌" : "📋",
+        thinking: String(details.type ?? ""),
+        category: "approval",
+      };
+    }
+    if (action.includes("ceo")) {
+      return {
+        label: "CEO Agent",
+        icon: "🧠",
+        thinking: action.includes("plan") ? "Reasoning about the best approach..." : "Preparing response for the owner...",
+        category: "thinking",
+      };
+    }
+    if (action.includes("heartbeat") || action.includes("run")) {
+      return {
+        label: "Agent run",
+        icon: "⚡",
+        thinking: "Processing task...",
+        category: "execution",
+      };
+    }
+    return {
+      label: action.replace(/\./g, " → ").replace(/_/g, " "),
+      icon: "📌",
+      thinking: String(summary),
+      category: "other",
+    };
+  }
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <div className="flex flex-col">
       {entries.map((event) => {
-        const agentId =
-          (event as { actorId?: string; agentId?: string }).actorId ??
-          (event as { actorId?: string; agentId?: string }).agentId;
+        const agentId = (event as { actorId?: string }).actorId;
         const agent = agentId ? agentMap.get(agentId) : null;
-        const actorName =
-          agent?.name ??
-          (event as { actorName?: string }).actorName ??
-          "Someone";
+        const actorName = agent?.name ?? "System";
+        const desc = describeEvent(event);
+        const isExpanded = expandedIds.has(event.id);
 
         return (
           <div
             key={event.id}
-            className="px-3 py-3 border-b border-border/40 hover:bg-muted/30 transition-colors"
+            className="px-3 py-2.5 border-b border-border/40 hover:bg-muted/30 transition-colors cursor-pointer"
+            onClick={() => desc.thinking && toggleExpand(event.id)}
           >
-            <p className="text-[11.5px] text-foreground leading-[1.5]">
-              <span className="font-semibold">{actorName}</span>{" "}
-              {(event as { summary?: string; action?: string }).summary ??
-                (event as { summary?: string; action?: string }).action ??
-                "did something"}
-            </p>
-            {event.createdAt && (
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {relativeTime(String(event.createdAt))}
-              </p>
-            )}
+            <div className="flex items-start gap-2">
+              <span className="text-[12px] mt-0.5 shrink-0">{desc.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11.5px] font-semibold text-foreground">{actorName}</span>
+                  <span className="text-[10px] text-muted-foreground/50">{relativeTime(String(event.createdAt))}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{desc.label}</p>
+
+                {/* Expandable thinking block — like Claude's reasoning */}
+                {desc.thinking && (
+                  <div className={cn(
+                    "mt-1.5 overflow-hidden transition-all duration-200",
+                    isExpanded ? "max-h-[200px]" : "max-h-0",
+                  )}>
+                    <div className="rounded-md bg-muted/50 border border-border/30 px-2.5 py-2 text-[10.5px] text-muted-foreground leading-relaxed">
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60 block mb-1">Thinking</span>
+                      {desc.thinking}
+                    </div>
+                  </div>
+                )}
+                {desc.thinking && !isExpanded && (
+                  <button className="text-[9.5px] text-primary/70 hover:text-primary mt-0.5 flex items-center gap-0.5">
+                    <ChevronDown className="h-2.5 w-2.5" />
+                    Show reasoning
+                  </button>
+                )}
+                {desc.thinking && isExpanded && (
+                  <button className="text-[9.5px] text-primary/70 hover:text-primary mt-0.5 flex items-center gap-0.5">
+                    <ChevronUp className="h-2.5 w-2.5" />
+                    Hide
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         );
       })}
@@ -324,18 +406,21 @@ function AgentCommsTab({ companyId }: { companyId: string }) {
 
   return (
     <div className="flex flex-col">
-      {/* Clear all button */}
-      {sorted.length > 0 && (
-        <div className="px-3 py-1.5 border-b border-border/40 flex justify-end">
+      {/* Clear all button — always visible when there are messages */}
+      <div className="px-3 py-2 border-b border-border/40 flex justify-between items-center sticky top-0 bg-sidebar z-10">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          Agent Comms {sorted.length > 0 && `(${sorted.length})`}
+        </span>
+        {sorted.length > 0 && (
           <button
-            className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+            className="text-[11px] font-medium text-destructive/70 hover:text-destructive transition-colors px-2 py-0.5 rounded hover:bg-destructive/10"
             onClick={() => clearMutation.mutate()}
             disabled={clearMutation.isPending}
           >
             {clearMutation.isPending ? "Clearing..." : "Clear all"}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {sorted.map((msg: AgentMessage) => {
         const isExpanded = expandedIds.has(msg.id);
         const sender = agentName(msg.fromAgentId);
