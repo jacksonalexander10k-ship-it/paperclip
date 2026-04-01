@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, Loader2, CheckCircle, XCircle, ArrowUp, MessageCircle, Pencil } from "lucide-react";
 import { issuesApi } from "../api/issues";
@@ -297,43 +297,102 @@ function ChatBubble({
   );
 }
 
-// ── Streaming bubble ───────────────────────────────────────────────────────────
+// ── Streaming bubble with inline generative UI cards ──────────────────────────
 
 function StreamingBubble({ text }: { text: string }) {
+  // Split streaming text into segments: regular text vs approval card JSON
+  const segments: Array<{ type: "text" | "card"; content: string; payload?: Record<string, unknown> }> = [];
+  const jsonPattern = /```json\s*([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match = jsonPattern.exec(text);
+
+  while (match !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
+    }
+    try {
+      const parsed = JSON.parse(match[1]!);
+      if (parsed?.type === "approval_required") {
+        segments.push({ type: "card", content: "", payload: parsed });
+      }
+    } catch {
+      // Not valid JSON — render as text
+      segments.push({ type: "text", content: match[0] });
+    }
+    lastIndex = match.index + match[0].length;
+    match = jsonPattern.exec(text);
+  }
+  if (lastIndex < text.length) {
+    segments.push({ type: "text", content: text.slice(lastIndex) });
+  }
+
+  // If no segments parsed, show raw text
+  if (segments.length === 0) {
+    segments.push({ type: "text", content: text });
+  }
+
   return (
     <div className="chat-msg-enter flex flex-row items-end gap-2 mb-3">
-      {/* Avatar */}
       <div className="w-[27px] h-[27px] rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shrink-0 mb-[18px]">
-        <span className="text-[10px] font-bold text-primary-foreground leading-none">
-          CEO
-        </span>
+        <span className="text-[10px] font-bold text-primary-foreground leading-none">CEO</span>
       </div>
-      <div className="max-w-[88%] md:max-w-[75%] flex flex-col items-start">
-        <div className="bg-card border border-border text-foreground rounded-[13px] rounded-bl-[4px] px-3.5 py-2.5 text-[12.5px] leading-[1.55] whitespace-pre-wrap">
-          {text}
-          <span className="inline-block w-[2px] h-[14px] bg-primary/70 ml-0.5 animate-blink align-middle rounded-full" />
-        </div>
+      <div className="max-w-[88%] md:max-w-[75%] flex flex-col items-start gap-2">
+        {segments.map((seg, i) =>
+          seg.type === "card" && seg.payload ? (
+            <div key={i} className="w-full rounded-xl border border-primary/20 bg-primary/5 p-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold text-primary">
+                  {seg.payload.action === "send_whatsapp" ? "Send WhatsApp" : seg.payload.action === "post_instagram" ? "Post Instagram" : String(seg.payload.action)}
+                </span>
+                {seg.payload.lead_score != null && (
+                  <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                    Score {String(seg.payload.lead_score)}/10
+                  </span>
+                )}
+              </div>
+              {seg.payload.to != null && (
+                <p className="text-[11px] text-muted-foreground mb-1">
+                  To: {String(seg.payload.to)} {seg.payload.phone != null ? `· ${String(seg.payload.phone)}` : ""}
+                </p>
+              )}
+              <p className="text-[12px] text-foreground leading-relaxed">
+                {String(seg.payload.message ?? seg.payload.caption ?? "").slice(0, 200)}
+                {(String(seg.payload.message ?? seg.payload.caption ?? "")).length > 200 ? "..." : ""}
+              </p>
+              <div className="flex gap-2 mt-2">
+                <span className="text-[10px] text-muted-foreground italic">Pending approval...</span>
+              </div>
+            </div>
+          ) : (
+            <div key={i} className="bg-card border border-border text-foreground rounded-[13px] rounded-bl-[4px] px-3.5 py-2.5 text-[12.5px] leading-[1.55] whitespace-pre-wrap">
+              {seg.content}
+              {i === segments.length - 1 && (
+                <span className="inline-block w-[2px] h-[14px] bg-primary/70 ml-0.5 animate-blink align-middle rounded-full" />
+              )}
+            </div>
+          ),
+        )}
       </div>
     </div>
   );
 }
 
-// ── Typing indicator ───────────────────────────────────────────────────────────
+// ── Thinking indicator (Claude-style) ─────────────────────────────────────────
 
 function TypingIndicator() {
   return (
     <div className="chat-msg-enter flex flex-row items-end gap-2 mb-3">
-      {/* Avatar */}
       <div className="w-[27px] h-[27px] rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shrink-0 mb-[18px]">
-        <span className="text-[10px] font-bold text-primary-foreground leading-none">
-          CEO
-        </span>
+        <span className="text-[10px] font-bold text-primary-foreground leading-none">CEO</span>
       </div>
       <div className="bg-card border border-border rounded-[13px] rounded-bl-[4px] px-3.5 py-2.5">
-        <div className="flex gap-[5px] items-center h-[16px]">
-          <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
-          <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
-          <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
+        <div className="flex items-center gap-2">
+          <div className="flex gap-[5px] items-center">
+            <span className="w-[5px] h-[5px] rounded-full bg-primary/60 animate-pulse" />
+            <span className="w-[5px] h-[5px] rounded-full bg-primary/60 animate-pulse [animation-delay:200ms]" />
+            <span className="w-[5px] h-[5px] rounded-full bg-primary/60 animate-pulse [animation-delay:400ms]" />
+          </div>
+          <span className="text-[11px] text-muted-foreground animate-pulse">Thinking...</span>
         </div>
       </div>
     </div>
@@ -421,6 +480,16 @@ export function CeoChat() {
     enabled: !!issueId,
     refetchInterval: 15_000,
   });
+
+  // Scroll to bottom on initial load
+  const wasLoading = useRef(true);
+  useEffect(() => {
+    if (wasLoading.current && !commentsLoading && comments.length > 0) {
+      wasLoading.current = false;
+      setTimeout(scrollToBottom, 50);
+      setTimeout(scrollToBottom, 300);
+    }
+  }, [commentsLoading, comments.length, scrollToBottom]);
 
   // ── Mark CEO Chat issue as read whenever comments are visible ───────────────
   useEffect(() => {
@@ -528,20 +597,22 @@ export function CeoChat() {
 
   // ── Auto-scroll to bottom ────────────────────────────────────────────────────
   const scrollToBottom = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      const el = scrollContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   }, []);
 
-  useLayoutEffect(scrollToBottom, [comments, streamingText, isStreaming, scrollToBottom]);
+  // Scroll on streaming changes
+  useEffect(scrollToBottom, [streamingText, isStreaming, scrollToBottom]);
 
-  // Backup scroll after async paint — covers refetch race conditions
+  // Scroll when comments change (refetch after streaming ends)
   useEffect(() => {
     scrollToBottom();
-    const t1 = setTimeout(scrollToBottom, 50);
-    const t2 = setTimeout(scrollToBottom, 200);
-    const t3 = setTimeout(scrollToBottom, 500);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [comments, scrollToBottom]);
+    // Belt-and-suspenders: scroll again after images/cards render
+    const t = setTimeout(scrollToBottom, 200);
+    return () => clearTimeout(t);
+  }, [comments.length, scrollToBottom]);
 
   const _statusColor = isStreaming
     ? "bg-blue-400 animate-pulse"
@@ -577,44 +648,40 @@ export function CeoChat() {
 
       {/* ── Chat messages area ─────────────────────────────────────────── */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 mb-14 md:mb-0">
-        {commentsLoading && (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-5 w-5 text-muted-foreground/40 animate-spin" />
-          </div>
-        )}
-
-        {/* Agent insight banners */}
-        {selectedCompanyId && <AgentInsightBanner companyId={selectedCompanyId} />}
-
-        {!commentsLoading && comments.length === 0 && !isStreaming && (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-            {/* Empty state avatar */}
-            <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-primary/60 to-primary flex items-center justify-center">
-              <span className="text-[16px] font-bold text-primary-foreground leading-none">
-                CEO
-              </span>
+        <div>
+          {commentsLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 text-muted-foreground/40 animate-spin" />
             </div>
-            <p className="text-[12.5px] text-muted-foreground max-w-[260px] leading-[1.5]">
-              Send a message to start talking with your CEO agent.
-            </p>
-          </div>
-        )}
+          )}
 
-        {comments.map((comment: IssueComment) => (
-          <ChatBubble
-            key={comment.id}
-            comment={comment}
-            onViewConversation={handleViewConversation}
-          />
-        ))}
+          {!commentsLoading && comments.length === 0 && !isStreaming && (
+            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+              <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-primary/60 to-primary flex items-center justify-center">
+                <span className="text-[16px] font-bold text-primary-foreground leading-none">CEO</span>
+              </div>
+              <p className="text-[12.5px] text-muted-foreground max-w-[260px] leading-[1.5]">
+                Send a message to start talking with your CEO agent.
+              </p>
+            </div>
+          )}
 
-        {/* Typing indicator -- shown while waiting for first streaming token */}
-        {isStreaming && streamingText === "" && <TypingIndicator />}
+          {comments.map((comment: IssueComment) => (
+            <ChatBubble
+              key={comment.id}
+              comment={comment}
+              onViewConversation={handleViewConversation}
+            />
+          ))}
 
-        {/* Streaming bubble -- fills in character by character */}
-        {streamingText !== "" && <StreamingBubble text={streamingText} />}
+          {/* Thinking indicator */}
+          {isStreaming && streamingText === "" && <TypingIndicator />}
 
-        <div ref={messagesEndRef} />
+          {/* Streaming bubble with inline generative UI cards */}
+          {streamingText !== "" && <StreamingBubble text={streamingText} />}
+
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* ── Quick action pills ─────────────────────────────────────────── */}

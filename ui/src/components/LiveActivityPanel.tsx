@@ -246,56 +246,93 @@ function ActivityTab({ companyId }: { companyId: string }) {
 /* ------------------------------------------------------------------ */
 
 function AgentCommsTab({ companyId }: { companyId: string }) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const { data: messages } = useQuery({
     queryKey: queryKeys.agentMessages.recent(companyId),
     queryFn: () => agentMessagesApi.listRecent(companyId, 30),
-    refetchInterval: 15_000,
+    refetchInterval: 5_000,
   });
 
-  const { data: agents } = useQuery({
+  const { data: agentsList } = useQuery({
     queryKey: queryKeys.agents.list(companyId),
     queryFn: () => agentsApi.list(companyId),
   });
 
   const agentName = (id: string) =>
-    (agents as Agent[] | undefined)?.find((a: Agent) => a.id === id)?.name ?? id.slice(0, 8);
+    (agentsList as Agent[] | undefined)?.find((a: Agent) => a.id === id)?.name ?? "Agent";
+
+  const agentInitial = (id: string) => {
+    const name = agentName(id);
+    return name.charAt(0).toUpperCase();
+  };
+
+  const agentColor = (id: string) => {
+    const name = agentName(id);
+    const colors = ["bg-primary", "bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-purple-500"];
+    const hash = name.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+    return colors[hash % colors.length];
+  };
 
   if (!messages || messages.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-muted-foreground">
-        No inter-agent messages yet. Agents will start communicating as they coordinate on tasks.
+        No agent chatter yet. Send a message to the CEO to see agents coordinate.
       </div>
     );
   }
 
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Show newest at bottom (reverse chronological → chronological)
+  const sorted = [...messages].reverse();
+
   return (
-    <div className="divide-y divide-border/40">
-      {messages.map((msg: AgentMessage) => {
-        const priorityIcon =
-          msg.priority === "urgent" ? (
-            <AlertTriangle className="h-3 w-3 text-red-500" />
-          ) : msg.priority === "action" ? (
-            <Zap className="h-3 w-3 text-amber-500" />
-          ) : null;
+    <div className="flex flex-col">
+      {sorted.map((msg: AgentMessage) => {
+        const isExpanded = expandedIds.has(msg.id);
+        const sender = agentName(msg.fromAgentId);
+        const summary = msg.summary ?? "";
+        const isLong = summary.length > 80;
+        const displayText = isExpanded || !isLong ? summary : summary.slice(0, 80) + "...";
 
         return (
-          <div key={msg.id} className="px-3 py-2.5 hover:bg-muted/30 transition-colors">
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <span className="font-semibold text-foreground">{agentName(msg.fromAgentId)}</span>
-              <ArrowRight className="h-2.5 w-2.5" />
-              <span className="font-semibold text-foreground">
-                {msg.toAgentId ? agentName(msg.toAgentId) : "All"}
-              </span>
-              {priorityIcon}
-              <span className="ml-auto">{relativeTime(msg.createdAt)}</span>
-            </div>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                {msg.messageType}
-              </span>
-              {msg.summary && (
-                <span className="text-xs text-foreground truncate">{msg.summary}</span>
-              )}
+          <div
+            key={msg.id}
+            className="px-3 py-2.5 hover:bg-muted/30 transition-colors cursor-pointer animate-in fade-in slide-in-from-bottom-1 duration-300"
+            onClick={() => isLong && toggleExpand(msg.id)}
+          >
+            <div className="flex items-start gap-2">
+              {/* Agent avatar */}
+              <div className={cn(
+                "w-[22px] h-[22px] rounded-full flex items-center justify-center shrink-0 mt-0.5 text-white text-[9px] font-bold",
+                agentColor(msg.fromAgentId),
+              )}>
+                {agentInitial(msg.fromAgentId)}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {/* Sender + time */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11.5px] font-semibold text-foreground">{sender}</span>
+                  <span className="text-[10px] text-muted-foreground/50">{relativeTime(msg.createdAt)}</span>
+                </div>
+
+                {/* Message body */}
+                <p className="text-[11.5px] text-foreground/80 leading-relaxed mt-0.5 whitespace-pre-wrap">
+                  {displayText}
+                </p>
+
+                {isLong && !isExpanded && (
+                  <span className="text-[10px] text-primary cursor-pointer">Show more</span>
+                )}
+              </div>
             </div>
           </div>
         );

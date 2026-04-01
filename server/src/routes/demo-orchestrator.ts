@@ -143,6 +143,11 @@ async function runBackgroundSequence(
 
   if (!ceo || !layla || !omar || !nour) return;
 
+  const K = ceo.name;
+  const L = layla.name;
+  const O = omar.name;
+  const N = nour.name;
+
   const steps: Array<{
     delayMs: number;
     from: DemoAgent;
@@ -157,47 +162,79 @@ async function runBackgroundSequence(
       to: omar,
       priority: "action",
       messageType: "data_request",
-      summary: "Omar, can you pull the latest JVC 1BR numbers from DLD? Owner wants to push JVC hard this week.",
+      summary: `@${O} can you pull the latest JVC 1BR numbers from DLD? Owner wants to push JVC hard this week. Need current market rate asap`,
     },
     {
-      delayMs: 8000,
+      delayMs: 7000,
+      from: omar,
+      to: ceo,
+      priority: "info",
+      messageType: "acknowledgement",
+      summary: `@${K} on it, pulling DLD data now. Give me 30 seconds`,
+    },
+    {
+      delayMs: 14000,
       from: omar,
       to: layla,
       priority: "action",
       messageType: "price_alert",
-      summary: "Layla — heads up, JVC 1BR dropped 12% this week. Binghatti Hills now from 748K. You've got 6 leads sitting on JVC. Might be time to re-engage.",
+      summary: `@${L} heads up — just pulled the DLD numbers. JVC 1BR dropped 12% this week. Binghatti Hills now starting from 748K. You've got 6 leads sitting on JVC who went cold on pricing. This could be the hook to bring them back`,
     },
     {
-      delayMs: 14000,
+      delayMs: 19000,
+      from: layla,
+      to: omar,
+      priority: "info",
+      messageType: "acknowledgement",
+      summary: `Nice one @${O}, that's exactly what I needed 👍 Pulling up the JVC pipeline now. Ahmed and Elena are the top two — drafting messages for both`,
+    },
+    {
+      delayMs: 25000,
       from: ceo,
       to: layla,
       priority: "action",
       messageType: "campaign_request",
-      summary: "Layla, draft re-engagement messages for the top JVC leads. Omar just sent you the pricing — use the new numbers. Prioritise score 7+.",
+      summary: `@${L} prioritise score 7 and above. @${N} can you get a post ready about the JVC price drop? We need to capitalise on this today`,
     },
     {
-      delayMs: 20000,
+      delayMs: 30000,
+      from: nour,
+      to: ceo,
+      priority: "info",
+      messageType: "acknowledgement",
+      summary: `On it @${K}. @${L} what angle works best — lead with the price drop percentage or the actual AED number?`,
+    },
+    {
+      delayMs: 36000,
       from: layla,
       to: nour,
-      priority: "action",
-      messageType: "content_request",
-      summary: "Hey Nour — we're pushing JVC this week. Can you put together an Instagram post about the 12% price drop? The 748K starting price is the hook. Owner wants it today.",
+      priority: "info",
+      messageType: "content_guidance",
+      summary: `@${N} lead with the price drop — "12% down" is the hook. Then the 748K number. The 60/40 payment plan as the backup detail. That combo worked best with Ahmed's segment last time`,
     },
     {
-      delayMs: 28000,
+      delayMs: 44000,
       from: nour,
       to: layla,
       priority: "info",
       messageType: "content_ready",
-      summary: "Done — drafted the JVC post. Used the same format as last week's one that got 520 likes. Queued for owner approval.",
+      summary: `Done @${L} — drafted the post. Used the same carousel format that got 520 likes last week. @${K} it's queued for the owner to approve`,
     },
     {
-      delayMs: 35000,
+      delayMs: 49000,
       from: layla,
       to: ceo,
       priority: "info",
       messageType: "status_update",
-      summary: "All done. Drafted WhatsApp messages for Ahmed (score 8) and Elena (score 7). Nour's Instagram post is queued too. Everything's waiting for the owner to approve.",
+      summary: `@${K} all done. Drafted WhatsApp for Ahmed (score 8, formal Arabic) and Elena (score 7, Russian — led with ROI numbers). @${N}'s Instagram post is queued too. Everything's waiting for the owner to approve. Pretty quick turnaround if I say so myself 😏`,
+    },
+    {
+      delayMs: 54000,
+      from: ceo,
+      to: layla,
+      priority: "info",
+      messageType: "acknowledgement",
+      summary: `Good work team. @${L} @${O} @${N} — owner has 3 approval cards waiting. Let's see if we can close Ahmed this week, he's been sitting on this for too long`,
     },
   ];
 
