@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn, relativeTime } from "../lib/utils";
 import { approvalsApi } from "../api/approvals";
@@ -27,7 +27,7 @@ function PendingTab({ companyId }: { companyId: string }) {
   const { data: approvals } = useQuery({
     queryKey: queryKeys.approvals.list(companyId),
     queryFn: () => approvalsApi.list(companyId),
-    refetchInterval: 10_000,
+    refetchInterval: 3_000,
   });
 
   const { data: agents } = useQuery({
@@ -182,7 +182,7 @@ function ActivityTab({ companyId }: { companyId: string }) {
   const { data: activity } = useQuery({
     queryKey: queryKeys.activity(companyId),
     queryFn: () => activityApi.list(companyId),
-    refetchInterval: 15_000,
+    refetchInterval: 3_000,
   });
 
   const { data: agents } = useQuery({
@@ -247,11 +247,29 @@ function ActivityTab({ companyId }: { companyId: string }) {
 
 function AgentCommsTab({ companyId }: { companyId: string }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const { data: messages } = useQuery({
     queryKey: queryKeys.agentMessages.recent(companyId),
     queryFn: () => agentMessagesApi.listRecent(companyId, 30),
-    refetchInterval: 5_000,
+    refetchInterval: 3_000,
   });
+
+  // Track which messages are "new" (not seen before) for shimmer animation
+  useEffect(() => {
+    if (!messages) return;
+    const currentIds = new Set(messages.map((m: AgentMessage) => m.id));
+    const newIds = new Set<string>();
+    for (const id of currentIds) {
+      if (!seenIds.has(id)) newIds.add(id);
+    }
+    if (newIds.size > 0) {
+      // Mark them as seen after the animation duration (1.5s)
+      const timer = setTimeout(() => {
+        setSeenIds((prev) => new Set([...prev, ...newIds]));
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [messages]);
 
   const { data: agentsList } = useQuery({
     queryKey: queryKeys.agents.list(companyId),
@@ -290,8 +308,8 @@ function AgentCommsTab({ companyId }: { companyId: string }) {
     });
   };
 
-  // Show newest at bottom (reverse chronological → chronological)
-  const sorted = [...messages].reverse();
+  // Most recent at top
+  const sorted = [...messages];
 
   return (
     <div className="flex flex-col">
@@ -301,11 +319,15 @@ function AgentCommsTab({ companyId }: { companyId: string }) {
         const summary = msg.summary ?? "";
         const isLong = summary.length > 80;
         const displayText = isExpanded || !isLong ? summary : summary.slice(0, 80) + "...";
+        const isNew = !seenIds.has(msg.id);
 
         return (
           <div
             key={msg.id}
-            className="px-3 py-2.5 hover:bg-muted/30 transition-colors cursor-pointer animate-in fade-in slide-in-from-bottom-1 duration-300"
+            className={cn(
+              "px-3 py-2.5 hover:bg-muted/30 transition-all cursor-pointer animate-in fade-in slide-in-from-top-1 duration-300",
+              isNew && "bg-primary/5 ring-1 ring-primary/20 animate-pulse [animation-duration:1.5s] [animation-iteration-count:1]",
+            )}
             onClick={() => isLong && toggleExpand(msg.id)}
           >
             <div className="flex items-start gap-2">
