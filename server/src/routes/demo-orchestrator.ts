@@ -195,7 +195,8 @@ export async function runDemoAfterPlanApproval(db: Db, companyId: string, ceoCha
     await postAgentMessage(db, companyId, omar, ceo, "info", "market_data",
       `@${ceo.name} done. Here's the picture — DLD transactions are up 8% month-on-month, which is significant given what's happening globally. International buyer enquiries have jumped 23% since the tensions escalated. Same pattern as 2022 — instability elsewhere pushes capital to Dubai. CIS countries and European buyers leading the charge. I'll send the full data pack to @${layla.name} now.`);
 
-    await sleep(8000);
+    // Omar waits, then shares with Layla separately (18s gap)
+    await sleep(18000);
     await postAgentMessage(db, companyId, omar, layla, "action", "data_handover",
       `@${layla.name} here's the market data for the outreach. Key numbers: DLD transactions +8% MoM, international enquiries +23%, CIS registrations doubled since March. Dubai ranked top safe haven in the region. Use whatever you need — it'll give the messages more weight than just "checking in."`);
 
