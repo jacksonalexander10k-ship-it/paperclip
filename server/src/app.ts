@@ -47,6 +47,7 @@ import { knowledgeBaseRoutes } from "./routes/knowledge-base.js";
 import { pushSubscriptionRoutes } from "./routes/push-subscriptions.js";
 import { agentLearningRoutes } from "./routes/agent-learnings.js";
 import { agentMessageRoutes } from "./routes/agent-messages.js";
+import { demoOrchestratorRoutes } from "./routes/demo-orchestrator.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -194,6 +195,7 @@ export async function createApp(
   api.use(pushSubscriptionRoutes(db));
   api.use(agentLearningRoutes(db));
   api.use(agentMessageRoutes(db));
+  api.use(demoOrchestratorRoutes(db));
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();

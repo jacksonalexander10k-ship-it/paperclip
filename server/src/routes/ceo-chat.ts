@@ -76,6 +76,20 @@ export function ceoChatRoutes(db: Db) {
       return;
     }
 
+    // Demo mode: if this is the DPP demo company, use the demo orchestrator instead of Anthropic
+    try {
+      const { companies } = await import("@paperclipai/db");
+      const { eq: eqOp } = await import("drizzle-orm");
+      const [company] = await db.select({ issuePrefix: companies.issuePrefix }).from(companies).where(eqOp(companies.id, companyId));
+      if (company?.issuePrefix === "DPP") {
+        const { handleDemoChat } = await import("./demo-orchestrator.js");
+        await handleDemoChat(db, companyId, message.trim(), req, res);
+        return;
+      }
+    } catch (err) {
+      logger.error({ err }, "ceo-chat: demo mode check failed, continuing with normal flow");
+    }
+
     // Resolve model: Opus for Deep Think mode (with monthly cap)
     let useOpus = false;
     if (deepThink) {
