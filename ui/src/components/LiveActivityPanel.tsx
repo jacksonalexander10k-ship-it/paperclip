@@ -214,6 +214,22 @@ function ActivityTab({ companyId }: { companyId: string }) {
     const summary = details.summary ?? details.title ?? "";
 
     // Map action types to thinking descriptions
+    if (action === "agent.researching") {
+      return {
+        label: `${String(details.agent ?? "Agent")} is researching...`,
+        icon: "🔍",
+        thinking: String(summary),
+        category: "thinking",
+      };
+    }
+    if (action === "agent.drafting") {
+      return {
+        label: `${String(details.agent ?? "Agent")} is drafting...`,
+        icon: "✏️",
+        thinking: String(summary),
+        category: "thinking",
+      };
+    }
     if (action === "agent.message_sent") {
       const from = String(details.fromAgent ?? "Agent");
       const to = String(details.toAgent ?? "");

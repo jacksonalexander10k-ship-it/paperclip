@@ -159,88 +159,85 @@ export async function runDemoAfterPlanApproval(db: Db, companyId: string, ceoCha
   try {
     // ── Agent conversation (triggered by plan approval) ──────────
 
+    // CEO kicks things off
     await sleep(2000);
     await postAgentMessage(db, companyId, ceo, omar, "action", "market_brief",
-      `@${omar.name} we've got the green light from the owner. He wants to re-engage the whole pipeline — everyone who's gone quiet. Can you pull together a quick market snapshot for me? I need to know what's actually happening with demand since the conflict started, what DLD is showing, and whether international buyers are moving. ${layla.name} needs something solid to reference when she reaches out.`);
+      `@${omar.name} we've got the green light. The owner wants to re-engage the entire pipeline — 200 leads who've gone quiet. Before @${layla.name} starts the outreach, I need you to pull together a market snapshot. What's actually happening with demand since the conflict escalated? What's DLD showing? Are international buyers moving? I need real data, not guesswork.`);
 
-    await sleep(9000);
-    await postAgentMessage(db, companyId, omar, ceo, "info", "market_data",
-      `@${ceo.name} done. So here's the picture — DLD transactions are up 8% month-on-month, which is significant given what's happening globally. International buyer enquiries have jumped 23% since the tensions escalated. It's the same pattern we saw in 2022 — when things get unstable elsewhere, money moves to Dubai. We're seeing it especially from CIS countries and parts of Europe. I'll share the numbers directly with @${layla.name} so she can weave them into the outreach.`);
+    // Omar acknowledges
+    await sleep(6000);
+    await postAgentMessage(db, companyId, omar, ceo, "info", "acknowledgement",
+      `@${ceo.name} on it. Pulling DLD transaction data, international buyer registration figures, and cross-referencing with the enquiry volume we've been tracking. Give me a couple of minutes.`);
 
-    await sleep(7000);
-    await postAgentMessage(db, companyId, omar, layla, "action", "data_handover",
-      `@${layla.name} sharing the market data with you. The key numbers: DLD transactions up 8% month-on-month, international enquiries up 23%, and CIS buyer registrations have basically doubled since March. Dubai's being positioned as a safe haven again. Feel free to use any of this in the messages — it gives the outreach more weight than just "checking in."`);
-
+    // ── RESEARCH DELAY — Omar is researching (15-20s of silence) ──
+    // Activity tab will show "Omar is searching DLD data..." during this time
+    await logActivity(db, { companyId, actorType: "agent", actorId: omar.id, action: "agent.researching", entityType: "market_data", entityId: omar.id, details: { summary: "Searching DLD transaction database for recent activity...", agent: omar.name } });
     await sleep(8000);
+    await logActivity(db, { companyId, actorType: "agent", actorId: omar.id, action: "agent.researching", entityType: "market_data", entityId: omar.id, details: { summary: "Analysing international buyer registration trends...", agent: omar.name } });
+    await sleep(7000);
+    await logActivity(db, { companyId, actorType: "agent", actorId: omar.id, action: "agent.researching", entityType: "market_data", entityId: omar.id, details: { summary: "Compiling market snapshot report...", agent: omar.name } });
+    await sleep(5000);
+
+    // Omar comes back with findings
+    await postAgentMessage(db, companyId, omar, ceo, "info", "market_data",
+      `@${ceo.name} done. Here's the picture — DLD transactions are up 8% month-on-month, which is significant given what's happening globally. International buyer enquiries have jumped 23% since the tensions escalated. Same pattern as 2022 — instability elsewhere pushes capital to Dubai. CIS countries and European buyers leading the charge. I'll send the full data pack to @${layla.name} now.`);
+
+    await sleep(5000);
+    await postAgentMessage(db, companyId, omar, layla, "action", "data_handover",
+      `@${layla.name} here's the market data for the outreach. Key numbers: DLD transactions +8% MoM, international enquiries +23%, CIS registrations doubled since March. Dubai ranked top safe haven in the region. Use whatever you need — it'll give the messages more weight than just "checking in."`);
+
+    // CEO delegates to Layla
+    await sleep(7000);
     await postAgentMessage(db, companyId, ceo, layla, "action", "delegation",
-      `@${layla.name} you should have ${omar.name}'s data now. Here's what I need you to do — go through every single lead in the pipeline. Each one gets a personal message. The tone is warm, not salesy. Something like "with everything going on in the world, the Dubai market has shifted, and I wanted to check in to see if you're still thinking about it — whether that's buying or selling." Match the language to each lead. Arabic leads get formal Arabic. Russian leads get the investor angle with the numbers. English leads get a friendly casual check-in. Start with the highest scores and work your way down.`);
+      `@${layla.name} you've got ${omar.name}'s data. Here's the brief — we're sending a batch message to all 200 leads in the pipeline. One template per language, personalised with their name. Tone is warm and advisory, not salesy. The angle: "the market has shifted because of what's happening globally, we wanted to check in, are you still interested in Dubai — buying or selling?" Three templates needed: English, Arabic, and Russian. Each lead gets the template in their language with their name swapped in.`);
 
     await sleep(10000);
     await postAgentMessage(db, companyId, layla, ceo, "info", "progress",
-      `@${ceo.name} going through the pipeline now. I've got 15 leads total. I'm starting with the top three — Ahmed Al Hashimi is score 8, he was looking at JVC before he went quiet. Dmitri Volkov is score 9, he was actually mid-negotiation on a Marina Gate unit before things stalled. And Sarah Williams is score 5, she was interested in Business Bay but we haven't heard from her in a while. I'll have the first batch of messages drafted in a few minutes.`);
+      `@${ceo.name} understood. I've segmented the 200 leads by language — 120 English, 45 Arabic, 35 Russian. Drafting the three templates now. I'll reference ${omar.name}'s data in each one to make it feel informed, not generic.`);
 
-    await sleep(12000);
-    await postAgentMessage(db, companyId, layla, omar, "info", "question",
-      `@${omar.name} quick question before I draft Dmitri's message — should I lead with the safe haven narrative or go straight to the investment numbers? He's definitely an investor type, but I don't want to come across as tone-deaf given what's happening. What do you think works better right now?`);
-
-    await sleep(9000);
-    await postAgentMessage(db, companyId, omar, layla, "info", "advice",
-      `@${layla.name} good question. For Dmitri, I'd go with the numbers but frame them through the stability lens. Something like "demand is up 23% because investors are looking for safe places to put their money, and Dubai is at the top of that list." That way you're giving him the data he wants but it doesn't feel like you're capitalising on a crisis. For the other Russian leads who are more lifestyle buyers, keep it softer — just the stability angle without the percentages.`);
-
-    await sleep(11000);
-    await postAgentMessage(db, companyId, layla, ceo, "info", "drafts_complete",
-      `@${ceo.name} first three are done. Ahmed's getting a formal Arabic message — I've gone with the "I hope you and your family are well" opening and then eased into the market shift, asking if he's still considering Dubai. Dmitri's getting a Russian message with the investment angle — I've referenced the 23% demand increase and positioned Dubai as a safe haven for capital. Sarah's getting a casual English check-in, very low-pressure, just seeing if she's still interested. All three are ready for the owner to look at whenever you want to send them up.`);
-
+    // Layla drafting (activity shows her working)
+    await logActivity(db, { companyId, actorType: "agent", actorId: layla.id, action: "agent.drafting", entityType: "whatsapp_template", entityId: layla.id, details: { summary: "Drafting English template for 120 leads...", agent: layla.name } });
+    await sleep(8000);
+    await logActivity(db, { companyId, actorType: "agent", actorId: layla.id, action: "agent.drafting", entityType: "whatsapp_template", entityId: layla.id, details: { summary: "Drafting Arabic template for 45 leads...", agent: layla.name } });
     await sleep(6000);
+    await logActivity(db, { companyId, actorType: "agent", actorId: layla.id, action: "agent.drafting", entityType: "whatsapp_template", entityId: layla.id, details: { summary: "Drafting Russian template for 35 leads...", agent: layla.name } });
+    await sleep(7000);
+
+    await postAgentMessage(db, companyId, layla, ceo, "info", "drafts_complete",
+      `@${ceo.name} all three templates are ready. English template covers 120 leads, Arabic covers 45, Russian covers 35. Each one references the market shift and asks if they're still interested — buying or selling. I've kept the tone warm and genuine across all three. Ready for the owner to review and approve the batch send.`);
+
+    await sleep(5000);
     await postAgentMessage(db, companyId, ceo, layla, "info", "acknowledgement",
-      `That's exactly what I was looking for @${layla.name}. I'm going to send these up to the owner now for approval. Keep working through the rest of the pipeline — batch them in groups of three or four so it's easy for him to review. @${omar.name} thanks for turning that data around quickly, it made a real difference to the outreach.`);
+      `Perfect @${layla.name}. Sending the templates up for approval now. Once he approves, we'll fire them out to all 200. @${omar.name} thanks for the fast research — made all the difference.`);
 
-    // ── PHASE 3: CEO surfaces approval cards in CEO Chat ──────────
+    // ── PHASE 3: CEO surfaces batch approval card in CEO Chat ──────────
 
-    await sleep(4000);
+    await sleep(3000);
 
-    const approval1 = {
-      type: "approval_required", action: "send_whatsapp",
-      to: "Ahmed Al Hashimi", phone: "+971501234567",
-      message: "Dear Mr. Al Hashimi, I hope you and your family are well. With everything that's been happening in the region recently, the Dubai property market has seen quite a shift — there's been a noticeable increase in demand from international buyers who are looking for somewhere stable to invest. I wanted to reach out and see if you're still thinking about Dubai, whether that's buying or looking at selling. I'd be happy to put together a quick update on where things stand if that would be useful for you.",
-      lead_score: 8,
-      context: "High-value lead, previously interested in JVC. Formal Arabic greeting. Warm re-engagement, not a sales pitch.",
-    };
-    const approval2 = {
-      type: "approval_required", action: "send_whatsapp",
-      to: "Dmitri Volkov", phone: "+971555678901",
-      message: "Дмитрий, добрый день. Хотел связаться с вами в связи с тем, как изменилась ситуация на рынке Дубая за последнее время. Спрос со стороны международных инвесторов вырос на 23% — многие рассматривают Дубай как безопасное направление для вложений в текущих условиях. Хотел узнать, актуален ли для вас по-прежнему вопрос недвижимости в Дубае — покупка или, возможно, продажа? Буду рад подготовить для вас актуальную аналитику.",
-      lead_score: 9,
-      context: "Russian investor, score 9, was mid-negotiation. Investment angle with market data. Positioned Dubai as safe haven.",
-    };
-    const approval3 = {
-      type: "approval_required", action: "send_whatsapp",
-      to: "Sarah Williams", phone: "+971556789012",
-      message: "Hi Sarah, hope you're doing well. It's been a little while since we last chatted about your plans in Dubai and I just wanted to check in. Quite a lot has changed in the market recently — there's been a real increase in international interest, especially from people looking for somewhere stable. I was wondering if you're still thinking about Dubai at all? No pressure either way — just thought it was worth reaching out given how much things have moved. Happy to have a quick chat if you'd like to catch up on where things stand.",
-      lead_score: 5,
-      context: "British lead, casual English. Was looking at Business Bay. Friendly low-pressure check-in.",
+    const batchApproval = {
+      type: "approval_required",
+      action: "bulk_whatsapp",
+      total_leads: 200,
+      languages: { english: 120, arabic: 45, russian: 35 },
+      templates: {
+        english: "Hi {name}, hope you're doing well. It's been a while since we last spoke and I wanted to check in. With everything happening globally, the Dubai property market has shifted quite a bit — international buyer enquiries are up 23% and we're seeing real demand from people looking for stability. I was wondering if you're still thinking about Dubai, whether that's buying or selling? No pressure — just thought it was worth reaching out. Happy to chat if you'd like an update on where things stand.",
+        arabic: "عزيزي {name}، أتمنى أن تكون بخير أنت وعائلتك. مع التطورات الأخيرة في المنطقة، شهد سوق العقارات في دبي تحولات ملحوظة — زيادة في الطلب من المشترين الدوليين الباحثين عن الاستقرار. أردت أن أتواصل معك لأرى إن كنت لا تزال مهتماً بسوق دبي، سواء للشراء أو البيع. يسعدني مشاركة آخر المستجدات إن كان ذلك مفيداً لك.",
+        russian: "Здравствуйте, {name}. Хотел связаться с вами в связи с тем, как изменилась ситуация на рынке Дубая. Спрос со стороны международных инвесторов вырос на 23% — многие рассматривают Дубай как безопасное направление для вложений. Хотел узнать, актуален ли для вас вопрос недвижимости в Дубае — покупка или продажа? Буду рад подготовить актуальную аналитику.",
+      },
+      context: "Full pipeline re-engagement. 200 leads segmented by language. Each lead receives the template in their language with {name} replaced. Market data referenced: DLD +8% MoM, international enquiries +23%.",
     };
 
-    const createdIds: string[] = [];
-    const blocks = [approval1, approval2, approval3];
-    const enrichedBlocks: string[] = [];
+    const [batchApprovalRecord] = await db.insert(approvals).values({
+      companyId, type: "bulk_whatsapp", requestedByAgentId: layla.id,
+      status: "pending", payload: batchApproval,
+    }).returning();
 
-    for (const block of blocks) {
-      const [a] = await db.insert(approvals).values({
-        companyId, type: String(block.action), requestedByAgentId: layla.id,
-        status: "pending", payload: block,
-      }).returning();
-      if (a) {
-        createdIds.push(a.id);
-        enrichedBlocks.push("```json\n" + JSON.stringify({ ...block, approval_id: a.id }, null, 2) + "\n```");
-      }
-    }
-
-    const ceoFollowUp = `Layla's finished the first batch. Here are three messages ready for you to review — one for Ahmed, one for Dmitri, and one for Sarah. Each one's been tailored to their language and where they were in the pipeline. She's working through the remaining 12 leads now and will send them up in batches.\n\n${enrichedBlocks.join("\n\n")}`;
+    const enrichedPayload = { ...batchApproval, approval_id: batchApprovalRecord?.id };
+    const ceoFollowUp = `Layla's finished drafting the templates. Here's the batch send ready for your approval — 200 leads across three languages.\n\n\`\`\`json\n${JSON.stringify(enrichedPayload, null, 2)}\n\`\`\``;
     await insertComment(db, companyId, ceoChatIssue.id, ceoFollowUp, ceo.id, null);
 
-    publishLiveEvent({ companyId, type: "activity.logged", payload: { action: "ceo.approvals_ready", count: createdIds.length } });
-    logger.info({ companyId, approvalCount: createdIds.length }, "demo-orchestrator: WhatsApp approval cards surfaced after agent work");
+    publishLiveEvent({ companyId, type: "activity.logged", payload: { action: "ceo.approvals_ready", count: 1 } });
+    logger.info({ companyId }, "demo-orchestrator: batch WhatsApp approval surfaced after agent work");
 
   } catch (err) {
     logger.error({ err }, "demo-orchestrator: background sequence failed");
