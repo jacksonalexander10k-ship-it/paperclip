@@ -22,11 +22,11 @@ const LIGHT_THEME_COLOR = "#f9f9fb";
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function resolveThemeFromDocument(): Theme {
-  if (typeof document === "undefined") return "dark";
-  // Default to dark if no preference has been stored
+  if (typeof document === "undefined") return "light";
+  // Default to light if no preference has been stored
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (!stored) return "dark";
+    if (!stored) return "light";
   } catch { /* ignore */ }
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
