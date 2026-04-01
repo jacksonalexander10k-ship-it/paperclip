@@ -32,3 +32,4 @@ export { reconcilePersistedRuntimeServicesOnStartup } from "./workspace-runtime.
 export { ceoCommandService, extractCommands, minutesToCron } from "./ceo-commands.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";
 export { propertyService } from "./properties.js";
+export { leadService, type LeadFilters } from "./leads.js";

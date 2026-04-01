@@ -39,6 +39,7 @@ import { billingRoutes, stripeWebhookRoutes } from "./routes/billing.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { brokerRoutes } from "./routes/broker.js";
 import { propertyRoutes } from "./routes/properties.js";
+import { leadRoutes } from "./routes/leads.js";
 import { whatsappMessageRoutes } from "./routes/whatsapp-messages.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
@@ -178,6 +179,7 @@ export async function createApp(
   api.use(analyticsRoutes(db));
   api.use(brokerRoutes(db));
   api.use(propertyRoutes(db));
+  api.use(leadRoutes(db));
   api.use(whatsappMessageRoutes(db));
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
