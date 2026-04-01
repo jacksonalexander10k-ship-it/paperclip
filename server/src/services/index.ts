@@ -33,3 +33,4 @@ export { ceoCommandService, extractCommands, minutesToCron } from "./ceo-command
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";
 export { propertyService } from "./properties.js";
 export { leadService, type LeadFilters } from "./leads.js";
+export { facebookAdsService } from "./facebook-ads.js";
