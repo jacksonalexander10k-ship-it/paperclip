@@ -3,12 +3,14 @@ import type { IncomingHttpHeaders } from "node:http";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { toNodeHandler } from "better-auth/node";
+import { eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   authAccounts,
   authSessions,
   authUsers,
   authVerifications,
+  instanceUserRoles,
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
 
@@ -90,6 +92,31 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user: { id: string }) => {
+            // Auto-promote new users to instance_admin so they can create companies.
+            // In a multi-tenant SaaS, every user is their own "board owner".
+            try {
+              const existing = await db
+                .select({ id: instanceUserRoles.id })
+                .from(instanceUserRoles)
+                .where(eq(instanceUserRoles.userId, user.id))
+                .then((rows) => rows[0] ?? null);
+              if (!existing) {
+                await db.insert(instanceUserRoles).values({
+                  userId: user.id,
+                  role: "instance_admin",
+                });
+              }
+            } catch {
+              // Non-critical — user can still use the app, just won't have admin rights
+            }
+          },
+        },
+      },
     },
     ...(isHttpOnly ? { advanced: { useSecureCookies: false } } : {}),
   };
