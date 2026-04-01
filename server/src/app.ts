@@ -32,6 +32,7 @@ import { accessRoutes } from "./routes/access.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { whatsappWebhookRoutes } from "./routes/whatsapp-webhook.js";
+import { gmailWebhookRoutes } from "./routes/gmail-webhook.js";
 import { agentCredentialRoutes } from "./routes/agent-credentials.js";
 import { whatsappConnectRoutes } from "./routes/whatsapp-connect.js";
 import { billingRoutes, stripeWebhookRoutes } from "./routes/billing.js";
@@ -96,6 +97,8 @@ export async function createApp(
   }));
   // WhatsApp webhook — mounted before auth so 360dialog can POST freely
   app.use(whatsappWebhookRoutes(db));
+  // Gmail Pub/Sub webhook — mounted before auth so Google Cloud can POST freely
+  app.use(gmailWebhookRoutes(db));
   // Stripe webhook — mounted before auth so Stripe can POST freely
   app.use(stripeWebhookRoutes(db));
 

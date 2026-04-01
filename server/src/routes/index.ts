@@ -16,3 +16,4 @@ export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
 export { instanceSettingsRoutes } from "./instance-settings.js";
 export { propertyRoutes } from "./properties.js";
+export { gmailWebhookRoutes } from "./gmail-webhook.js";
