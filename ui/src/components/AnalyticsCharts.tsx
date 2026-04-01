@@ -69,7 +69,7 @@ export function DailyCostChart({ data }: DailyCostChartProps) {
           />
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
-            formatter={(value: number) => [`$${value.toFixed(2)}`, "Cost"]}
+            formatter={(value) => [`$${Number(value).toFixed(2)}`, "Cost"]}
             labelStyle={{ color: "oklch(0.72 0.014 265)", marginBottom: 4 }}
             cursor={{ stroke: GRID_STROKE }}
           />
