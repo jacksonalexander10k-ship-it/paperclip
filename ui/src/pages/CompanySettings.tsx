@@ -8,12 +8,13 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Check, Download, Upload, MessageCircle, Mail, Calendar, Camera, Plug } from "lucide-react";
+import { Check, Download, Upload, MessageCircle, Mail, Calendar, Camera, Bell } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import {
   ToggleField,
   HintIcon
 } from "../components/agent-config-primitives";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 
 type AgentSnippetInput = {
   onboardingTextUrl: string;
@@ -202,6 +203,8 @@ export function CompanySettings() {
       { label: "Settings" }
     ]);
   }, [setBreadcrumbs, selectedCompany?.name]);
+
+  const { permission, subscribed, subscribe, unsubscribe } = usePushNotifications();
 
   if (!selectedCompany) {
     return (
@@ -533,6 +536,47 @@ export function CompanySettings() {
                 </a>
               </Button>
             </div>
+          </div>
+        </div>
+
+        {/* Push Notifications section */}
+        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+          <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
+            <span className="text-[12px] font-bold">Push Notifications</span>
+          </div>
+          <div className="flex items-center gap-3 p-3.5">
+            <div className="w-[28px] h-[28px] rounded-lg flex items-center justify-center shrink-0 bg-violet-500/15">
+              <Bell className="h-3.5 w-3.5 text-violet-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold">Browser notifications</div>
+              <div className="text-[11px] text-muted-foreground">
+                {permission === "denied"
+                  ? "Blocked — enable in browser settings"
+                  : subscribed
+                  ? "Enabled — you'll be notified of approvals and CEO updates"
+                  : "Get notified of approvals, agent errors, and CEO messages"}
+              </div>
+            </div>
+            {permission === "denied" ? (
+              <span className="text-[11px] text-muted-foreground shrink-0">Blocked</span>
+            ) : subscribed ? (
+              <button
+                onClick={() => void unsubscribe()}
+                className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors shrink-0"
+              >
+                Disable
+              </button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-[11px] h-7 shrink-0"
+                onClick={() => void subscribe()}
+              >
+                Enable
+              </Button>
+            )}
           </div>
         </div>
 
