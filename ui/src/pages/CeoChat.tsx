@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Loader2, CheckCircle, XCircle, ArrowUp, MessageCircle, Pencil } from "lucide-react";
+import { useSearchParams } from "@/lib/router";
+import { Send, Loader2, CheckCircle, XCircle, ArrowUp, MessageCircle, Pencil, Plus } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
@@ -12,9 +13,10 @@ import { Button } from "@/components/ui/button";
 import { WhatsAppConnect } from "../components/WhatsAppConnect";
 import { WhatsAppConversationDrawer } from "../components/WhatsAppConversationDrawer";
 import { AgentInsightBanner } from "../components/AgentInsightBanner";
+import { cn } from "@/lib/utils";
 import type { IssueComment, Issue } from "@paperclipai/shared";
 
-const CEO_CHAT_TITLE = "CEO Chat";
+const CEO_CHAT_PREFIX = "CEO Chat";
 
 // ── Inline approval card ───────────────────────────────────────────────────────
 
@@ -442,22 +444,36 @@ export function CeoChat() {
     setBreadcrumbs([{ label: "CEO Chat" }]);
   }, [setBreadcrumbs]);
 
-  // ── Find or create the CEO Chat issue ───────────────────────────────────────
-  const { data: issues } = useQuery({
+  // ── Conversation management ─────────────────────────────────────────────────
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeConvoId = searchParams.get("convo");
+
+  const { data: allIssues } = useQuery({
     queryKey: queryKeys.issues.list(selectedCompanyId!),
     queryFn: () => issuesApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
-  const ceoChatIssue = issues?.find((i: Issue) => i.title === CEO_CHAT_TITLE) ?? null;
+  // All CEO Chat conversations (issues with the prefix)
+  const ceoChatConversations = (allIssues ?? [])
+    .filter((i: Issue) => i.title.startsWith(CEO_CHAT_PREFIX))
+    .sort((a: Issue, b: Issue) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // Active conversation: URL param > most recent
+  const ceoChatIssue = activeConvoId
+    ? ceoChatConversations.find((i: Issue) => i.id === activeConvoId) ?? ceoChatConversations[0] ?? null
+    : ceoChatConversations[0] ?? null;
 
   const createIssueMutation = useMutation({
     mutationFn: () =>
       issuesApi.create(selectedCompanyId!, {
-        title: CEO_CHAT_TITLE,
+        title: `${CEO_CHAT_PREFIX} — ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`,
       }),
-    onSuccess: () => {
+    onSuccess: (newIssue) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!) });
+      if (newIssue?.id) {
+        setSearchParams({ convo: newIssue.id });
+      }
     },
   });
 
@@ -465,13 +481,21 @@ export function CeoChat() {
   const createIssuePending = createIssueMutation.isPending;
   const createIssueSuccess = createIssueMutation.isSuccess;
   useEffect(() => {
-    if (!selectedCompanyId || issues === undefined) return;
-    if (!ceoChatIssue && !createIssuePending && !createIssueSuccess) {
+    if (!selectedCompanyId || allIssues === undefined) return;
+    if (ceoChatConversations.length === 0 && !createIssuePending && !createIssueSuccess) {
       createIssueMutate();
     }
-  }, [selectedCompanyId, issues, ceoChatIssue, createIssuePending, createIssueSuccess, createIssueMutate]);
+  }, [selectedCompanyId, allIssues, ceoChatConversations.length, createIssuePending, createIssueSuccess, createIssueMutate]);
 
   const issueId = ceoChatIssue?.id ?? null;
+
+  const handleNewChat = useCallback(() => {
+    createIssueMutate();
+  }, [createIssueMutate]);
+
+  const handleSwitchConvo = useCallback((id: string) => {
+    setSearchParams({ convo: id });
+  }, [setSearchParams]);
 
   // ── Load comments — background poll for other-agent updates ─────────────────
   const { data: comments = [], isLoading: commentsLoading } = useQuery({
@@ -635,6 +659,38 @@ export function CeoChat() {
           </div>
         }
       />
+
+      {/* ── Conversation tabs ──────────────────────────────────────────── */}
+      {ceoChatConversations.length > 0 && (
+        <div className="border-b border-border/40 px-4 py-1.5 flex items-center gap-1.5 overflow-x-auto shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            onClick={handleNewChat}
+            disabled={createIssuePending}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors shrink-0"
+          >
+            <Plus className="h-3 w-3" />
+            New Chat
+          </button>
+          {ceoChatConversations.slice(0, 10).map((convo: Issue) => {
+            const isActive = convo.id === ceoChatIssue?.id;
+            const label = convo.title.replace(CEO_CHAT_PREFIX, "").replace(/^[\s—-]+/, "") || "Chat";
+            return (
+              <button
+                key={convo.id}
+                onClick={() => handleSwitchConvo(convo.id)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors shrink-0 truncate max-w-[140px]",
+                  isActive
+                    ? "bg-foreground/10 text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Chat messages area ─────────────────────────────────────────── */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 mb-14 md:mb-0">
