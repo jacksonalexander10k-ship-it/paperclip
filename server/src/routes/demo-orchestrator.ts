@@ -173,60 +173,61 @@ export async function runDemoAfterPlanApproval(db: Db, companyId: string, ceoCha
   try {
     // ── Agent conversation (triggered by plan approval) ──────────
 
-    // CEO kicks things off
-    await sleep(2000);
+    // CEO kicks things off (3s after approval)
+    await sleep(3000);
     await postAgentMessage(db, companyId, ceo, omar, "action", "market_brief",
       `@${omar.name} we've got the green light. The owner wants to re-engage the entire pipeline — 200 leads who've gone quiet. Before @${layla.name} starts the outreach, I need you to pull together a market snapshot. What's actually happening with demand since the conflict escalated? What's DLD showing? Are international buyers moving? I need real data, not guesswork.`);
 
-    // Omar acknowledges
-    await sleep(6000);
+    // Omar acknowledges (12s — reads the message, thinks)
+    await sleep(12000);
     await postAgentMessage(db, companyId, omar, ceo, "info", "acknowledgement",
       `@${ceo.name} on it. Pulling DLD transaction data, international buyer registration figures, and cross-referencing with the enquiry volume we've been tracking. Give me a couple of minutes.`);
 
-    // ── RESEARCH DELAY — Omar is researching (15-20s of silence) ──
-    // Activity tab will show "Omar is searching DLD data..." during this time
+    // ── RESEARCH DELAY — Omar is researching (35s total of silence) ──
     await logActivity(db, { companyId, actorType: "agent", actorId: omar.id, action: "agent.researching", entityType: "market_data", entityId: omar.id, details: { summary: "Searching DLD transaction database for recent activity...", agent: omar.name } });
-    await sleep(8000);
+    await sleep(12000);
     await logActivity(db, { companyId, actorType: "agent", actorId: omar.id, action: "agent.researching", entityType: "market_data", entityId: omar.id, details: { summary: "Analysing international buyer registration trends...", agent: omar.name } });
-    await sleep(7000);
+    await sleep(12000);
     await logActivity(db, { companyId, actorType: "agent", actorId: omar.id, action: "agent.researching", entityType: "market_data", entityId: omar.id, details: { summary: "Compiling market snapshot report...", agent: omar.name } });
-    await sleep(5000);
+    await sleep(11000);
 
-    // Omar comes back with findings
+    // Omar comes back with findings (after 35s of research)
     await postAgentMessage(db, companyId, omar, ceo, "info", "market_data",
       `@${ceo.name} done. Here's the picture — DLD transactions are up 8% month-on-month, which is significant given what's happening globally. International buyer enquiries have jumped 23% since the tensions escalated. Same pattern as 2022 — instability elsewhere pushes capital to Dubai. CIS countries and European buyers leading the charge. I'll send the full data pack to @${layla.name} now.`);
 
-    await sleep(5000);
+    await sleep(8000);
     await postAgentMessage(db, companyId, omar, layla, "action", "data_handover",
       `@${layla.name} here's the market data for the outreach. Key numbers: DLD transactions +8% MoM, international enquiries +23%, CIS registrations doubled since March. Dubai ranked top safe haven in the region. Use whatever you need — it'll give the messages more weight than just "checking in."`);
 
-    // CEO delegates to Layla
-    await sleep(7000);
+    // CEO delegates to Layla (15s — CEO reviews Omar's data first)
+    await sleep(15000);
     await postAgentMessage(db, companyId, ceo, layla, "action", "delegation",
       `@${layla.name} you've got ${omar.name}'s data. Here's the brief — we're sending a batch message to all 200 leads in the pipeline. One template per language, personalised with their name. Tone is warm and advisory, not salesy. The angle: "the market has shifted because of what's happening globally, we wanted to check in, are you still interested in Dubai — buying or selling?" Three templates needed: English, Arabic, and Russian. Each lead gets the template in their language with their name swapped in.`);
 
-    await sleep(10000);
+    // Layla reads the brief and pipeline (18s)
+    await sleep(18000);
     await postAgentMessage(db, companyId, layla, ceo, "info", "progress",
       `@${ceo.name} understood. I've segmented the 200 leads by language — 120 English, 45 Arabic, 35 Russian. Drafting the three templates now. I'll reference ${omar.name}'s data in each one to make it feel informed, not generic.`);
 
-    // Layla drafting (activity shows her working)
+    // Layla drafting templates (40s total — visible in activity tab)
     await logActivity(db, { companyId, actorType: "agent", actorId: layla.id, action: "agent.drafting", entityType: "whatsapp_template", entityId: layla.id, details: { summary: "Drafting English template for 120 leads...", agent: layla.name } });
-    await sleep(8000);
+    await sleep(14000);
     await logActivity(db, { companyId, actorType: "agent", actorId: layla.id, action: "agent.drafting", entityType: "whatsapp_template", entityId: layla.id, details: { summary: "Drafting Arabic template for 45 leads...", agent: layla.name } });
-    await sleep(6000);
+    await sleep(13000);
     await logActivity(db, { companyId, actorType: "agent", actorId: layla.id, action: "agent.drafting", entityType: "whatsapp_template", entityId: layla.id, details: { summary: "Drafting Russian template for 35 leads...", agent: layla.name } });
-    await sleep(7000);
+    await sleep(13000);
 
     await postAgentMessage(db, companyId, layla, ceo, "info", "drafts_complete",
       `@${ceo.name} all three templates are ready. English template covers 120 leads, Arabic covers 45, Russian covers 35. Each one references the market shift and asks if they're still interested — buying or selling. I've kept the tone warm and genuine across all three. Ready for the owner to review and approve the batch send.`);
 
-    await sleep(5000);
+    // CEO reads and responds (10s)
+    await sleep(10000);
     await postAgentMessage(db, companyId, ceo, layla, "info", "acknowledgement",
       `Perfect @${layla.name}. Sending the templates up for approval now. Once he approves, we'll fire them out to all 200. @${omar.name} thanks for the fast research — made all the difference.`);
 
-    // ── PHASE 3: CEO surfaces batch approval card in CEO Chat ──────────
+    // ── PHASE 3: CEO surfaces batch approval card in CEO Chat (8s) ──────────
 
-    await sleep(3000);
+    await sleep(8000);
 
     const batchApproval = {
       type: "approval_required",

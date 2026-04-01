@@ -436,6 +436,7 @@ export function CeoChat() {
   // Streaming state
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [optimisticUserMessage, setOptimisticUserMessage] = useState<string | null>(null);
   // Track when stream finishes so we can clear after comment loads
   const streamingDoneRef = useRef(false);
   const prevCommentCountRef = useRef(0);
@@ -497,12 +498,12 @@ export function CeoChat() {
     setSearchParams({ convo: id });
   }, [setSearchParams]);
 
-  // ── Load comments — background poll for other-agent updates ─────────────────
+  // ── Load comments — poll only when NOT streaming ─────────────────────────────
   const { data: comments = [], isLoading: commentsLoading } = useQuery({
     queryKey: issueId ? queryKeys.issues.comments(issueId) : [],
     queryFn: () => issuesApi.listComments(issueId!),
     enabled: !!issueId,
-    refetchInterval: 15_000,
+    refetchInterval: isStreaming ? false : 5_000,
   });
 
   // ── Mark CEO Chat issue as read whenever comments are visible ───────────────
@@ -524,18 +525,23 @@ export function CeoChat() {
   });
   const ceoAgent = agents?.find((a) => a.role === "ceo") ?? null;
 
-  // ── Clear streaming bubble once the persisted comment loads ─────────────────
+  // ── Clear streaming bubble + optimistic message once persisted comments load ──
   useEffect(() => {
     if (streamingDoneRef.current && comments.length > prevCommentCountRef.current) {
       const last = comments[comments.length - 1];
       if (last && last.authorAgentId !== null) {
         setStreamingText("");
         setIsStreaming(false);
+        setOptimisticUserMessage(null);
         streamingDoneRef.current = false;
       }
     }
+    // Clear optimistic message once the real one appears in the comment list
+    if (optimisticUserMessage && comments.some((c: IssueComment) => c.authorUserId !== null && c.body === optimisticUserMessage)) {
+      setOptimisticUserMessage(null);
+    }
     prevCommentCountRef.current = comments.length;
-  }, [comments]);
+  }, [comments, optimisticUserMessage]);
 
   // ── Send message via streaming SSE ──────────────────────────────────────────
   const handleSend = useCallback(
@@ -547,9 +553,7 @@ export function CeoChat() {
       setIsStreaming(true);
       setStreamingText("");
       streamingDoneRef.current = false;
-
-      // Optimistically add owner message to local view immediately
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
+      setOptimisticUserMessage(body);
 
       try {
         const res = await fetch(`/api/companies/${selectedCompanyId}/ceo-chat`, {
@@ -723,6 +727,17 @@ export function CeoChat() {
               onViewConversation={handleViewConversation}
             />
           ))}
+
+          {/* Optimistic user message — shows immediately before server confirms */}
+          {optimisticUserMessage && (
+            <div className="chat-msg-enter flex flex-row-reverse items-end gap-2 mb-3">
+              <div className="max-w-[88%] md:max-w-[75%] flex flex-col items-end">
+                <div className="bg-primary text-primary-foreground rounded-[13px] rounded-br-[4px] px-3.5 py-2.5 text-[12.5px] leading-[1.55] whitespace-pre-wrap">
+                  {optimisticUserMessage}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Thinking indicator */}
           {isStreaming && streamingText === "" && <TypingIndicator />}
