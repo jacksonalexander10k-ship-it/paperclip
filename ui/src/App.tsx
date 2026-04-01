@@ -316,17 +316,14 @@ function NoCompaniesStartPage() {
 }
 
 function AygencyOnboardingGate() {
+  // Onboarding disabled — only show when explicitly requested via ?onboarding=1
   const { companies, loading } = useCompany();
   const [dismissed, setDismissed] = useState(false);
 
   const preview = typeof window !== "undefined" && window.location.search.includes("onboarding=1");
-  const skipOnboarding = typeof window !== "undefined" && (
-    window.location.search.includes("skip-onboarding") ||
-    window.location.pathname.split("/").filter(Boolean).length >= 2 // Already on a /PREFIX/page route
-  );
 
-  if (loading || dismissed || skipOnboarding) return null;
-  if (!preview && companies.length > 0) return null;
+  if (!preview) return null;
+  if (loading || dismissed) return null;
 
   return <AygencyOnboardingWizard onComplete={() => setDismissed(true)} />;
 }
