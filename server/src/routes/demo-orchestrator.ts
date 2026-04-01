@@ -45,13 +45,11 @@ function buildCeoResponse(agentMap: Map<string, DemoAgent>) {
   // The text the CEO streams — natural language, no markdown formatting
   const spokenText = `Good call. With the geopolitical situation shifting, now's the right time to re-engage the full pipeline.
 
-I've asked ${omar} to pull together a quick market snapshot — how the conflict is affecting Dubai demand, any changes in transaction volume, and what the sentiment looks like for foreign buyers.
+I've asked ${omar} to pull together a quick market snapshot — how the conflict is affecting Dubai demand, transaction volumes, and what the sentiment looks like for foreign buyers.
 
-${layla} is going through every lead in the pipeline. She's segmenting them into buyers and sellers, and drafting personalised check-in messages. Not a hard sell — just a warm, genuine "the market's changed, are you still interested?" tailored to each person's language and situation.
+${layla} is going through every lead in the pipeline right now. She's drafting personalised check-in messages for each one — not a hard sell, just a warm "the market's changed, wanted to see if you're still interested in Dubai, whether that's buying or selling." Each message is tailored to the lead's language, their previous interest, and where they were in the pipeline.
 
-${nour} is putting together a market update post — something that positions us as the agency that keeps clients informed, not just the one that sells.
-
-Here are the first two ready for your review. ${layla} will work through the rest of the pipeline over the next few hours.`;
+Here are the first three ready for your review. ${layla} will work through the remaining leads over the next few hours.`;
 
   const approval1 = {
     type: "approval_required",
@@ -75,9 +73,12 @@ Here are the first two ready for your review. ${layla} will work through the res
 
   const approval3 = {
     type: "approval_required",
-    action: "post_instagram",
-    caption: "The world is changing. Dubai's property market is responding.\n\nWith global uncertainty driving demand for safe-haven assets, Dubai continues to attract international investors.\n\nWhether you're looking to buy, sell, or simply understand what's happening — we're here.\n\nDM us for a confidential market update.\n\n#DubaiRealEstate #PropertyMarket #DubaiInvestment #SafeHaven #MarketUpdate",
-    context: "Market shift content. Positions the agency as informed and advisory, not salesy. Designed to generate inbound enquiries.",
+    action: "send_whatsapp",
+    to: "Sarah Williams",
+    phone: "+971556789012",
+    message: "Hi Sarah, hope you're doing well. I know it's been a little while since we last spoke about your plans in Dubai. With everything happening globally, the market here has shifted quite a bit — we're seeing a real uptick in international interest, especially from buyers looking for stability. Just wanted to check in and see if you're still thinking about the Dubai market? Happy to have a quick chat if it'd be useful.",
+    lead_score: 5,
+    context: "British lead, casual English tone. Was looking at Business Bay 1BR. Lower score but could re-engage with the right angle.",
   };
 
   // The full saved text includes JSON blocks (rendered as cards after save)
@@ -101,7 +102,7 @@ ${JSON.stringify(approval3, null, 2)}
     approvalBlocks: [
       { action: "send_whatsapp", payload: approval1 },
       { action: "send_whatsapp", payload: approval2 },
-      { action: "post_instagram", payload: approval3 },
+      { action: "send_whatsapp", payload: approval3 },
     ],
   };
 }
@@ -139,14 +140,12 @@ async function runBackgroundSequence(
   const ceo = agentMap.get("ceo");
   const layla = agentMap.get("sales");
   const omar = agentMap.get("marketing");
-  const nour = agentMap.get("content");
 
-  if (!ceo || !layla || !omar || !nour) return;
+  if (!ceo || !layla || !omar) return;
 
   const K = ceo.name;
   const L = layla.name;
   const O = omar.name;
-  const N = nour.name;
 
   const steps: Array<{
     delayMs: number;
@@ -162,7 +161,7 @@ async function runBackgroundSequence(
       to: omar,
       priority: "action",
       messageType: "market_brief",
-      summary: `@${O} owner wants to warm up the entire pipeline. Can you put together a quick market snapshot? How the conflict's affecting Dubai demand, transaction volumes, foreign buyer sentiment. Need it fast so @${L} can use it in her outreach`,
+      summary: `@${O} owner wants to warm up the entire pipeline. Can you pull together a quick market snapshot? How the conflict's affecting Dubai demand, transaction volumes, foreign buyer sentiment. Need it fast so @${L} can reference it in her outreach`,
     },
     {
       delayMs: 11000,
@@ -170,71 +169,71 @@ async function runBackgroundSequence(
       to: ceo,
       priority: "info",
       messageType: "market_update",
-      summary: `@${K} got it. Quick summary: DLD transactions up 8% month-on-month, international buyer enquiries spiked 23% since the tensions started. Dubai being seen as a safe haven — same pattern we saw in 2022. Capital inflows from CIS countries especially. I'll write this up properly for @${N} to use in content`,
+      summary: `@${K} got it. Quick summary: DLD transactions up 8% month-on-month, international buyer enquiries spiked 23% since the tensions started. Dubai being seen as a safe haven — same pattern we saw in 2022. Capital inflows from CIS countries especially`,
     },
     {
-      delayMs: 18000,
+      delayMs: 17000,
+      from: omar,
+      to: layla,
+      priority: "action",
+      messageType: "data_share",
+      summary: `@${L} sharing the market data with you — DLD +8% MoM, international enquiries +23%, CIS registrations doubled. You can use these numbers in the outreach if it helps add credibility`,
+    },
+    {
+      delayMs: 23000,
       from: ceo,
       to: layla,
       priority: "action",
       messageType: "pipeline_reengagement",
-      summary: `@${L} here's the play — go through every lead in the pipeline and send a warm check-in. Not a hard sell. The angle is: "the market's shifted because of what's happening globally, wanted to see if you're still interested in Dubai — buying or selling." Personalise by language and previous interest. Start with score 7+ and work your way down`,
+      summary: `@${L} here's the play — go through every lead in the pipeline and send a warm check-in. Not a hard sell. The angle is: "the market's shifted because of what's happening globally, wanted to see if you're still interested in Dubai — buying or selling." Personalise by language and previous interest. Start with score 7+ and work down`,
     },
     {
-      delayMs: 24000,
+      delayMs: 30000,
       from: layla,
       to: ceo,
       priority: "info",
       messageType: "acknowledgement",
-      summary: `@${K} on it. I've got 15 leads in the pipeline. Starting with Ahmed (score 8, was looking at JVC), Dmitri (score 9, was mid-negotiation on Marina Gate), and Hassan (score 10, the Downtown penthouse buyer). These three could be hot again with the right message`,
-    },
-    {
-      delayMs: 31000,
-      from: layla,
-      to: nour,
-      priority: "action",
-      messageType: "content_request",
-      summary: `@${N} we're doing a full pipeline warm-up. Can you draft a market update post for Instagram? Something that positions us as the informed agency — not "BUY NOW" energy, more like "the world's changing, here's what it means for Dubai property, DM us if you want to talk." @${O} has the data`,
+      summary: `@${K} on it. 15 leads in the pipeline. Starting with Ahmed (score 8, was looking at JVC), Dmitri (score 9, mid-negotiation on Marina Gate), and Sarah Williams (score 5, was looking at Business Bay). The top two could be hot again with the right message. Sarah's a long shot but worth the check-in`,
     },
     {
       delayMs: 38000,
-      from: nour,
+      from: layla,
+      to: omar,
+      priority: "info",
+      messageType: "question",
+      summary: `@${O} quick question — for the Russian leads, should I lead with the safe haven angle or the ROI numbers? Dmitri's an investor type so I'm thinking numbers, but a couple of the other Russian leads are more lifestyle buyers`,
+    },
+    {
+      delayMs: 44000,
+      from: omar,
       to: layla,
       priority: "info",
-      messageType: "acknowledgement",
-      summary: `Love that angle @${L}. Less salesy, more advisory. I'll use @${O}'s numbers about the 23% spike in international enquiries. Give me a few minutes`,
+      messageType: "advice",
+      summary: `@${L} for Dmitri definitely lead with the numbers — he'll want to know the 23% spike in demand means capital appreciation potential. For the lifestyle Russians I'd go softer, more "Dubai is stable, life goes on" kind of angle. They're not thinking ROI, they're thinking safety`,
     },
     {
-      delayMs: 45000,
-      from: omar,
-      to: nour,
-      priority: "info",
-      messageType: "data_share",
-      summary: `@${N} here's the key stats for your post: DLD transactions +8% MoM, international enquiries +23%, CIS buyer registrations doubled since March. Dubai ranked #1 for capital preservation in the MENA region. Use whatever you need`,
-    },
-    {
-      delayMs: 52000,
-      from: nour,
+      delayMs: 51000,
+      from: layla,
       to: ceo,
       priority: "info",
-      messageType: "content_ready",
-      summary: `@${K} post is drafted and queued for approval. Went with the "safe haven" angle — felt right given the sentiment. @${L} I kept it soft enough that it won't put off anyone who's nervous about the region`,
+      messageType: "progress_update",
+      summary: `@${K} first three messages drafted. Ahmed gets formal Arabic — "hope you and your family are well" tone. Dmitri gets Russian with the investor numbers @${O} shared. Sarah gets casual English check-in. All three are up for the owner to approve now`,
     },
     {
-      delayMs: 58000,
+      delayMs: 57000,
       from: layla,
       to: ceo,
       priority: "info",
       messageType: "status_update",
-      summary: `@${K} first two messages are drafted — Ahmed and Dmitri. Both personalised. Ahmed gets formal Arabic with a "checking in on you" tone. Dmitri gets the investor angle in Russian with the numbers @${O} pulled. Working through the rest of the pipeline now, should have all 15 done within the hour`,
+      summary: `Working through the rest of the pipeline now. Should have all 15 done within the hour. I'll queue them in batches of 3-4 for approval so the owner isn't overwhelmed`,
     },
     {
-      delayMs: 64000,
+      delayMs: 63000,
       from: ceo,
       to: layla,
       priority: "info",
       messageType: "acknowledgement",
-      summary: `Perfect @${L}. First two plus @${N}'s post are up for the owner to approve. @${O} @${N} @${L} — good work, this was fast. Let's see which leads bite 🎯`,
+      summary: `Good thinking on the batches @${L}. First three are up for approval. @${O} thanks for the fast market data — that's exactly what we needed. Let's see who comes back to us 🎯`,
     },
   ];
 
