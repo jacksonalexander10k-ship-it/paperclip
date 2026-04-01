@@ -593,7 +593,13 @@ export function CeoChat() {
 
             if (event.type === "done") {
               streamingDoneRef.current = true;
-              queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
+              // Clear streaming state IMMEDIATELY so comment polling can resume
+              setIsStreaming(false);
+              setOptimisticUserMessage(null);
+              // Force refetch comments to get the saved CEO comment with approval_id
+              setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) });
+              }, 500);
             }
 
             if (event.type === "error") {
