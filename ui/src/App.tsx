@@ -41,6 +41,7 @@ import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
 import { CeoChat } from "./pages/CeoChat";
+import { KnowledgeBase } from "./pages/KnowledgeBase";
 import { Properties } from "./pages/Properties";
 import { PropertyDetail } from "./pages/PropertyDetail";
 import Landing from "./pages/Landing";
@@ -174,6 +175,7 @@ function boardRoutes() {
       <Route path="costs" element={<Costs />} />
       <Route path="activity" element={<Activity />} />
       <Route path="deliverables" element={<Deliverables />} />
+      <Route path="knowledge-base" element={<KnowledgeBase />} />
       <Route path="properties" element={<Navigate to="/properties/sale" replace />} />
       <Route path="properties/sale" element={<Properties />} />
       <Route path="properties/rental" element={<Properties />} />

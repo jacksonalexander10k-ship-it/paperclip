@@ -13,6 +13,7 @@ import {
   BookOpen,
   CheckSquare,
   Building2,
+  FolderOpen,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -172,6 +173,7 @@ export function Sidebar() {
             <Activity className="w-[13px] h-[13px] shrink-0" />
             <span className="truncate">Live Activity</span>
           </button>
+          <SidebarNavItem to="/knowledge-base" label="Knowledge Base" icon={FolderOpen} />
           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
         </SidebarSection>
 
