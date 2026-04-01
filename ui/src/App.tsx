@@ -76,51 +76,7 @@ function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: b
 }
 
 function CloudAccessGate() {
-  const location = useLocation();
-  const healthQuery = useQuery({
-    queryKey: queryKeys.health,
-    queryFn: () => healthApi.get(),
-    retry: false,
-    refetchInterval: (query) => {
-      const data = query.state.data as
-        | { deploymentMode?: "local_trusted" | "authenticated"; bootstrapStatus?: "ready" | "bootstrap_pending" }
-        | undefined;
-      return data?.deploymentMode === "authenticated" && data.bootstrapStatus === "bootstrap_pending"
-        ? 2000
-        : false;
-    },
-    refetchIntervalInBackground: true,
-  });
-
-  const isAuthenticatedMode = healthQuery.data?.deploymentMode === "authenticated";
-  const sessionQuery = useQuery({
-    queryKey: queryKeys.auth.session,
-    queryFn: () => authApi.getSession(),
-    enabled: isAuthenticatedMode,
-    retry: false,
-  });
-
-  if (healthQuery.isLoading || (isAuthenticatedMode && sessionQuery.isLoading)) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
-  }
-
-  if (healthQuery.error) {
-    return (
-      <div className="mx-auto max-w-xl py-10 text-sm text-destructive">
-        {healthQuery.error instanceof Error ? healthQuery.error.message : "Failed to load app state"}
-      </div>
-    );
-  }
-
-  if (isAuthenticatedMode && healthQuery.data?.bootstrapStatus === "bootstrap_pending") {
-    return <BootstrapPendingPage hasActiveInvite={healthQuery.data.bootstrapInviteActive} />;
-  }
-
-  if (isAuthenticatedMode && !sessionQuery.data) {
-    const next = encodeURIComponent(`${location.pathname}${location.search}`);
-    return <Navigate to={`/auth?next=${next}`} replace />;
-  }
-
+  // Bypass all auth gates — go straight to the app
   return <Outlet />;
 }
 
@@ -246,26 +202,18 @@ function OnboardingRoutePage() {
 
 function CompanyRootRedirect() {
   const { companies, selectedCompany, loading } = useCompany();
-  const location = useLocation();
 
   if (loading) {
     return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
   }
 
   const targetCompany = selectedCompany ?? companies[0] ?? null;
-  if (!targetCompany) {
-    if (
-      shouldRedirectCompanylessRouteToOnboarding({
-        pathname: location.pathname,
-        hasCompanies: false,
-      })
-    ) {
-      return <Navigate to="/onboarding" replace />;
-    }
-    return <NoCompaniesStartPage />;
+  if (targetCompany) {
+    return <Navigate to={`/${targetCompany.issuePrefix}/dashboard`} replace />;
   }
 
-  return <Navigate to={`/${targetCompany.issuePrefix}/dashboard`} replace />;
+  // Fallback to DPP demo company
+  return <Navigate to="/DPP/dashboard" replace />;
 }
 
 function UnprefixedBoardRedirect() {
@@ -276,22 +224,10 @@ function UnprefixedBoardRedirect() {
     return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
   }
 
-  const targetCompany = selectedCompany ?? companies[0] ?? null;
-  if (!targetCompany) {
-    if (
-      shouldRedirectCompanylessRouteToOnboarding({
-        pathname: location.pathname,
-        hasCompanies: false,
-      })
-    ) {
-      return <Navigate to="/onboarding" replace />;
-    }
-    return <NoCompaniesStartPage />;
-  }
-
+  const prefix = (selectedCompany ?? companies[0])?.issuePrefix ?? "DPP";
   return (
     <Navigate
-      to={`/${targetCompany.issuePrefix}${location.pathname}${location.search}${location.hash}`}
+      to={`/${prefix}${location.pathname}${location.search}${location.hash}`}
       replace
     />
   );
@@ -332,7 +268,7 @@ export function App() {
   return (
     <>
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<Navigate to="/DPP/ceo-chat" replace />} />
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
