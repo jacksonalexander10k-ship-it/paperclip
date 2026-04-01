@@ -7,6 +7,8 @@ import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { approvalsApi } from "../api/approvals";
 import { heartbeatsApi } from "../api/heartbeats";
+import { analyticsApi } from "../api/analytics";
+import { DailyCostChart, DailyRunsChart } from "../components/AnalyticsCharts";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -78,6 +80,19 @@ export function Dashboard() {
     queryFn: () => fetch(`/api/companies/${selectedCompanyId}/billing/status`, { credentials: "include" }).then(r => r.json()),
     enabled: !!selectedCompanyId,
     refetchInterval: 60_000,
+  });
+
+  const thirtyDaysAgo = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString();
+  }, []);
+
+  const { data: analytics } = useQuery({
+    queryKey: queryKeys.analytics(selectedCompanyId!, thirtyDaysAgo),
+    queryFn: () => analyticsApi.summary(selectedCompanyId!, thirtyDaysAgo),
+    enabled: !!selectedCompanyId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 8), [activity]);
@@ -375,6 +390,19 @@ export function Dashboard() {
                   >
                     View full log →
                   </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Trends — daily cost + runs charts */}
+            {analytics && (
+              <div>
+                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]">
+                  Trends
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <DailyCostChart data={analytics.trends.dailyCosts ?? []} />
+                  <DailyRunsChart data={analytics.trends.dailyRuns ?? []} />
                 </div>
               </div>
             )}
