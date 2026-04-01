@@ -36,4 +36,9 @@ export const agentMessagesApi = {
     api.get<NetworkEdge[]>(
       `/companies/${encodeURIComponent(companyId)}/agent-messages/network?days=${days}`,
     ),
+
+  clearAll: (companyId: string) =>
+    api.delete<{ deleted: number }>(
+      `/companies/${encodeURIComponent(companyId)}/agent-messages`,
+    ),
 };

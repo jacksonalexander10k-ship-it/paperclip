@@ -181,6 +181,15 @@ export function approvalRoutes(db: Db) {
         },
       });
 
+      // Demo trigger: when a plan approval is approved, fire the demo agent sequence
+      if (approval.type === "approve_plan") {
+        import("./demo-orchestrator.js").then(({ runDemoAfterPlanApproval }) => {
+          runDemoAfterPlanApproval(db, approval.companyId).catch((err) => {
+            logger.warn({ err }, "demo trigger: failed to run post-approval sequence");
+          });
+        }).catch(() => {});
+      }
+
       if (approval.requestedByAgentId) {
         try {
           const wakeRun = await heartbeat.wakeup(approval.requestedByAgentId, {

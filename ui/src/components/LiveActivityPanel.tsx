@@ -246,8 +246,19 @@ function ActivityTab({ companyId }: { companyId: string }) {
 /* ------------------------------------------------------------------ */
 
 function AgentCommsTab({ companyId }: { companyId: string }) {
+  const queryClient = useQueryClient();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
+
+  const clearMutation = useMutation({
+    mutationFn: () => agentMessagesApi.clearAll(companyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentMessages.recent(companyId) });
+      setSeenIds(new Set());
+      setExpandedIds(new Set());
+    },
+  });
+
   const { data: messages } = useQuery({
     queryKey: queryKeys.agentMessages.recent(companyId),
     queryFn: () => agentMessagesApi.listRecent(companyId, 30),
@@ -313,6 +324,18 @@ function AgentCommsTab({ companyId }: { companyId: string }) {
 
   return (
     <div className="flex flex-col">
+      {/* Clear all button */}
+      {sorted.length > 0 && (
+        <div className="px-3 py-1.5 border-b border-border/40 flex justify-end">
+          <button
+            className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+            onClick={() => clearMutation.mutate()}
+            disabled={clearMutation.isPending}
+          >
+            {clearMutation.isPending ? "Clearing..." : "Clear all"}
+          </button>
+        </div>
+      )}
       {sorted.map((msg: AgentMessage) => {
         const isExpanded = expandedIds.has(msg.id);
         const sender = agentName(msg.fromAgentId);

@@ -46,5 +46,15 @@ export function agentMessageRoutes(db: Db) {
     res.json({ purged });
   });
 
+  // Clear all agent messages for a company (demo reset)
+  router.delete("/companies/:companyId/agent-messages", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const { aygentAgentMessages } = await import("@paperclipai/db");
+    const { eq } = await import("drizzle-orm");
+    const deleted = await db.delete(aygentAgentMessages).where(eq(aygentAgentMessages.companyId, companyId)).returning({ id: aygentAgentMessages.id });
+    res.json({ deleted: deleted.length });
+  });
+
   return router;
 }
