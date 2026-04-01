@@ -23,6 +23,7 @@ import { useCompany } from "../context/CompanyContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { approvalsApi } from "../api/approvals";
 import { authApi } from "../api/auth";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,13 @@ import { PluginSlotOutlet } from "@/plugins/slots";
 export function Sidebar() {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const inboxBadge = useInboxBadge(selectedCompanyId);
+
+  const { data: sidebarBadges } = useQuery({
+    queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
+  });
 
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.liveRuns(selectedCompanyId!),
@@ -109,7 +117,7 @@ export function Sidebar() {
       <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col gap-4 px-2 py-2.5">
         {/* Primary nav — no section header */}
         <div className="flex flex-col gap-0.5">
-          <SidebarNavItem to="/ceo-chat" label="CEO Chat" icon={MessageSquare} />
+          <SidebarNavItem to="/ceo-chat" label="CEO Chat" icon={MessageSquare} badge={sidebarBadges?.ceoChatUnread} />
           <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"

@@ -421,6 +421,16 @@ export function CeoChat() {
     refetchInterval: 15_000,
   });
 
+  // ── Mark CEO Chat issue as read whenever comments are visible ───────────────
+  useEffect(() => {
+    if (!issueId) return;
+    issuesApi.markRead(issueId).then(() => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) });
+    }).catch(() => {
+      // Non-critical — silently ignore
+    });
+  }, [issueId, comments.length, selectedCompanyId, queryClient]);
+
   // ── CEO agent status ─────────────────────────────────────────────────────────
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),

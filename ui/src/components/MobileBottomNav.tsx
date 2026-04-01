@@ -7,9 +7,12 @@ import {
   Users,
   Inbox,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { cn } from "../lib/utils";
 import { useInboxBadge } from "../hooks/useInboxBadge";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
+import { queryKeys } from "../lib/queryKeys";
 
 interface MobileBottomNavProps {
   visible: boolean;
@@ -30,10 +33,17 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
   const { selectedCompanyId } = useCompany();
   const inboxBadge = useInboxBadge(selectedCompanyId);
 
+  const { data: sidebarBadges } = useQuery({
+    queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
+  });
+
   const items = useMemo<MobileNavItem[]>(
     () => [
       { type: "link", to: "/dashboard", label: "Home", icon: House },
-      { type: "link", to: "/ceo-chat", label: "CEO", icon: MessageSquare },
+      { type: "link", to: "/ceo-chat", label: "CEO", icon: MessageSquare, badge: sidebarBadges?.ceoChatUnread },
       { type: "link", to: "/issues", label: "Tasks", icon: CircleDot },
       { type: "link", to: "/agents/all", label: "Team", icon: Users },
       {
@@ -44,7 +54,7 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
         badge: inboxBadge.inbox,
       },
     ],
-    [inboxBadge.inbox],
+    [inboxBadge.inbox, sidebarBadges?.ceoChatUnread],
   );
 
   return (

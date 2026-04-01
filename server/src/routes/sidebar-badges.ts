@@ -34,8 +34,10 @@ export function sidebarBadgeRoutes(db: Db) {
         .then((rows) => Number(rows[0]?.count ?? 0))
       : 0;
 
+    const userId = req.actor.type === "board" ? req.actor.userId : undefined;
     const badges = await svc.get(companyId, {
       joinRequests: joinRequestCount,
+      userId,
     });
     const summary = await dashboard.summary(companyId);
     const hasFailedRuns = badges.failedRuns > 0;
