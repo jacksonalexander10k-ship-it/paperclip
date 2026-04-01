@@ -52,6 +52,7 @@ import {
 } from "./execution-workspace-policy.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
+import { knowledgeBaseService } from "./knowledge-base.js";
 import {
   hasSessionCompactionThresholds,
   resolveSessionCompactionPolicy,
@@ -2496,6 +2497,20 @@ export function heartbeatService(db: Db) {
           payload: meta as unknown as Record<string, unknown>,
         });
       };
+
+      // Inject knowledge base file list for the adapter
+      try {
+        const kbSvc = knowledgeBaseService(db);
+        const kbFiles = await kbSvc.listForManifest(agent.companyId);
+        if (kbFiles.length > 0) {
+          context.paperclipKnowledgeBase = kbFiles;
+        }
+      } catch (err) {
+        logger.warn(
+          { companyId: agent.companyId, agentId: agent.id, runId: run.id, err },
+          "Failed to load knowledge base files for agent run",
+        );
+      }
 
       const adapter = getServerAdapter(agent.adapterType);
       const authToken = adapter.supportsLocalAgentJwt

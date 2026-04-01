@@ -341,6 +341,73 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const billingType = resolveClaudeBillingType(effectiveEnv);
   const skillsDir = await buildSkillsDir(config);
 
+  // Inject knowledge base files if available
+  const kbFiles = Array.isArray(context.paperclipKnowledgeBase)
+    ? (context.paperclipKnowledgeBase as Array<{
+        filename: string;
+        title: string | null;
+        description: string | null;
+        contentType: string;
+        sizeBytes: number;
+        storageKey: string;
+      }>)
+    : [];
+
+  if (kbFiles.length > 0) {
+    const kbSkillsTarget = path.join(skillsDir, ".claude", "skills");
+    const kbDir = path.join(kbSkillsTarget, "knowledge-base");
+    await fs.mkdir(kbDir, { recursive: true });
+
+    // Resolve storage base directory from environment
+    const storageBaseDir = process.env.PAPERCLIP_STORAGE_LOCAL_DIR
+      || path.join(
+        process.env.PAPERCLIP_HOME || path.join(os.homedir(), ".paperclip"),
+        "instances",
+        process.env.PAPERCLIP_INSTANCE_ID || "default",
+        "data",
+        "storage",
+      );
+
+    // Generate manifest
+    const lines = [
+      "# Agency Knowledge Base",
+      "",
+      "These files are available in the knowledge-base/ directory alongside this file.",
+      "Only read files that are relevant to your current task.",
+      "",
+      "| File | Description | Type | Size |",
+      "|------|-------------|------|------|",
+    ];
+
+    for (const file of kbFiles) {
+      const desc = file.description || file.title || "\u2014";
+      const typeParts = file.contentType.split("/");
+      const typeLabel = typeParts[1]?.toUpperCase() || file.contentType;
+      const sizeLabel = file.sizeBytes < 1024
+        ? `${file.sizeBytes} B`
+        : file.sizeBytes < 1024 * 1024
+          ? `${(file.sizeBytes / 1024).toFixed(1)} KB`
+          : `${(file.sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+      lines.push(`| ${file.filename} | ${desc} | ${typeLabel} | ${sizeLabel} |`);
+
+      // Symlink file from storage to knowledge-base dir
+      const storagePath = path.resolve(storageBaseDir, file.storageKey);
+      const targetPath = path.join(kbDir, file.filename);
+      try {
+        await fs.symlink(storagePath, targetPath);
+      } catch {
+        // File may not exist on disk (S3 storage) — skip symlink
+        await onLog("stderr", `[paperclip] Knowledge base file not found on disk: ${file.filename}\n`);
+      }
+    }
+
+    await fs.writeFile(
+      path.join(kbSkillsTarget, "KNOWLEDGE-BASE.md"),
+      lines.join("\n") + "\n",
+      "utf-8",
+    );
+  }
+
   // When instructionsFilePath is configured, create a combined temp file that
   // includes both the file content and the path directive, so we only need
   // --append-system-prompt-file (Claude CLI forbids using both flags together).
