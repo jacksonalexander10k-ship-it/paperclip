@@ -10,7 +10,7 @@ import { logger } from "../middleware/logger.js";
 const CEO_CHAT_TITLE = "CEO Chat";
 
 // ---------------------------------------------------------------------------
-// Pre-written demo script
+// Helpers
 // ---------------------------------------------------------------------------
 
 interface DemoAgent {
@@ -29,13 +29,29 @@ async function resolveAgents(db: Db, companyId: string): Promise<Map<string, Dem
   return map;
 }
 
-function buildCeoResponse(agentMap: Map<string, DemoAgent>): {
-  text: string;
-  approvalBlocks: Array<{ action: string; payload: Record<string, unknown> }>;
-} {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------------------------------------------
+// CEO response — clean text, no markdown, approval JSON blocks separate
+// ---------------------------------------------------------------------------
+
+function buildCeoResponse(agentMap: Map<string, DemoAgent>) {
   const layla = agentMap.get("sales")?.name ?? "Layla";
   const omar = agentMap.get("marketing")?.name ?? "Omar";
   const nour = agentMap.get("content")?.name ?? "Nour";
+
+  // The text the CEO streams — natural language, no markdown formatting
+  const spokenText = `On it. Here's what I'm doing right now.
+
+I've asked ${omar} to pull the latest JVC transaction data from DLD. He just confirmed — 1BR prices dropped 12% this week. Binghatti Hills is now starting from AED 748K.
+
+${layla} cross-referenced your pipeline and found 6 leads who stalled on JVC pricing. She's drafted messages for the two highest-scoring leads — Ahmed Al Hashimi (score 8, Arabic) and Elena Kuznetsova (score 7, Russian). Both personalised to their language and style.
+
+${nour} is preparing an Instagram post about the price drop to drive more inbound.
+
+All three are below for your approval. One tap to send.`;
 
   const approval1 = {
     type: "approval_required",
@@ -64,11 +80,8 @@ function buildCeoResponse(agentMap: Map<string, DemoAgent>): {
     context: "Market Agent detected JVC price drop. Content designed for maximum engagement based on previous post performance.",
   };
 
-  const text = `On it. Here's what I'm doing right now:
-
-**1. Market data** — I've asked ${omar} to pull the latest JVC transaction data from DLD. He confirms 1BR prices dropped 12% this week — now starting from AED 748K at Binghatti Hills.
-
-**2. Lead re-engagement** — ${layla} cross-referenced your pipeline and found 6 leads who stalled on JVC pricing. She's drafted personalised messages for the two highest-scoring leads:
+  // The full saved text includes JSON blocks (rendered as cards after save)
+  const savedText = `${spokenText}
 
 \`\`\`json
 ${JSON.stringify(approval1, null, 2)}
@@ -78,18 +91,13 @@ ${JSON.stringify(approval1, null, 2)}
 ${JSON.stringify(approval2, null, 2)}
 \`\`\`
 
-**3. Content** — ${nour} is preparing an Instagram post to capitalise on the price movement:
-
 \`\`\`json
 ${JSON.stringify(approval3, null, 2)}
-\`\`\`
-
-**Team coordination:** ${omar} shared the pricing data with ${layla}, who forwarded lead requirements to ${nour}. Three agents, one pipeline, under 30 seconds.
-
-3 actions pending your approval above. One tap to send.`;
+\`\`\``;
 
   return {
-    text,
+    spokenText,
+    savedText,
     approvalBlocks: [
       { action: "send_whatsapp", payload: approval1 },
       { action: "send_whatsapp", payload: approval2 },
@@ -99,28 +107,28 @@ ${JSON.stringify(approval3, null, 2)}
 }
 
 // ---------------------------------------------------------------------------
-// SSE streaming (fake token-by-token)
+// SSE streaming — realistic typing speed
 // ---------------------------------------------------------------------------
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function streamText(
   res: import("express").Response,
   text: string,
-  chunkSize = 4,
-  delayMs = 25,
+  abortedRef: { current: boolean },
 ) {
-  for (let i = 0; i < text.length; i += chunkSize) {
-    const chunk = text.slice(i, i + chunkSize);
-    res.write(`data: ${JSON.stringify({ type: "text", text: chunk })}\n\n`);
-    await sleep(delayMs);
+  // Stream word-by-word for natural feel, with variable delays
+  const words = text.split(/(\s+)/); // split keeping whitespace
+  for (const word of words) {
+    if (abortedRef.current) break;
+    res.write(`data: ${JSON.stringify({ type: "text", text: word })}\n\n`);
+    // Vary delay: longer pause after periods/newlines, shorter for regular words
+    const isPause = /[.\n]$/.test(word.trim());
+    const delay = isPause ? 120 : (40 + Math.random() * 30);
+    await sleep(delay);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Background sequence (inter-agent messages + live events)
+// Background sequence — realistic timing, casual colleague tone
 // ---------------------------------------------------------------------------
 
 async function runBackgroundSequence(
@@ -144,52 +152,52 @@ async function runBackgroundSequence(
     summary: string;
   }> = [
     {
-      delayMs: 2000,
+      delayMs: 3000,
       from: ceo,
       to: omar,
       priority: "action",
       messageType: "data_request",
-      summary: "Pull latest JVC 1BR pricing from DLD transactions — need current market rate for re-engagement campaign.",
+      summary: "Omar, can you pull the latest JVC 1BR numbers from DLD? Owner wants to push JVC hard this week.",
     },
     {
-      delayMs: 4000,
-      from: ceo,
-      to: layla,
-      priority: "action",
-      messageType: "campaign_request",
-      summary: "Re-engage all JVC leads who stalled on pricing. Omar is pulling fresh data — draft messages once you have it.",
-    },
-    {
-      delayMs: 6000,
+      delayMs: 8000,
       from: omar,
       to: layla,
       priority: "action",
       messageType: "price_alert",
-      summary: "JVC 1BR prices dropped 12% this week (DLD data). Binghatti Hills now from AED 748K. You have 6 leads in pipeline who match.",
+      summary: "Layla — heads up, JVC 1BR dropped 12% this week. Binghatti Hills now from 748K. You've got 6 leads sitting on JVC. Might be time to re-engage.",
     },
     {
-      delayMs: 8000,
+      delayMs: 14000,
+      from: ceo,
+      to: layla,
+      priority: "action",
+      messageType: "campaign_request",
+      summary: "Layla, draft re-engagement messages for the top JVC leads. Omar just sent you the pricing — use the new numbers. Prioritise score 7+.",
+    },
+    {
+      delayMs: 20000,
       from: layla,
       to: nour,
       priority: "action",
       messageType: "content_request",
-      summary: "Need an Instagram post about JVC price drop — 12% down, now from AED 748K. Make it engagement-optimised.",
+      summary: "Hey Nour — we're pushing JVC this week. Can you put together an Instagram post about the 12% price drop? The 748K starting price is the hook. Owner wants it today.",
     },
     {
-      delayMs: 10000,
+      delayMs: 28000,
       from: nour,
       to: layla,
       priority: "info",
       messageType: "content_ready",
-      summary: "Instagram post drafted and queued for approval. Used the high-performing format from last week's JVC post (520 likes).",
+      summary: "Done — drafted the JVC post. Used the same format as last week's one that got 520 likes. Queued for owner approval.",
     },
     {
-      delayMs: 12000,
+      delayMs: 35000,
       from: layla,
       to: ceo,
       priority: "info",
       messageType: "status_update",
-      summary: "Done — 2 WhatsApp messages drafted (Ahmed score 8, Elena score 7). Instagram post queued. All pending owner approval.",
+      summary: "All done. Drafted WhatsApp messages for Ahmed (score 8) and Elena (score 7). Nour's Instagram post is queued too. Everything's waiting for the owner to approve.",
     },
   ];
 
@@ -198,7 +206,6 @@ async function runBackgroundSequence(
 
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-    // Insert inter-agent message
     await db.insert(aygentAgentMessages).values({
       companyId,
       fromAgentId: step.from.id,
@@ -212,7 +219,6 @@ async function runBackgroundSequence(
       expiresAt,
     });
 
-    // Log activity
     await logActivity(db, {
       companyId,
       actorType: "agent",
@@ -228,7 +234,6 @@ async function runBackgroundSequence(
       },
     });
 
-    // Publish live event so UI updates
     publishLiveEvent({
       companyId,
       type: "activity.logged",
@@ -242,13 +247,13 @@ async function runBackgroundSequence(
 
     logger.info(
       { from: step.from.name, to: step.to.name, messageType: step.messageType },
-      "demo-orchestrator: inter-agent message sent",
+      "demo-orchestrator: agent message",
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Exported handler (called from ceo-chat.ts for DPP company)
+// Main handler
 // ---------------------------------------------------------------------------
 
 export async function handleDemoChat(
@@ -261,7 +266,6 @@ export async function handleDemoChat(
   const agentMap = await resolveAgents(db, companyId);
   const ceoAgent = agentMap.get("ceo");
 
-  // Find the CEO Chat issue
   const allIssues = await db.select().from(issues).where(eq(issues.companyId, companyId));
   const ceoChatIssue = allIssues.find((i) => i.title === CEO_CHAT_TITLE);
 
@@ -270,7 +274,7 @@ export async function handleDemoChat(
     return;
   }
 
-  // Save the user's message as a comment
+  // Save user message
   await db.insert(issueComments).values({
     id: randomUUID(),
     companyId,
@@ -282,8 +286,7 @@ export async function handleDemoChat(
     updatedAt: new Date(),
   });
 
-  // Build the scripted CEO response
-  const { text, approvalBlocks } = buildCeoResponse(agentMap);
+  const { spokenText, savedText, approvalBlocks } = buildCeoResponse(agentMap);
 
   // Set up SSE
   res.setHeader("Content-Type", "text/event-stream");
@@ -291,26 +294,26 @@ export async function handleDemoChat(
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
-  let aborted = false;
-  req.on("close", () => { aborted = true; });
+  const abortedRef = { current: false };
+  req.on("close", () => { abortedRef.current = true; });
 
   function send(data: Record<string, unknown>) {
-    if (aborted) return;
-    try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch { aborted = true; }
+    if (abortedRef.current) return;
+    try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch { abortedRef.current = true; }
   }
 
-  // Pause before "typing"
-  await sleep(800);
+  // Typing pause
+  await sleep(1200);
 
-  // Stream the CEO response token-by-token
-  await streamText(res, text);
+  // Stream ONLY the spoken text (no JSON blocks — those appear as cards after)
+  await streamText(res, spokenText, abortedRef);
 
   // Create real approval records
   const createdApprovalIds: string[] = [];
-  let savedText = text;
+  let enrichedSavedText = savedText;
 
   for (const block of approvalBlocks) {
-    const approval = await db.insert(approvals).values({
+    const [approval] = await db.insert(approvals).values({
       companyId,
       type: String(block.payload.action ?? "ceo_proposal"),
       requestedByAgentId: ceoAgent?.id ?? null,
@@ -318,22 +321,21 @@ export async function handleDemoChat(
       payload: block.payload,
     }).returning();
 
-    if (approval[0]) {
-      createdApprovalIds.push(approval[0].id);
-
-      const enrichedPayload = { ...block.payload, approval_id: approval[0].id };
+    if (approval) {
+      createdApprovalIds.push(approval.id);
+      const enrichedPayload = { ...block.payload, approval_id: approval.id };
       const originalBlock = "```json\n" + JSON.stringify(block.payload, null, 2) + "\n```";
       const enrichedBlock = "```json\n" + JSON.stringify(enrichedPayload, null, 2) + "\n```";
-      savedText = savedText.replace(originalBlock, enrichedBlock);
+      enrichedSavedText = enrichedSavedText.replace(originalBlock, enrichedBlock);
     }
   }
 
-  // Save the CEO's response as a comment
+  // Save full comment (with JSON blocks — UI parses them into cards)
   await db.insert(issueComments).values({
     id: randomUUID(),
     companyId,
     issueId: ceoChatIssue.id,
-    body: savedText,
+    body: enrichedSavedText,
     authorAgentId: ceoAgent?.id ?? null,
     authorUserId: null,
     createdAt: new Date(),
@@ -346,21 +348,20 @@ export async function handleDemoChat(
   send({ type: "done", model: "demo", deepThink: false });
   res.end();
 
-  // Publish live events for UI updates
   publishLiveEvent({
     companyId,
     type: "activity.logged",
     payload: { action: "ceo.response", summary: "CEO responded to owner message" },
   });
 
-  // Fire the background sequence (inter-agent messages with delays)
+  // Background inter-agent messages (realistic delays: 3s to 35s)
   runBackgroundSequence(db, companyId, agentMap).catch((err) => {
     logger.error({ err }, "demo-orchestrator: background sequence failed");
   });
 }
 
 // ---------------------------------------------------------------------------
-// Route (standalone, also registered in app.ts)
+// Route
 // ---------------------------------------------------------------------------
 
 export function demoOrchestratorRoutes(db: Db) {

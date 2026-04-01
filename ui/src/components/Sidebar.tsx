@@ -14,12 +14,15 @@ import {
   CheckSquare,
   Building2,
   FolderOpen,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarAgents } from "./SidebarAgents";
 import { useDialog } from "../context/DialogContext";
+import { useTheme } from "../context/ThemeContext";
 import { useCompany } from "../context/CompanyContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { approvalsApi } from "../api/approvals";
@@ -29,6 +32,19 @@ import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
+
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button
+      onClick={toggleTheme}
+      className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:bg-accent/50 hover:text-foreground transition-all duration-150 shrink-0"
+      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {theme === "dark" ? <Sun className="w-[13px] h-[13px]" /> : <Moon className="w-[13px] h-[13px]" />}
+    </button>
+  );
+}
 
 export function Sidebar() {
   const { selectedCompanyId, selectedCompany } = useCompany();
@@ -186,8 +202,9 @@ export function Sidebar() {
         />
       </nav>
 
-      {/* Footer — docs + user avatar */}
+      {/* Footer — theme toggle + docs + user avatar */}
       <div className="border-t border-sidebar-border/50 px-2 py-2 flex items-center gap-1">
+        <ThemeToggle />
         <a
           href="https://docs.paperclip.ing/"
           target="_blank"

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, Loader2, CheckCircle, XCircle, ArrowUp, MessageCircle, Pencil } from "lucide-react";
 import { issuesApi } from "../api/issues";
@@ -527,10 +527,21 @@ export function CeoChat() {
   );
 
   // ── Auto-scroll to bottom ────────────────────────────────────────────────────
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     const el = scrollContainerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [comments, streamingText, isStreaming]);
+  }, []);
+
+  useLayoutEffect(scrollToBottom, [comments, streamingText, isStreaming, scrollToBottom]);
+
+  // Backup scroll after async paint — covers refetch race conditions
+  useEffect(() => {
+    scrollToBottom();
+    const t1 = setTimeout(scrollToBottom, 50);
+    const t2 = setTimeout(scrollToBottom, 200);
+    const t3 = setTimeout(scrollToBottom, 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [comments, scrollToBottom]);
 
   const _statusColor = isStreaming
     ? "bg-blue-400 animate-pulse"
