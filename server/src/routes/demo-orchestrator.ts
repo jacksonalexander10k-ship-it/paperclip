@@ -50,13 +50,18 @@ async function insertComment(db: Db, companyId: string, issueId: string, body: s
 }
 
 async function postAgentMessage(db: Db, companyId: string, from: DemoAgent, to: DemoAgent, priority: "info" | "action" | "urgent", messageType: string, summary: string) {
-  await db.insert(aygentAgentMessages).values({
-    companyId, fromAgentId: from.id, toAgentId: to.id,
-    priority, messageType, summary, data: null,
-    readByAgents: [], actedOn: false,
-    expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-  });
-  publishLiveEvent({ companyId, type: "activity.logged", payload: { fromAgent: from.name, toAgent: to.name, messageType, summary } });
+  try {
+    await db.insert(aygentAgentMessages).values({
+      companyId, fromAgentId: from.id, toAgentId: to.id,
+      priority, messageType, summary, data: null,
+      readByAgents: [], actedOn: false,
+      expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+    });
+    publishLiveEvent({ companyId, type: "activity.logged", payload: { fromAgent: from.name, toAgent: to.name, messageType, summary } });
+    logger.info({ from: from.name, to: to.name, messageType }, "demo: agent message posted");
+  } catch (err) {
+    logger.error({ err, from: from.name, to: to.name }, "demo: FAILED to post agent message");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -144,17 +149,26 @@ Shall I go ahead with this?`;
 // ---------------------------------------------------------------------------
 
 export async function runDemoAfterPlanApproval(db: Db, companyId: string, ceoChatIssueId?: string) {
+  logger.info({ companyId, ceoChatIssueId }, "demo-orchestrator: runDemoAfterPlanApproval STARTED");
+
   const agentMap = await resolveAgents(db, companyId);
   const ceo = agentMap.get("ceo");
   const layla = agentMap.get("sales");
   const omar = agentMap.get("marketing");
+
+  logger.info({ ceo: ceo?.name, layla: layla?.name, omar: omar?.name }, "demo-orchestrator: agents resolved");
 
   const allIssues = await db.select().from(issues).where(eq(issues.companyId, companyId));
   const ceoChatIssue = ceoChatIssueId
     ? allIssues.find((i) => i.id === ceoChatIssueId) ?? null
     : allIssues.find((i) => i.title.startsWith(CEO_CHAT_TITLE)) ?? null;
 
-  if (!ceo || !layla || !omar || !ceoChatIssue) return;
+  logger.info({ ceoChatIssue: ceoChatIssue?.id, ceoChatIssueTitle: ceoChatIssue?.title }, "demo-orchestrator: issue resolved");
+
+  if (!ceo || !layla || !omar || !ceoChatIssue) {
+    logger.error({ ceo: !!ceo, layla: !!layla, omar: !!omar, ceoChatIssue: !!ceoChatIssue }, "demo-orchestrator: MISSING REQUIRED DATA — aborting");
+    return;
+  }
 
   try {
     // ── Agent conversation (triggered by plan approval) ──────────

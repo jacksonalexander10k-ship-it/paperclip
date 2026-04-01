@@ -19,6 +19,7 @@ import {
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
+import { runDemoAfterPlanApproval } from "./demo-orchestrator.js";
 
 function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(approval: T): T {
   return {
@@ -185,11 +186,10 @@ export function approvalRoutes(db: Db) {
       if (approval.type === "approve_plan") {
         const payload = approval.payload as Record<string, unknown> | null;
         const ceoChatIssueId = typeof payload?.ceoChatIssueId === "string" ? payload.ceoChatIssueId : undefined;
-        import("./demo-orchestrator.js").then(({ runDemoAfterPlanApproval }) => {
-          runDemoAfterPlanApproval(db, approval.companyId, ceoChatIssueId).catch((err) => {
-            logger.warn({ err }, "demo trigger: failed to run post-approval sequence");
-          });
-        }).catch(() => {});
+        logger.info({ approvalId: approval.id, ceoChatIssueId }, "demo trigger: approve_plan detected, starting agent sequence...");
+        runDemoAfterPlanApproval(db, approval.companyId, ceoChatIssueId).catch((err) => {
+          logger.error({ err }, "demo trigger: runDemoAfterPlanApproval FAILED");
+        });
       }
 
       if (approval.requestedByAgentId) {
