@@ -23,12 +23,11 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function resolveThemeFromDocument(): Theme {
   if (typeof document === "undefined") return "light";
-  // Default to light if no preference has been stored
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (!stored) return "light";
+    if (stored === "dark" || stored === "light") return stored;
   } catch { /* ignore */ }
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+  return "light";
 }
 
 function applyTheme(theme: Theme) {
