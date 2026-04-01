@@ -481,16 +481,6 @@ export function CeoChat() {
     refetchInterval: 15_000,
   });
 
-  // Scroll to bottom on initial load
-  const wasLoading = useRef(true);
-  useEffect(() => {
-    if (wasLoading.current && !commentsLoading && comments.length > 0) {
-      wasLoading.current = false;
-      setTimeout(scrollToBottom, 50);
-      setTimeout(scrollToBottom, 300);
-    }
-  }, [commentsLoading, comments.length, scrollToBottom]);
-
   // ── Mark CEO Chat issue as read whenever comments are visible ───────────────
   useEffect(() => {
     if (!issueId) return;
@@ -606,12 +596,12 @@ export function CeoChat() {
   // Scroll on streaming changes
   useEffect(scrollToBottom, [streamingText, isStreaming, scrollToBottom]);
 
-  // Scroll when comments change (refetch after streaming ends)
+  // Scroll when comments change (refetch after streaming ends) + initial load
   useEffect(() => {
     scrollToBottom();
-    // Belt-and-suspenders: scroll again after images/cards render
-    const t = setTimeout(scrollToBottom, 200);
-    return () => clearTimeout(t);
+    const t1 = setTimeout(scrollToBottom, 100);
+    const t2 = setTimeout(scrollToBottom, 300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [comments.length, scrollToBottom]);
 
   const _statusColor = isStreaming
