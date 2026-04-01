@@ -115,6 +115,9 @@ export const queryKeys = {
     messages: (companyId: string, chatJid: string, agentId?: string) =>
       ["whatsapp", "messages", companyId, chatJid, agentId] as const,
   },
+  knowledgeBase: {
+    list: (companyId: string) => ["knowledge-base", companyId] as const,
+  },
   deliverables: (companyId: string) => ["deliverables", companyId] as const,
   costs: (companyId: string, from?: string, to?: string) =>
     ["costs", companyId, from, to] as const,
