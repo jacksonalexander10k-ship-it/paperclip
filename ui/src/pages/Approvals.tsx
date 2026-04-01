@@ -11,7 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, CheckCircle2, Clock, History, MessageCircle, Pencil } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock, History, MessageCircle, Pencil, Square, CheckSquare } from "lucide-react";
 import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } from "../components/ApprovalPayload";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
@@ -34,6 +34,8 @@ function LayoutCApprovalCard({
   justApproved,
   justRejected,
   onViewConversation,
+  isSelected,
+  onToggleSelect,
 }: {
   approval: Approval;
   requesterAgent: Agent | null;
@@ -44,6 +46,8 @@ function LayoutCApprovalCard({
   justApproved?: boolean;
   justRejected?: boolean;
   onViewConversation?: (chatJid: string, contactName?: string) => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const Icon = typeIcon[approval.type] ?? defaultTypeIcon;
   const label = approvalLabel(approval.type, approval.payload as Record<string, unknown> | null);
@@ -66,10 +70,21 @@ function LayoutCApprovalCard({
   const [editedMessage, setEditedMessage] = useState(messagePreview ?? "");
 
   return (
-    <div className="rounded-xl border border-border/50 overflow-hidden transition-all hover:border-border">
+    <div className={cn("rounded-xl border overflow-hidden transition-all", isSelected ? "border-primary/60 ring-1 ring-primary/20" : "border-border/50 hover:border-border")}>
       {/* Header strip */}
       <div className="bg-primary/5 px-3.5 py-2.5 border-b border-border/40">
         <div className="flex items-center gap-2.5">
+          {onToggleSelect && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+              className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+              aria-label={isSelected ? "Deselect" : "Select"}
+            >
+              {isSelected
+                ? <CheckSquare className="h-4 w-4 text-primary" />
+                : <Square className="h-4 w-4" />}
+            </button>
+          )}
           <span className="flex items-center justify-center h-[25px] w-[25px] rounded-lg bg-primary/10 shrink-0">
             <Icon className="h-3.5 w-3.5 text-primary" />
           </span>
@@ -257,6 +272,7 @@ export function Approvals() {
   const statusFilter: StatusFilter = pathSegment === "all" ? "all" : "pending";
   const [actionError, setActionError] = useState<string | null>(null);
   const [resolvedIds, setResolvedIds] = useState<Map<string, "approved" | "rejected">>(new Map());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Conversation drawer state
   const [conversationDrawer, setConversationDrawer] = useState<{
@@ -307,6 +323,26 @@ export function Approvals() {
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : "Failed to reject");
+    },
+  });
+
+  const batchApproveMutation = useMutation({
+    mutationFn: (ids: string[]) => approvalsApi.batchApprove(selectedCompanyId!, ids),
+    onSuccess: (result) => {
+      setActionError(null);
+      const approvedIds = result.results
+        .filter((r) => r.status === "approved")
+        .map((r) => r.id);
+      setResolvedIds((prev) => {
+        const next = new Map(prev);
+        for (const id of approvedIds) next.set(id, "approved");
+        return next;
+      });
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
+    },
+    onError: (err) => {
+      setActionError(err instanceof Error ? err.message : "Failed to batch approve");
     },
   });
 
@@ -372,6 +408,34 @@ export function Approvals() {
           </Tabs>
         </div>
 
+        {/* Batch approve bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3.5 py-2 mb-2">
+            <span className="text-[13px] text-muted-foreground">
+              <span className="font-semibold text-foreground">{selectedIds.size}</span> selected
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-7 px-3 text-[12px] bg-primary text-white hover:bg-primary/90"
+                onClick={() => batchApproveMutation.mutate(Array.from(selectedIds))}
+                disabled={batchApproveMutation.isPending}
+              >
+                {batchApproveMutation.isPending ? "Approving…" : "Approve All"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2.5 text-[12px] border border-border/50 hover:bg-muted"
+                onClick={() => setSelectedIds(new Set())}
+                disabled={batchApproveMutation.isPending}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
+
         {error && <p className="text-sm text-destructive">{error.message}</p>}
         {actionError && <p className="text-sm text-destructive">{actionError}</p>}
 
@@ -386,24 +450,42 @@ export function Approvals() {
 
         {filtered.length > 0 && (
           <div className="space-y-3">
-            {filtered.map((approval) => (
-              <LayoutCApprovalCard
-                key={approval.id}
-                approval={approval}
-                requesterAgent={
-                  approval.requestedByAgentId
-                    ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null
-                    : null
-                }
-                onApprove={() => approveMutation.mutate({ id: approval.id })}
-                onApproveWithEdit={(editedPayload) => approveMutation.mutate({ id: approval.id, editedPayload })}
-                onReject={() => rejectMutation.mutate(approval.id)}
-                isPending={approveMutation.isPending || rejectMutation.isPending}
-                justApproved={resolvedIds.get(approval.id) === "approved"}
-                justRejected={resolvedIds.get(approval.id) === "rejected"}
-                onViewConversation={handleViewConversation}
-              />
-            ))}
+            {filtered.map((approval) => {
+              const isPendingApproval =
+                approval.status === "pending" || approval.status === "revision_requested";
+              return (
+                <LayoutCApprovalCard
+                  key={approval.id}
+                  approval={approval}
+                  requesterAgent={
+                    approval.requestedByAgentId
+                      ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null
+                      : null
+                  }
+                  onApprove={() => approveMutation.mutate({ id: approval.id })}
+                  onApproveWithEdit={(editedPayload) => approveMutation.mutate({ id: approval.id, editedPayload })}
+                  onReject={() => rejectMutation.mutate(approval.id)}
+                  isPending={approveMutation.isPending || rejectMutation.isPending || batchApproveMutation.isPending}
+                  justApproved={resolvedIds.get(approval.id) === "approved"}
+                  justRejected={resolvedIds.get(approval.id) === "rejected"}
+                  onViewConversation={handleViewConversation}
+                  isSelected={selectedIds.has(approval.id)}
+                  onToggleSelect={
+                    isPendingApproval
+                      ? () => setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(approval.id)) {
+                            next.delete(approval.id);
+                          } else {
+                            next.add(approval.id);
+                          }
+                          return next;
+                        })
+                      : undefined
+                  }
+                />
+              );
+            })}
           </div>
         )}
       </div>

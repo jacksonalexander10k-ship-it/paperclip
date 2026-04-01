@@ -218,6 +218,84 @@ export function approvalRoutes(db: Db) {
     res.json(redactApprovalPayload(approval));
   });
 
+  router.post("/companies/:companyId/approvals/batch-approve", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const ids: unknown = req.body.ids;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: "ids must be a non-empty array" });
+      return;
+    }
+    const approvalIds = ids.filter((id): id is string => typeof id === "string");
+    const results: Array<{ id: string; status: "approved" | "error"; applied?: boolean; error?: string }> = [];
+    for (const id of approvalIds) {
+      try {
+        const { approval, applied } = await svc.approve(
+          id,
+          req.body.decidedByUserId ?? "board",
+          undefined,
+          undefined,
+        );
+        if (applied) {
+          const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
+          const linkedIssueIds = linkedIssues.map((issue) => issue.id);
+          const primaryIssueId = linkedIssueIds[0] ?? null;
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.approved",
+            entityType: "approval",
+            entityId: approval.id,
+            details: { type: approval.type, requestedByAgentId: approval.requestedByAgentId, linkedIssueIds },
+          });
+          if (approval.requestedByAgentId) {
+            try {
+              const wakeRun = await heartbeat.wakeup(approval.requestedByAgentId, {
+                source: "automation",
+                triggerDetail: "system",
+                reason: "approval_approved",
+                payload: {
+                  approvalId: approval.id,
+                  approvalStatus: approval.status,
+                  issueId: primaryIssueId,
+                  issueIds: linkedIssueIds,
+                },
+                requestedByActorType: "user",
+                requestedByActorId: req.actor.userId ?? "board",
+                contextSnapshot: {
+                  source: "approval.approved",
+                  approvalId: approval.id,
+                  approvalStatus: approval.status,
+                  issueId: primaryIssueId,
+                  issueIds: linkedIssueIds,
+                  taskId: primaryIssueId,
+                  wakeReason: "approval_approved",
+                },
+              });
+              await logActivity(db, {
+                companyId: approval.companyId,
+                actorType: "user",
+                actorId: req.actor.userId ?? "board",
+                action: "approval.requester_wakeup_queued",
+                entityType: "approval",
+                entityId: approval.id,
+                details: { requesterAgentId: approval.requestedByAgentId, wakeRunId: wakeRun?.id ?? null, linkedIssueIds },
+              });
+            } catch (err) {
+              logger.warn({ err, approvalId: approval.id }, "batch-approve: failed to queue requester wakeup");
+            }
+          }
+        }
+        results.push({ id, status: "approved", applied });
+      } catch (err) {
+        results.push({ id, status: "error", error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    res.json({ results });
+  });
+
   router.post("/approvals/:id/reject", validate(resolveApprovalSchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;

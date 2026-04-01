@@ -21,4 +21,9 @@ export const approvalsApi = {
   addComment: (id: string, body: string) =>
     api.post<ApprovalComment>(`/approvals/${id}/comments`, { body }),
   listIssues: (id: string) => api.get<Issue[]>(`/approvals/${id}/issues`),
+  batchApprove: (companyId: string, ids: string[]) =>
+    api.post<{ results: Array<{ id: string; status: string; applied?: boolean; error?: string }> }>(
+      `/companies/${companyId}/approvals/batch-approve`,
+      { ids },
+    ),
 };
