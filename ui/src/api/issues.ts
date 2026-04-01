@@ -68,6 +68,7 @@ export const issuesApi = {
     }),
   release: (id: string) => api.post<Issue>(`/issues/${id}/release`, {}),
   listComments: (id: string) => api.get<IssueComment[]>(`/issues/${id}/comments`),
+  listCommentsAsc: (id: string) => api.get<IssueComment[]>(`/issues/${id}/comments?order=asc`),
   addComment: (id: string, body: string, reopen?: boolean, interrupt?: boolean) =>
     api.post<IssueComment>(
       `/issues/${id}/comments`,

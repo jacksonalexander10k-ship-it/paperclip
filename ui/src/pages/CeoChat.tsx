@@ -498,10 +498,10 @@ export function CeoChat() {
     setSearchParams({ convo: id });
   }, [setSearchParams]);
 
-  // ── Load comments — poll only when NOT streaming ─────────────────────────────
+  // ── Load comments in chronological order — poll only when NOT streaming ──────
   const { data: comments = [], isLoading: commentsLoading } = useQuery({
     queryKey: issueId ? queryKeys.issues.comments(issueId) : [],
-    queryFn: () => issuesApi.listComments(issueId!),
+    queryFn: () => issuesApi.listCommentsAsc(issueId!),
     enabled: !!issueId,
     refetchInterval: isStreaming ? false : 5_000,
   });
@@ -701,7 +701,7 @@ export function CeoChat() {
       </div>
 
       {/* ── Chat messages area ─────────────────────────────────────────── */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 mb-14 md:mb-0">
+      <div key={issueId ?? "empty"} ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 mb-14 md:mb-0">
         <div>
           {commentsLoading && (
             <div className="flex items-center justify-center py-12">
