@@ -80,3 +80,4 @@ export { aygentCallConfigs, aygentCallScripts } from "./aygent-call-config.js";
 export { aygentCallLogs } from "./aygent-call-logs.js";
 export { aygentListingWatches } from "./aygent-listing-watches.js";
 export { companySubscriptions } from "./billing.js";
+export { knowledgeBaseFiles } from "./knowledge_base_files.js";
