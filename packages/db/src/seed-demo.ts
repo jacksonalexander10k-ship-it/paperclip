@@ -362,9 +362,78 @@ Also flagging: Hassan Al Qassimi (score 10, AED 5-10M budget) viewed 2 Downtown 
   }
   console.log("✓ CEO Chat conversation (morning brief + owner interaction)");
 
+  // ── Demo User + Membership ──────────────────────────────────
+  const DEMO_EMAIL = "demo@aygencyworld.com";
+  const DEMO_PASSWORD = "demo1234";
+  const DEMO_USER_ID = "demo-user-001";
+
+  // Clean up previous demo user if exists
+  await sql`DELETE FROM company_memberships WHERE principal_id = ${DEMO_USER_ID}`;
+  await sql`DELETE FROM instance_user_roles WHERE user_id = ${DEMO_USER_ID}`;
+  await sql`DELETE FROM account WHERE user_id = ${DEMO_USER_ID}`;
+  await sql`DELETE FROM session WHERE user_id = ${DEMO_USER_ID}`;
+  await sql`DELETE FROM "user" WHERE id = ${DEMO_USER_ID}`;
+
+  // Create user via sign-up API (server must be running)
+  const SERVER_URL = process.env.PAPERCLIP_PUBLIC_URL ?? "http://localhost:3001";
+  let signUpWorked = false;
+  try {
+    const signUpRes = await fetch(`${SERVER_URL}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Demo Owner", email: DEMO_EMAIL, password: DEMO_PASSWORD }),
+    });
+    if (signUpRes.ok) {
+      signUpWorked = true;
+      // Get the user ID that was created
+      const signUpData = await signUpRes.json() as { user?: { id?: string } };
+      const createdUserId = signUpData?.user?.id;
+      if (createdUserId) {
+        // Create membership linking this user to the demo company
+        await sql`INSERT INTO company_memberships (id, company_id, principal_type, principal_id, status, membership_role)
+                  VALUES (${randomUUID()}, ${COMPANY_ID}, 'user', ${createdUserId}, 'active', 'owner')`;
+        // Ensure instance_admin role
+        await sql`INSERT INTO instance_user_roles (id, user_id, role)
+                  VALUES (${randomUUID()}, ${createdUserId}, 'instance_admin')
+                  ON CONFLICT DO NOTHING`;
+        console.log(`✓ Demo user created: ${DEMO_EMAIL} / ${DEMO_PASSWORD} (linked to company)`);
+      } else {
+        console.log("⚠ Sign-up succeeded but couldn't extract user ID. Create membership manually.");
+      }
+    } else {
+      const body = await signUpRes.text();
+      // User might already exist — try sign-in to get user ID
+      if (body.includes("already") || signUpRes.status === 422 || signUpRes.status === 409) {
+        console.log("  Demo user already exists, linking to company...");
+        // Find the existing user by email
+        const [existingUser] = await sql`SELECT id FROM "user" WHERE email = ${DEMO_EMAIL}`;
+        if (existingUser) {
+          await sql`DELETE FROM company_memberships WHERE principal_id = ${existingUser.id} AND company_id = ${COMPANY_ID}`;
+          await sql`INSERT INTO company_memberships (id, company_id, principal_type, principal_id, status, membership_role)
+                    VALUES (${randomUUID()}, ${COMPANY_ID}, 'user', ${existingUser.id}, 'active', 'owner')`;
+          signUpWorked = true;
+          console.log(`✓ Demo user linked: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+        }
+      } else {
+        console.log(`⚠ Sign-up failed (${signUpRes.status}). Server might not be running.`);
+      }
+    }
+  } catch (err) {
+    console.log(`⚠ Could not reach server at ${SERVER_URL}. Start the server first, then re-run seed.`);
+  }
+
+  if (!signUpWorked) {
+    console.log(`\n  To create the demo user manually:`);
+    console.log(`  1. Start the server: pnpm dev`);
+    console.log(`  2. Go to http://localhost:5173 and sign up with: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+    console.log(`  3. Re-run this seed to link the user to the demo company`);
+  }
+
   console.log("\n✅ Demo seed complete!");
   console.log(`\n   Company: Dubai Prestige Properties`);
   console.log(`   Company ID: ${COMPANY_ID}`);
+  console.log(`   Login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+  console.log(`   URL: http://localhost:5173`);
   console.log(`   Agents: Khalid (CEO), Layla (Sales), Nour (Content), Omar (Market), Sara (Viewing)`);
   console.log(`   Leads: 15 | Properties: 8 | Approvals: 4 pending`);
   console.log(`   Learnings: 12 | Agent Messages: 12 | WhatsApp: 9`);
