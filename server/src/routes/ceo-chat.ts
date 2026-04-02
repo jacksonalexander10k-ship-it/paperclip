@@ -1,5 +1,5 @@
 import { Router } from "express";
-import Anthropic from "@anthropic-ai/sdk";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,7 +58,6 @@ function formatCents(cents: number): string {
 
 export function ceoChatRoutes(db: Db) {
   const router = Router();
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   router.post("/companies/:companyId/ceo-chat", async (req, res) => {
     const { companyId } = req.params;
@@ -74,20 +73,6 @@ export function ceoChatRoutes(db: Db) {
     if (!message || typeof message !== "string" || !message.trim()) {
       res.status(400).json({ error: "message is required" });
       return;
-    }
-
-    // Demo mode: if this is the DPP demo company, use the demo orchestrator instead of Anthropic
-    try {
-      const { companies } = await import("@paperclipai/db");
-      const { eq: eqOp } = await import("drizzle-orm");
-      const [company] = await db.select({ issuePrefix: companies.issuePrefix }).from(companies).where(eqOp(companies.id, companyId));
-      if (company?.issuePrefix === "DPP") {
-        const { handleDemoChat } = await import("./demo-orchestrator.js");
-        await handleDemoChat(db, companyId, message.trim(), clientIssueId ?? null, req, res);
-        return;
-      }
-    } catch (err) {
-      logger.error({ err }, "ceo-chat: demo mode check failed, continuing with normal flow");
     }
 
     // Resolve model: Opus for Deep Think mode (with monthly cap)
@@ -158,7 +143,7 @@ export function ceoChatRoutes(db: Db) {
     const sortedComments = [...recentComments].reverse();
     const historyComments = sortedComments.slice(0, -1);
 
-    const anthropicHistory: Anthropic.Messages.MessageParam[] = [];
+    const anthropicHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
     for (const c of historyComments) {
       const role: "user" | "assistant" =
         c.authorUserId !== null && c.authorAgentId === null ? "user" : "assistant";
@@ -405,24 +390,65 @@ You can also use these commands:
     let fullAssistantText = "";
 
     try {
-      const stream = anthropic.messages.stream({
-        model: activeModel,
-        max_tokens: activeMaxTokens,
-        system: systemPrompt,
-        messages: anthropicHistory,
-      });
-
-      for await (const event of stream) {
-        if (aborted) break;
-
-        if (
-          event.type === "content_block_delta" &&
-          event.delta.type === "text_delta"
-        ) {
-          fullAssistantText += event.delta.text;
-          send({ type: "text", text: event.delta.text });
-        }
+      // Build the full prompt for Claude Code CLI
+      const conversationParts: string[] = [];
+      for (const msg of anthropicHistory) {
+        const role = msg.role === "user" ? "Human" : "Assistant";
+        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+        conversationParts.push(`${role}: ${content}`);
       }
+
+      const fullPrompt = `${systemPrompt}\n\n${conversationParts.join("\n\n")}`;
+
+      // Spawn Claude Code CLI — uses the user's Claude subscription, no API key needed
+      fullAssistantText = await new Promise<string>((resolvePromise, rejectPromise) => {
+        const proc = spawn("claude", [
+          "--print",
+          "--model", activeModel,
+          "--max-turns", "1",
+        ], {
+          env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+
+        let output = "";
+        let stderr = "";
+
+        proc.stdout.on("data", (chunk: Buffer) => {
+          const text = chunk.toString();
+          output += text;
+          // Stream each chunk to the client via SSE
+          if (!aborted) {
+            send({ type: "text", text });
+          }
+        });
+
+        proc.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString();
+        });
+
+        proc.on("close", (code) => {
+          if (code === 0) {
+            resolvePromise(output);
+          } else {
+            logger.error({ code, stderr: stderr.slice(0, 500) }, "ceo-chat: claude process failed");
+            rejectPromise(new Error(`Claude process exited with code ${code}`));
+          }
+        });
+
+        proc.on("error", (err) => {
+          rejectPromise(err);
+        });
+
+        // Write the prompt to stdin and close
+        proc.stdin.write(fullPrompt);
+        proc.stdin.end();
+
+        // Kill if client disconnects
+        req.on("close", () => {
+          if (!proc.killed) proc.kill("SIGTERM");
+        });
+      });
 
       // Parse for approval blocks and create real approval records
       let savedText = fullAssistantText;
