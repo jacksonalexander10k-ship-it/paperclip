@@ -91,6 +91,12 @@ const ROLE_TOOLS: Record<string, string[]> = {
     "search_leads", "get_lead_activity",
     "create_task", "remember", "search_past_conversations",
   ],
+  calling: [
+    "make_call", "send_whatsapp", "send_email",
+    "search_leads", "update_lead", "get_lead_activity",
+    "search_whatsapp", "list_whatsapp_templates", "use_whatsapp_template",
+    "create_task", "remember", "search_past_conversations",
+  ],
 };
 
 function getToolsForRole(role: string): string[] | null {
