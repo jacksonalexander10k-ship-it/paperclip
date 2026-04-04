@@ -91,3 +91,5 @@ export { aygentInvoices } from "./aygent-invoices.js";
 export { aygentExpenses } from "./aygent-expenses.js";
 export { aygentComplianceChecks } from "./aygent-compliance-checks.js";
 export { aygentBrokerCards } from "./aygent-broker-cards.js";
+export { aygentRentCheques } from "./aygent-rent-cheques.js";
+export { aygentMaintenanceRequests } from "./aygent-maintenance-requests.js";
