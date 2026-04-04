@@ -185,6 +185,12 @@ import {
   getAgencyPnlDefinition, getAgencyPnlExecutor,
 } from "./finance.js";
 
+// Operations tools
+import {
+  getAgentPerformanceDefinition,
+  getAgentPerformanceExecutor,
+} from "./operations.js";
+
 // Compliance tools
 import {
   runKycCheckDefinition,
@@ -291,6 +297,8 @@ const allDefinitions: ToolDefinition[] = [
   calculateVatDefinition,
   trackExpenseDefinition,
   getAgencyPnlDefinition,
+  // Operations (1)
+  getAgentPerformanceDefinition,
   // Compliance (6)
   runKycCheckDefinition,
   screenPepSanctionsDefinition,
@@ -388,6 +396,8 @@ const allExecutors: Record<string, ToolExecutor> = {
   calculate_vat: calculateVatExecutor,
   track_expense: trackExpenseExecutor,
   get_agency_pnl: getAgencyPnlExecutor,
+  // Operations
+  get_agent_performance: getAgentPerformanceExecutor,
   // Compliance
   run_kyc_check: runKycCheckExecutor,
   screen_pep_sanctions: screenPepSanctionsExecutor,
