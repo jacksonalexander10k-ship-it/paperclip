@@ -60,6 +60,9 @@ const ROLE_TOOLS: Record<string, string[]> = {
     "track_payment", "get_accounts_receivable", "calculate_vat",
     "track_expense", "get_agency_pnl",
     "track_deal", "get_deal_pipeline",
+    "track_rent_cheques", "collect_rent_payment", "generate_landlord_statement",
+    "create_maintenance_request", "screen_tenant",
+    "get_agent_performance",
     "create_task", "remember", "search_past_conversations",
   ],
   viewing: [
@@ -74,6 +77,8 @@ const ROLE_TOOLS: Record<string, string[]> = {
     "calculate_rera_rent", "calculate_dld_fees",
     "create_portal", "get_portal_activity",
     "list_documents", "send_email", "send_whatsapp",
+    "track_rent_cheques", "collect_rent_payment", "generate_landlord_statement",
+    "create_maintenance_request", "screen_tenant",
     "create_task", "remember", "search_past_conversations",
   ],
   conveyancing: [

@@ -191,6 +191,15 @@ import {
   getAgentPerformanceExecutor,
 } from "./operations.js";
 
+// Property Management tools
+import {
+  trackRentChequesDefinition, trackRentChequesExecutor,
+  collectRentPaymentDefinition, collectRentPaymentExecutor,
+  generateLandlordStatementDefinition, generateLandlordStatementExecutor,
+  createMaintenanceRequestDefinition, createMaintenanceRequestExecutor,
+  screenTenantDefinition, screenTenantExecutor,
+} from "./property-management.js";
+
 // Compliance tools
 import {
   runKycCheckDefinition,
@@ -299,6 +308,12 @@ const allDefinitions: ToolDefinition[] = [
   getAgencyPnlDefinition,
   // Operations (1)
   getAgentPerformanceDefinition,
+  // Property Management (5)
+  trackRentChequesDefinition,
+  collectRentPaymentDefinition,
+  generateLandlordStatementDefinition,
+  createMaintenanceRequestDefinition,
+  screenTenantDefinition,
   // Compliance (6)
   runKycCheckDefinition,
   screenPepSanctionsDefinition,
@@ -398,6 +413,12 @@ const allExecutors: Record<string, ToolExecutor> = {
   get_agency_pnl: getAgencyPnlExecutor,
   // Operations
   get_agent_performance: getAgentPerformanceExecutor,
+  // Property Management
+  track_rent_cheques: trackRentChequesExecutor,
+  collect_rent_payment: collectRentPaymentExecutor,
+  generate_landlord_statement: generateLandlordStatementExecutor,
+  create_maintenance_request: createMaintenanceRequestExecutor,
+  screen_tenant: screenTenantExecutor,
   // Compliance
   run_kyc_check: runKycCheckExecutor,
   screen_pep_sanctions: screenPepSanctionsExecutor,
