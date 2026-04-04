@@ -164,6 +164,27 @@ import {
   getCampaignStatsExecutor,
 } from "./admin.js";
 
+// Deal tools
+import {
+  trackDealDefinition, trackDealExecutor,
+  updateDealStageDefinition, updateDealStageExecutor,
+  getDealPipelineDefinition, getDealPipelineExecutor,
+  generateDocumentChecklistDefinition, generateDocumentChecklistExecutor,
+  calculateTransferCostsDefinition, calculateTransferCostsExecutor,
+} from "./deals.js";
+
+// Finance tools
+import {
+  trackCommissionDefinition, trackCommissionExecutor,
+  calculateCommissionSplitDefinition, calculateCommissionSplitExecutor,
+  generateInvoiceDefinition, generateInvoiceExecutor,
+  trackPaymentDefinition, trackPaymentExecutor,
+  getAccountsReceivableDefinition, getAccountsReceivableExecutor,
+  calculateVatDefinition, calculateVatExecutor,
+  trackExpenseDefinition, trackExpenseExecutor,
+  getAgencyPnlDefinition, getAgencyPnlExecutor,
+} from "./finance.js";
+
 // Compliance tools
 import {
   runKycCheckDefinition,
@@ -255,6 +276,21 @@ const allDefinitions: ToolDefinition[] = [
   setGuardrailsDefinition,
   getNewsDefinition,
   getCampaignStatsDefinition,
+  // Deals (5)
+  trackDealDefinition,
+  updateDealStageDefinition,
+  getDealPipelineDefinition,
+  generateDocumentChecklistDefinition,
+  calculateTransferCostsDefinition,
+  // Finance (8)
+  trackCommissionDefinition,
+  calculateCommissionSplitDefinition,
+  generateInvoiceDefinition,
+  trackPaymentDefinition,
+  getAccountsReceivableDefinition,
+  calculateVatDefinition,
+  trackExpenseDefinition,
+  getAgencyPnlDefinition,
   // Compliance (6)
   runKycCheckDefinition,
   screenPepSanctionsDefinition,
@@ -337,6 +373,21 @@ const allExecutors: Record<string, ToolExecutor> = {
   set_guardrails: setGuardrailsExecutor,
   get_news: getNewsExecutor,
   get_campaign_stats: getCampaignStatsExecutor,
+  // Deals
+  track_deal: trackDealExecutor,
+  update_deal_stage: updateDealStageExecutor,
+  get_deal_pipeline: getDealPipelineExecutor,
+  generate_document_checklist: generateDocumentChecklistExecutor,
+  calculate_transfer_costs: calculateTransferCostsExecutor,
+  // Finance
+  track_commission: trackCommissionExecutor,
+  calculate_commission_split: calculateCommissionSplitExecutor,
+  generate_invoice: generateInvoiceExecutor,
+  track_payment: trackPaymentExecutor,
+  get_accounts_receivable: getAccountsReceivableExecutor,
+  calculate_vat: calculateVatExecutor,
+  track_expense: trackExpenseExecutor,
+  get_agency_pnl: getAgencyPnlExecutor,
   // Compliance
   run_kyc_check: runKycCheckExecutor,
   screen_pep_sanctions: screenPepSanctionsExecutor,
