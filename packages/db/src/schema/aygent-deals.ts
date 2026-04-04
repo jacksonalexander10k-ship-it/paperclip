@@ -1,0 +1,55 @@
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  timestamp,
+  jsonb,
+  index,
+} from "drizzle-orm/pg-core";
+import { companies } from "./companies.js";
+import { agents } from "./agents.js";
+import { aygentLeads } from "./aygent-leads.js";
+
+export const aygentDeals = pgTable(
+  "aygent_deals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").references(() => aygentLeads.id, { onDelete: "set null" }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    dealType: text("deal_type").notNull(),
+    stage: text("stage").notNull().default("offer"),
+    fellThroughReason: text("fell_through_reason"),
+    propertyAddress: text("property_address").notNull(),
+    propertyType: text("property_type"),
+    area: text("area"),
+    developer: text("developer"),
+    projectName: text("project_name"),
+    price: integer("price").notNull(),
+    buyerName: text("buyer_name"),
+    buyerPhone: text("buyer_phone"),
+    buyerEmail: text("buyer_email"),
+    sellerName: text("seller_name"),
+    sellerPhone: text("seller_phone"),
+    formFDate: timestamp("form_f_date", { withTimezone: true }),
+    nocAppliedDate: timestamp("noc_applied_date", { withTimezone: true }),
+    nocReceivedDate: timestamp("noc_received_date", { withTimezone: true }),
+    nocExpiryDate: timestamp("noc_expiry_date", { withTimezone: true }),
+    mortgageBank: text("mortgage_bank"),
+    mortgageStatus: text("mortgage_status"),
+    transferDate: timestamp("transfer_date", { withTimezone: true }),
+    completionDate: timestamp("completion_date", { withTimezone: true }),
+    documentsChecklist: jsonb("documents_checklist").$type<Record<string, boolean>>().default({}),
+    expectedCloseDate: timestamp("expected_close_date", { withTimezone: true }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    companyStageIdx: index("aygent_deals_company_stage_idx").on(table.companyId, table.stage),
+    companyDealTypeIdx: index("aygent_deals_company_deal_type_idx").on(table.companyId, table.dealType),
+    leadIdx: index("aygent_deals_lead_idx").on(table.leadId),
+    agentIdx: index("aygent_deals_agent_idx").on(table.agentId),
+  }),
+);
