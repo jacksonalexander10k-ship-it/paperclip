@@ -469,12 +469,12 @@ export function testIntegrationRoutes(db: Db) {
       };
 
       // Fire the payload at our own webhook endpoint internally
-      // (avoids needing a real HTTP call — just invoke the route handler logic directly)
-      const { whatsappWebhookRoutes: _unused, ..._ } = await import("./whatsapp-webhook.js");
-      // Actually, easier to just make an internal HTTP request to our own server
-      const port = process.env.PORT ?? "3100";
-      const baseUrl = `http://127.0.0.1:${port}`;
+      // Use the same host/port the current request came in on
+      const proto = req.protocol;
+      const host = req.get("host") ?? "127.0.0.1:3002";
+      const baseUrl = `${proto}://${host}`;
 
+      logger.info({ baseUrl }, "simulate-lead: sending webhook to self");
       const webhookRes = await fetch(`${baseUrl}/webhook/whatsapp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
