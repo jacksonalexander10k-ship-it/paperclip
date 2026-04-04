@@ -46,6 +46,16 @@ export const AGENT_ROLES = [
   "devops",
   "researcher",
   "general",
+  // Aygency World — Dubai real estate roles
+  "sales",
+  "content",
+  "marketing",
+  "viewing",
+  "finance",
+  "calling",
+  "manager",
+  "conveyancing",
+  "compliance",
 ] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
@@ -61,6 +71,16 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   devops: "DevOps",
   researcher: "Researcher",
   general: "General",
+  // Aygency World
+  sales: "Sales",
+  content: "Content",
+  marketing: "Marketing",
+  viewing: "Viewing",
+  finance: "Finance",
+  calling: "Calling",
+  manager: "Manager",
+  conveyancing: "Conveyancing",
+  compliance: "Compliance",
 };
 
 export const AGENT_ICON_NAMES = [
@@ -122,7 +142,7 @@ export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 
-export const ISSUE_ORIGIN_KINDS = ["manual", "routine_execution"] as const;
+export const ISSUE_ORIGIN_KINDS = ["manual", "routine_execution", "webhook", "system"] as const;
 export type IssueOriginKind = (typeof ISSUE_ORIGIN_KINDS)[number];
 
 export const GOAL_LEVELS = ["company", "team", "agent", "task"] as const;
@@ -184,7 +204,23 @@ export const PROJECT_COLORS = [
   "#3b82f6", // blue
 ] as const;
 
-export const APPROVAL_TYPES = ["hire_agent", "approve_ceo_strategy", "budget_override_required"] as const;
+export const APPROVAL_TYPES = [
+  "hire_agent",
+  "approve_ceo_strategy",
+  "budget_override_required",
+  // Aygency World
+  "hire_team",
+  "send_whatsapp",
+  "send_email",
+  "post_instagram",
+  "skill_amendment",
+  "approve_plan",
+  "bulk_whatsapp",
+  "confirm_viewing",
+  "send_pitch_deck",
+  "launch_fb_campaign",
+  "ceo_proposal",
+] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 
 export const APPROVAL_STATUSES = [
@@ -317,6 +353,9 @@ export const LIVE_EVENT_TYPES = [
   "plugin.ui.updated",
   "plugin.worker.crashed",
   "plugin.worker.restarted",
+  "baileys.qr",
+  "baileys.connected",
+  "baileys.disconnected",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENT_TYPES)[number];
 
