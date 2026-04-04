@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
-import { agents as agentsTable, companies, heartbeatRuns } from "@paperclipai/db";
+import { agents as agentsTable, companies, heartbeatRuns, issues } from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
   agentSkillSyncSchema,
@@ -2355,6 +2355,51 @@ export function agentRoutes(db: Db) {
       agentName: agent.name,
       adapterType: agent.adapterType,
     });
+  });
+
+  // --------------------------------------------------------------------------
+  // #42 — Per-agent stats
+  // --------------------------------------------------------------------------
+  router.get("/companies/:companyId/agents/:agentId/stats", async (req, res) => {
+    const { companyId, agentId: targetAgentId } = req.params;
+    assertCompanyAccess(req, companyId);
+
+    // Count total & done issues assigned to this agent
+    const issueRows = await db
+      .select({
+        total: sql<number>`count(*)`,
+        done: sql<number>`count(*) filter (where ${issues.status} = 'done')`,
+      })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, companyId),
+          eq(issues.assigneeAgentId, targetAgentId),
+        ),
+      );
+    const totalTasks = Number(issueRows[0]?.total ?? 0);
+    const doneTasks = Number(issueRows[0]?.done ?? 0);
+    const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+    // Count total runs & get latest finishedAt
+    const runRows = await db
+      .select({
+        total: sql<number>`count(*)`,
+        lastRunAt: sql<string | null>`max(${heartbeatRuns.finishedAt})`,
+      })
+      .from(heartbeatRuns)
+      .where(
+        and(
+          eq(heartbeatRuns.companyId, companyId),
+          eq(heartbeatRuns.agentId, targetAgentId),
+        ),
+      );
+    const totalRuns = Number(runRows[0]?.total ?? 0);
+    const lastRunAt = runRows[0]?.lastRunAt
+      ? new Date(runRows[0].lastRunAt).toISOString()
+      : null;
+
+    res.json({ totalTasks, doneTasks, completionRate, totalRuns, lastRunAt });
   });
 
   return router;

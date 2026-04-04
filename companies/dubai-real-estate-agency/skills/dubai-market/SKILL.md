@@ -1,6 +1,8 @@
 ---
 name: dubai-market
 description: Dubai real estate market knowledge — areas, developers, pricing, Golden Visa, payment plans
+metadata:
+  allowed-tools: []
 ---
 
 # Dubai Real Estate Market Knowledge

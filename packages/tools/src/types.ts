@@ -14,6 +14,8 @@ export interface ToolContext {
   companyId: string;
   agentId: string;
   db: Db;
+  /** The issue ID for the current heartbeat run. Used to store deliverables. */
+  issueId?: string;
 }
 
 export type ToolExecutor = (

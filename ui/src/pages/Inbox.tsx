@@ -77,7 +77,35 @@ function firstNonEmptyLine(value: string | null | undefined): string | null {
 }
 
 function runFailureMessage(run: HeartbeatRun): string {
-  return firstNonEmptyLine(run.error) ?? firstNonEmptyLine(run.stderrExcerpt) ?? "Run exited with an error.";
+  const raw = firstNonEmptyLine(run.error) ?? firstNonEmptyLine(run.stderrExcerpt) ?? "";
+  return sanitizeErrorMessage(raw);
+}
+
+/** Clean up raw error messages for non-technical users */
+function sanitizeErrorMessage(raw: string): string {
+  if (!raw) return "Something went wrong. Try again or contact support.";
+  const lower = raw.toLowerCase();
+  // Credit/billing errors
+  if (lower.includes("credit balance") || lower.includes("insufficient_quota") || lower.includes("rate_limit"))
+    return "Credit balance is low. Please add credits to continue.";
+  // Auth errors
+  if (lower.includes("unauthorized") || lower.includes("authentication") || lower.includes("api key"))
+    return "Authentication error. Please check your settings.";
+  // Timeout
+  if (lower.includes("timeout") || lower.includes("timed out"))
+    return "The agent took too long to respond. It will retry automatically.";
+  // Process/adapter errors
+  if (lower.includes("adapter") || lower.includes("process") || lower.includes("spawn"))
+    return "Agent couldn't start. Please try again.";
+  // Strip "Claude run failed:" prefix and "subtype=xxx:" codes
+  let cleaned = raw
+    .replace(/Claude run failed:\s*/i, "")
+    .replace(/subtype=\w+:\s*/i, "")
+    .replace(/\(adapter_failed\)/i, "")
+    .trim();
+  if (!cleaned) return "Something went wrong. Try again or contact support.";
+  // Capitalize first letter
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 function approvalStatusLabel(status: Approval["status"]): string {
@@ -484,7 +512,7 @@ function IssueNotificationCard({
             <span className="font-mono text-[11px]">
               {issue.identifier ?? issue.id.slice(0, 8)}
             </span>
-            {liveIssueIds.has(issue.id) && (
+            {liveIssueIds.has(issue.id) ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
@@ -494,7 +522,21 @@ function IssueNotificationCard({
                   Live
                 </span>
               </span>
-            )}
+            ) : issue.lastExternalCommentAt ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-1.5 py-0.5">
+                <CheckCheck className="h-2.5 w-2.5 text-green-600 dark:text-green-400" />
+                <span className="text-[10px] font-medium text-green-600 dark:text-green-400">
+                  Replied
+                </span>
+              </span>
+            ) : issue.status !== "done" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                  Pending
+                </span>
+              </span>
+            ) : null}
           </span>
         </Link>
 

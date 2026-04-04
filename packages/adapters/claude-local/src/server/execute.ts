@@ -470,6 +470,33 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     heartbeatPromptChars: renderedPrompt.length,
   };
 
+  // Build MCP config so agents get access to role-scoped tools
+  const agentRole = asString(context.paperclipAgentRole, "general");
+  const mcpToolServerPath = path.resolve(__moduleDir, "../../../../../server/src/mcp-tool-server.ts");
+  const mcpConfigPath = path.join(skillsDir, "mcp-config.json");
+  // Use node + tsx CLI directly (avoids broken symlinks and space-in-path issues)
+  const tsxCliPath = path.resolve(__moduleDir, "../../../../../node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/cli.mjs");
+  const nodeBin = process.execPath; // absolute path to node binary
+
+  const mcpConfig = {
+    mcpServers: {
+      "aygent-tools": {
+        command: nodeBin,
+        args: [tsxCliPath, mcpToolServerPath],
+        env: {
+          PAPERCLIP_COMPANY_ID: agent.companyId,
+          PAPERCLIP_AGENT_ID: agent.id,
+          PAPERCLIP_AGENT_ROLE: agentRole,
+          PAPERCLIP_ISSUE_ID: asString(context.issueId, asString(context.taskId, "")),
+          // Omit DATABASE_URL — MCP server uses its built-in fallback for embedded postgres.
+          // Only set it explicitly for external postgres deployments.
+          ...(process.env.PAPERCLIP_DATABASE_URL ? { DATABASE_URL: process.env.PAPERCLIP_DATABASE_URL } : {}),
+        },
+      },
+    },
+  };
+  await fs.writeFile(mcpConfigPath, JSON.stringify(mcpConfig), "utf-8");
+
   const buildClaudeArgs = (resumeSessionId: string | null) => {
     const args = ["--print", "-", "--output-format", "stream-json", "--verbose"];
     if (resumeSessionId) args.push("--resume", resumeSessionId);
@@ -482,6 +509,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       args.push("--append-system-prompt-file", effectiveInstructionsFilePath);
     }
     args.push("--add-dir", skillsDir);
+    args.push("--mcp-config", mcpConfigPath);
+    args.push("--strict-mcp-config");
     if (extraArgs.length > 0) args.push(...extraArgs);
     return args;
   };

@@ -150,13 +150,14 @@ export const searchEmailDefinition: ToolDefinition = {
 };
 
 export const searchEmailExecutor: ToolExecutor = async (input, _ctx) => {
-  const { query, maxResults } = input as { query: string; maxResults?: number };
-  // Stub — Gmail API not connected yet
+  const { query, maxResults: _maxResults } = input as { query: string; maxResults?: number };
   return {
-    status: "stub",
-    message: "Gmail API not yet connected. Wire real credentials in Phase 2.",
+    results: [],
     query,
-    maxResults: maxResults ?? 10,
+    message:
+      "Gmail is not connected yet. No email data is available. " +
+      "To search past communications, use search_whatsapp instead. " +
+      "Ask the agency owner to connect Gmail in Settings to enable email search.",
   };
 };
 
@@ -167,7 +168,7 @@ export const searchEmailExecutor: ToolExecutor = async (input, _ctx) => {
 export const sendEmailDefinition: ToolDefinition = {
   name: "send_email",
   description:
-    "Draft an email to send on behalf of the agent. This NEVER sends directly — it returns a preview for the agent to approve, edit, or cancel. Use this when the agent asks to email someone.",
+    "Draft an email to send on behalf of the agent. This NEVER sends directly — it returns a preview for the agent to approve, edit, or cancel. Use this when the agent asks to email someone. Supports file attachments from knowledge base or work products.",
   input_schema: {
     type: "object",
     properties: {
@@ -183,19 +184,43 @@ export const sendEmailDefinition: ToolDefinition = {
         type: "string",
         description: "Email body text",
       },
+      attachments: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            assetId: {
+              type: "string",
+              description: "Asset ID from knowledge base or work products",
+            },
+            filename: {
+              type: "string",
+              description: "Display filename for the attachment",
+            },
+          },
+          required: ["assetId"],
+        },
+        description: "Files to attach — use asset IDs from search_knowledge_base or work products",
+      },
     },
     required: ["to", "subject", "body"],
   },
 };
 
 export const sendEmailExecutor: ToolExecutor = async (input, _ctx) => {
-  const { to, subject, body } = input as { to: string; subject: string; body: string };
+  const { to, subject, body, attachments } = input as {
+    to: string;
+    subject: string;
+    body: string;
+    attachments?: Array<{ assetId: string; filename?: string }>;
+  };
   return {
     type: "approval_required",
     action: "send_email",
     to,
     subject,
     body,
+    attachments: attachments ?? [],
     status: "pending_approval",
     instructions: "This email will NOT be sent until approved. Review and approve, edit, or reject.",
   };
@@ -221,11 +246,13 @@ export const searchInstagramDmsDefinition: ToolDefinition = {
 };
 
 export const searchInstagramDmsExecutor: ToolExecutor = async (input, _ctx) => {
-  const { limit } = input as { limit?: number };
+  const { limit: _limit } = input as { limit?: number };
   return {
-    status: "stub",
-    message: "Instagram API not yet connected. Wire real credentials in Phase 2.",
-    limit: limit ?? 10,
+    results: [],
+    message:
+      "Instagram is not connected yet. No DM data is available. " +
+      "To search past communications, use search_whatsapp instead. " +
+      "Ask the agency owner to connect Instagram in Settings to enable DM search.",
   };
 };
 

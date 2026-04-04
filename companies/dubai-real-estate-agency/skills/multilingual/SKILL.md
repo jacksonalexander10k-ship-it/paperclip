@@ -1,6 +1,8 @@
 ---
 name: multilingual
 description: Language detection from first message, respond in same language, tone and greeting rules per language
+metadata:
+  allowed-tools: []
 ---
 
 # Multilingual Communication

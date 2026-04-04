@@ -4,11 +4,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   agentsApi,
   type AgentKey,
+  type AgentStats,
   type ClaudeLoginResult,
   type AgentPermissionUpdate,
 } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
 import { budgetsApi } from "../api/budgets";
+import { costsApi } from "../api/costs";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { ApiError } from "../api/client";
@@ -23,6 +25,8 @@ import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { AgentConfigForm } from "../components/AgentConfigForm";
+import { ThoughtProcessStream } from "../components/ThoughtProcessStream";
+import { ConnectedAppsGrid } from "../components/ConnectedAppsGrid";
 import { AgentLearningsTab } from "../components/AgentLearningsTab";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
 import { MarkdownEditor } from "../components/MarkdownEditor";
@@ -76,6 +80,8 @@ import { Input } from "@/components/ui/input";
 // AgentIcon/AgentIconPicker available if needed
 // import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
 import { RunTranscriptView, type TranscriptMode } from "../components/transcript/RunTranscriptView";
+import { WhatsAppConnect } from "../components/WhatsAppConnect";
+import { GmailConnect } from "../components/GmailConnect";
 import {
   isUuidLike,
   type Agent,
@@ -868,6 +874,11 @@ export function AgentDetail() {
           />
           {isAgentWorking ? "Working" : isAgentPaused ? (agent.status === "error" ? "Error" : "Paused") : "Idle"}
         </span>
+        {agent.lastHeartbeatAt && (
+          <span className="text-[10.5px] text-muted-foreground shrink-0">
+            Last run {relativeTime(agent.lastHeartbeatAt)}
+          </span>
+        )}
         <div className="flex-1" />
         <div className="flex items-center gap-2 shrink-0">
           <PauseResumeButton
@@ -942,10 +953,10 @@ export function AgentDetail() {
         <div className="flex border-b border-border/40 px-5 gap-0.5">
           {([
             { value: "dashboard", label: "Overview" },
-            { value: "runs", label: "Runs" },
+            { value: "runs", label: "Activity" },
             { value: "learnings", label: "Learnings" },
             { value: "instructions", label: "Instructions" },
-            { value: "configuration", label: "Config" },
+            { value: "configuration", label: "Settings" },
           ] as const).map((t) => (
             <button
               key={t.value}
@@ -969,7 +980,7 @@ export function AgentDetail() {
           {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           {isPendingApproval && (
             <p className="text-sm text-amber-500">
-              This agent is pending board approval and cannot be invoked yet.
+              This agent is waiting for your approval before it can start working.
             </p>
           )}
 
@@ -1206,6 +1217,48 @@ function LatestRunCard({ runs, agentId }: { runs: HeartbeatRun[]; agentId: strin
 
 /* ---- Agent Overview (main single-page view) ---- */
 
+function AgentStatsCard({ companyId, agentId }: { companyId: string; agentId: string }) {
+  const { data: stats } = useQuery<AgentStats>({
+    queryKey: ["agent-stats", companyId, agentId],
+    queryFn: () => agentsApi.stats(companyId, agentId),
+    enabled: !!companyId && !!agentId,
+  });
+
+  if (!stats) return null;
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[13px] font-semibold">Task Completion</h3>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {stats.doneTasks}/{stats.totalTasks} done
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-primary/10 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-primary transition-all duration-500"
+          style={{ width: `${stats.completionRate}%` }}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <span className="text-muted-foreground">Completion rate</span>
+          <span className="ml-2 font-semibold tabular-nums">{stats.completionRate}%</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Total runs</span>
+          <span className="ml-2 font-semibold tabular-nums">{stats.totalRuns}</span>
+        </div>
+      </div>
+      {stats.lastRunAt && (
+        <div className="text-[11px] text-muted-foreground">
+          Last run: {relativeTime(stats.lastRunAt)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgentOverview({
   agent,
   runs,
@@ -1309,6 +1362,9 @@ function AgentOverview({
         </Link>
       )}
 
+      {/* Thought process stream — real-time agent activity */}
+      <ThoughtProcessStream agentId={agentId} companyId={agent.companyId} />
+
       {/* Metric cards — exact same as Budget page TopStatCard */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
@@ -1327,11 +1383,17 @@ function AgentOverview({
         </div>
       </div>
 
-      {/* Recent Runs list */}
+      {/* Connected integrations */}
+      <ConnectedAppsGrid agentId={agentId} />
+
+      {/* Task completion stats */}
+      <AgentStatsCard companyId={agent.companyId} agentId={agentId} />
+
+      {/* Recent Activity list */}
       {sorted.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-[13px] font-semibold">Recent Runs</h3>
+            <h3 className="text-[13px] font-semibold">Recent Activity</h3>
             <Link
               to={`/agents/${agentRouteId}/runs`}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors no-underline"
@@ -1406,7 +1468,7 @@ function AgentOverview({
       {runtimeState && (
         <div className="space-y-3">
           <h3 className="text-[13px] font-semibold">Cost Breakdown</h3>
-          <CostsSection runtimeState={runtimeState} runs={runs} />
+          <CostsSection runtimeState={runtimeState} runs={runs} companyId={agent.companyId} agentId={agentId} />
         </div>
       )}
     </div>
@@ -1418,10 +1480,25 @@ function AgentOverview({
 function CostsSection({
   runtimeState,
   runs,
+  companyId,
+  agentId,
 }: {
   runtimeState?: AgentRuntimeState;
   runs: HeartbeatRun[];
+  companyId?: string;
+  agentId?: string;
 }) {
+  const { data: modelBreakdown } = useQuery({
+    queryKey: ["costs", "by-agent-model", companyId, agentId],
+    queryFn: () => costsApi.byAgentModel(companyId!),
+    enabled: !!companyId,
+  });
+
+  const agentModelRows = useMemo(() => {
+    if (!modelBreakdown || !agentId) return [];
+    return modelBreakdown.filter((row) => row.agentId === agentId);
+  }, [modelBreakdown, agentId]);
+
   const runsWithCost = runs
     .filter((r) => {
       const metrics = runMetrics(r);
@@ -1433,24 +1510,45 @@ function CostsSection({
     <div className="space-y-4">
       {runtimeState && (
         <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 tabular-nums">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Input tokens</div>
-              <div className="mt-2 text-2xl font-bold">{formatTokens(runtimeState.totalInputTokens)}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Output tokens</div>
-              <div className="mt-2 text-2xl font-bold">{formatTokens(runtimeState.totalOutputTokens)}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Cached tokens</div>
-              <div className="mt-2 text-2xl font-bold">{formatTokens(runtimeState.totalCachedInputTokens)}</div>
-            </div>
+          <div className="grid grid-cols-2 gap-4 tabular-nums">
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Total cost</div>
               <div className="mt-2 text-2xl font-bold">{formatCents(runtimeState.totalCostCents)}</div>
             </div>
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">AI usage</div>
+              <div className="mt-2 text-2xl font-bold">{formatTokens((runtimeState.totalInputTokens ?? 0) + (runtimeState.totalOutputTokens ?? 0))}</div>
+            </div>
           </div>
+        </div>
+      )}
+      {agentModelRows.length > 0 && (
+        <div className="border border-border/50 rounded-xl overflow-hidden">
+          <div className="px-3 py-2 bg-accent/20 border-b border-border">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Cost by Model</span>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-accent/10">
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground">Model</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground">Input</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground">Output</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {agentModelRows
+                .sort((a, b) => b.costCents - a.costCents)
+                .map((row) => (
+                  <tr key={row.model} className="border-b border-border last:border-b-0">
+                    <td className="px-3 py-2 font-mono">{row.model}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatTokens(row.inputTokens)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatTokens(row.outputTokens)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatCents(row.costCents)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </div>
       )}
       {runsWithCost.length > 0 && (
@@ -1702,6 +1800,16 @@ function ConfigurationTab({
         hideInstructionsFile={hideInstructionsFile}
         sectionLayout="cards"
       />
+
+      <div>
+        <h3 className="text-sm font-medium mb-3">WhatsApp</h3>
+        <WhatsAppConnect agentId={agent.id} agentName={agent.name} />
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium mb-3">Gmail</h3>
+        <GmailConnect agentId={agent.id} agentName={agent.name} />
+      </div>
 
       <div>
         <h3 className="text-sm font-medium mb-3">Permissions</h3>

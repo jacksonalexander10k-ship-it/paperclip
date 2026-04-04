@@ -1,6 +1,9 @@
 ---
 name: tools/update-lead
 description: Update a lead record in AygentDesk — score, stage, notes, tags
+metadata:
+  allowed-tools:
+    - update_lead
 ---
 
 # Tool: Update Lead

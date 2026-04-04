@@ -3,6 +3,7 @@ import { aygentDldTransactions, aygentListingWatches } from "@paperclipai/db";
 import type { ToolDefinition, ToolExecutor } from "./types.js";
 import * as bayut from "./lib/bayut.js";
 import * as tavily from "./lib/tavily.js";
+import { storeDeliverable } from "./lib/deliverables.js";
 
 // ═══════════════════════════════════════════════════
 // search_dld_transactions
@@ -341,11 +342,21 @@ export const analyzeInvestmentDefinition: ToolDefinition = {
   },
 };
 
-export const analyzeInvestmentExecutor: ToolExecutor = async (input, _ctx) => {
-  const { projectIds } = input as { projectIds: string[] };
+export const analyzeInvestmentExecutor: ToolExecutor = async (input, ctx) => {
+  const { projectIds: rawProjectIds } = input as { projectIds?: string[] };
+  const projectIds = rawProjectIds ?? [];
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "investment_analysis",
+    title: `Investment Analysis — ${projectIds.length} project(s)`,
+    summary: `AI-driven investment comparison for project IDs: ${projectIds.join(", ")}. Includes ROI, rental yields, and price comparisons.`,
+    metadata: { toolInput: input, projectIds },
+  });
+
   return {
     status: "ai_generation",
     message: "Investment analysis is AI-driven. Use search_projects and search_dld_transactions data to compute ROI, rental yields, and price comparisons for the requested projects.",
+    deliverableId,
     projectIds,
   };
 };

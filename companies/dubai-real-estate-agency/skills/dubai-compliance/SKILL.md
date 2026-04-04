@@ -1,6 +1,8 @@
 ---
 name: dubai-compliance
 description: RERA advertising rules, PDPA data protection, financial disclaimers — what agents can and cannot say
+metadata:
+  allowed-tools: []
 ---
 
 # Dubai Compliance Rules

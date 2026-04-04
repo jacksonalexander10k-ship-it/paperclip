@@ -192,9 +192,19 @@ export const agentsApi = {
   ) => api.post<HeartbeatRun | { status: "skipped" }>(agentPath(id, companyId, "/wakeup"), data),
   loginWithClaude: (id: string, companyId?: string) =>
     api.post<ClaudeLoginResult>(agentPath(id, companyId, "/claude-login"), {}),
+  stats: (companyId: string, agentId: string) =>
+    api.get<AgentStats>(`/companies/${encodeURIComponent(companyId)}/agents/${encodeURIComponent(agentId)}/stats`),
   availableSkills: () =>
     api.get<{ skills: AvailableSkill[] }>("/skills/available"),
 };
+
+export interface AgentStats {
+  totalTasks: number;
+  doneTasks: number;
+  completionRate: number;
+  totalRuns: number;
+  lastRunAt: string | null;
+}
 
 export interface AvailableSkill {
   name: string;

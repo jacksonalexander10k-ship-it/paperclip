@@ -11,8 +11,8 @@ import { PageHeader } from "../components/PageHeader";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, CheckCircle2, Clock, History, MessageCircle, Pencil, Square, CheckSquare } from "lucide-react";
-import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } from "../components/ApprovalPayload";
+import { ShieldCheck, CheckCircle2, Clock, History, MessageCircle, Pencil, Square, CheckSquare, Timer, FileText, Send, ChevronDown } from "lucide-react";
+import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer, OUTBOUND_TYPES } from "../components/ApprovalPayload";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -190,7 +190,7 @@ function LayoutCApprovalCard({
           </div>
         )}
 
-        {/* Action buttons */}
+        {/* Action buttons — multi-option gates for outbound, simple for others */}
         {showResolutionButtons && (
           isEditing ? (
             <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
@@ -219,7 +219,85 @@ function LayoutCApprovalCard({
                 Cancel
               </Button>
             </div>
+          ) : OUTBOUND_TYPES.has(approval.type) ? (
+            /* Multi-option gates for outbound communications */
+            <div className="mt-3 pt-3 border-t border-border/40 space-y-2">
+              <div className="flex gap-2">
+                {/* Primary: Send Now */}
+                <Button
+                  size="sm"
+                  className="flex-1 h-8 bg-green-700 hover:bg-green-600 text-white text-[12px] font-medium gap-1"
+                  onClick={onApprove}
+                  disabled={isPending}
+                >
+                  <Send className="h-3 w-3" />
+                  Send Now
+                </Button>
+                {/* Send with Delay */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-3 text-[12px] border border-border/50 hover:bg-muted gap-1"
+                  onClick={() => {
+                    if (onApproveWithEdit) {
+                      onApproveWithEdit({ _delayMinutes: 30 });
+                    } else {
+                      onApprove();
+                    }
+                  }}
+                  disabled={isPending}
+                  title="Send after 30 min delay — cancel window"
+                >
+                  <Timer className="h-3 w-3" />
+                  30m Delay
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                {/* Edit before sending */}
+                {messagePreview && onApproveWithEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 h-8 px-3 text-[12px] border border-border/50 hover:bg-muted gap-1"
+                    onClick={() => setIsEditing(true)}
+                    disabled={isPending}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit & Send
+                  </Button>
+                )}
+                {/* Save as Draft */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 h-8 px-3 text-[12px] border border-border/50 hover:bg-muted gap-1"
+                  onClick={() => {
+                    if (onApproveWithEdit) {
+                      onApproveWithEdit({ _saveAsDraft: true });
+                    } else {
+                      onApprove();
+                    }
+                  }}
+                  disabled={isPending}
+                  title="Save as draft — review manually later"
+                >
+                  <FileText className="h-3 w-3" />
+                  Save Draft
+                </Button>
+                {/* Decline */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-3 text-[12px] border border-destructive/30 text-destructive hover:bg-destructive/10"
+                  onClick={onReject}
+                  disabled={isPending}
+                >
+                  Decline
+                </Button>
+              </div>
+            </div>
           ) : (
+            /* Standard approve/decline for non-outbound types */
             <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
               <Button
                 size="sm"
@@ -227,7 +305,7 @@ function LayoutCApprovalCard({
                 onClick={onApprove}
                 disabled={isPending}
               >
-                Approve & Send
+                Approve
               </Button>
               {messagePreview && onApproveWithEdit && (
                 <Button

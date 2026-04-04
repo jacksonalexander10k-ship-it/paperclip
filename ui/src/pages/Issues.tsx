@@ -14,7 +14,7 @@ import { EmptyState } from "../components/EmptyState";
 import { IssuesList } from "../components/IssuesList";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { CircleDot, Filter } from "lucide-react";
+import { CircleDot, Filter, CheckCircle2, ListTodo } from "lucide-react";
 
 export function Issues() {
   const { selectedCompanyId } = useCompany();
@@ -118,6 +118,43 @@ export function Issues() {
       />
 
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* Task completion summary bar */}
+        {issues && issues.length > 0 && (() => {
+          const total = issues.length;
+          const done = issues.filter((i) => i.status === "done").length;
+          const inProgress = issues.filter((i) => i.status === "in_progress").length;
+          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+          return (
+            <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm px-4 py-2.5">
+              <div className="flex items-center gap-1.5 text-sm">
+                <ListTodo className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-medium tabular-nums">{total}</span>
+                <span className="text-muted-foreground">total</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="font-medium tabular-nums">{done}</span>
+                <span className="text-muted-foreground">done</span>
+              </div>
+              {inProgress > 0 && (
+                <div className="flex items-center gap-1.5 text-sm">
+                  <CircleDot className="h-3.5 w-3.5 text-blue-400" />
+                  <span className="font-medium tabular-nums">{inProgress}</span>
+                  <span className="text-muted-foreground">in progress</span>
+                </div>
+              )}
+              <div className="ml-auto flex items-center gap-2">
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-emerald-400 transition-[width] duration-300"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="text-xs font-medium tabular-nums text-muted-foreground">{pct}%</span>
+              </div>
+            </div>
+          );
+        })()}
         <IssuesList
           issues={issues ?? []}
           isLoading={isLoading}

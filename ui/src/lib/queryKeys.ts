@@ -88,6 +88,12 @@ export const queryKeys = {
     leads: (companyId: string, propertyId: string) =>
       ["properties", companyId, propertyId, "leads"] as const,
   },
+  leads: {
+    list: (companyId: string, filters?: Record<string, unknown>) =>
+      ["leads", companyId, filters ?? {}] as const,
+    detail: (companyId: string, leadId: string) =>
+      ["leads", companyId, leadId] as const,
+  },
   access: {
     joinRequests: (companyId: string, status: string = "pending_approval") =>
       ["access", "join-requests", companyId, status] as const,
@@ -130,6 +136,9 @@ export const queryKeys = {
       ["agent-messages", "between", companyId, agentA, agentB] as const,
     network: (companyId: string, days?: number) =>
       ["agent-messages", "network", companyId, days] as const,
+  },
+  autoReplyRules: {
+    list: (companyId: string) => ["auto-reply-rules", companyId] as const,
   },
   deliverables: (companyId: string) => ["deliverables", companyId] as const,
   costs: (companyId: string, from?: string, to?: string) =>

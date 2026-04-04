@@ -1,6 +1,13 @@
 ---
 name: tenant-management
 description: Tenant screening, onboarding, lease management, and renewal best practices for Dubai
+metadata:
+  allowed-tools:
+    - manage_tenancy
+    - manage_property
+    - calculate_rera_rent
+    - send_email
+    - send_whatsapp
 ---
 
 # Tenant Management — Dubai Real Estate

@@ -1,6 +1,9 @@
 ---
 name: tools/search-whatsapp
 description: Search WhatsApp conversation history in AygentDesk for a phone number or lead
+metadata:
+  allowed-tools:
+    - search_whatsapp
 ---
 
 # Tool: Search WhatsApp

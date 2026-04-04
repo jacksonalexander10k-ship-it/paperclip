@@ -1,6 +1,11 @@
 ---
 name: aml-kyc-process
 description: UAE AML/KYC requirements for real estate — CDD, PEP screening, STR filing
+metadata:
+  allowed-tools:
+    - run_kyc_check
+    - screen_pep_sanctions
+    - submit_cdd_report
 ---
 
 # AML/KYC Process — Dubai Real Estate

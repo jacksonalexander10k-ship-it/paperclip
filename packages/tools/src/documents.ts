@@ -1,6 +1,7 @@
 import { eq, and, ilike, desc } from "drizzle-orm";
 import { aygentDocuments } from "@paperclipai/db";
 import type { ToolDefinition, ToolExecutor } from "./types.js";
+import { storeDeliverable } from "./lib/deliverables.js";
 
 // ═══════════════════════════════════════════════════
 // list_documents
@@ -104,9 +105,18 @@ export const extractDocumentDataExecutor: ToolExecutor = async (input, ctx) => {
   }
 
   const doc = docs[0]!;
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "document_extraction",
+    title: `Document Extraction — ${doc.name}`,
+    summary: `AI-driven data extraction from ${doc.type} document "${doc.name}".`,
+    metadata: { documentId, documentName: doc.name, documentType: doc.type, fileUrl: doc.fileUrl },
+  });
+
   return {
     status: "ai_extraction",
     message: "Document extraction uses Claude Vision. Pass the document URL to the AI for OCR processing.",
+    deliverableId,
     documentId,
     name: doc.name,
     type: doc.type,

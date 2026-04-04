@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ import { CeoChat } from "./pages/CeoChat";
 import { KnowledgeBase } from "./pages/KnowledgeBase";
 import { Properties } from "./pages/Properties";
 import { PropertyDetail } from "./pages/PropertyDetail";
+import { Leads } from "./pages/Leads";
 import Landing from "./pages/Landing";
 import { AuthPage } from "./pages/Auth";
 import BillingCheckout from "./pages/BillingCheckout";
@@ -132,6 +133,7 @@ function boardRoutes() {
       <Route path="activity" element={<Activity />} />
       <Route path="deliverables" element={<Deliverables />} />
       <Route path="knowledge-base" element={<KnowledgeBase />} />
+      <Route path="leads" element={<Leads />} />
       <Route path="properties" element={<Navigate to="/properties/sale" replace />} />
       <Route path="properties/sale" element={<Properties />} />
       <Route path="properties/rental" element={<Properties />} />
@@ -212,17 +214,32 @@ function CompanyRootRedirect() {
     return <Navigate to={`/${targetCompany.issuePrefix}/dashboard`} replace />;
   }
 
-  // Fallback to DPP demo company
-  return <Navigate to="/DPP/dashboard" replace />;
+  // No companies — let Aygency onboarding wizard handle it
+  return null;
 }
 
 function UnprefixedBoardRedirect() {
   const location = useLocation();
-  const { companies, selectedCompany, loading } = useCompany();
+  const { companies, selectedCompany, loading, reloadCompanies } = useCompany();
+  const [retries, setRetries] = useState(0);
+
+  // After onboarding, companies list may be stale — retry a few times
+  useEffect(() => {
+    if (!loading && companies.length === 0 && retries < 5) {
+      const t = setTimeout(() => {
+        reloadCompanies().then(() => setRetries((r) => r + 1));
+      }, 500);
+      return () => clearTimeout(t);
+    }
+  }, [loading, companies.length, retries, reloadCompanies]);
 
   if (loading) {
     return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
   }
+
+  // No companies after retries — let Aygency onboarding wizard handle it
+  if (companies.length === 0 && retries >= 5) return null;
+  if (companies.length === 0) return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
 
   const prefix = (selectedCompany ?? companies[0])?.issuePrefix ?? "DPP";
   return (
@@ -252,14 +269,27 @@ function NoCompaniesStartPage() {
 }
 
 function AygencyOnboardingGate() {
-  // Onboarding disabled — only show when explicitly requested via ?onboarding=1
   const { companies, loading } = useCompany();
   const [dismissed, setDismissed] = useState(false);
 
-  const preview = typeof window !== "undefined" && window.location.search.includes("onboarding=1");
+  // Show onboarding when there are no companies (fresh start)
+  const forcePreview = typeof window !== "undefined" && window.location.search.includes("onboarding=1");
+  const noCompanies = !loading && companies.length === 0;
 
-  if (!preview) return null;
-  if (loading || dismissed) return null;
+  // Clear stale localStorage when DB has been wiped
+  useEffect(() => {
+    if (noCompanies) {
+      localStorage.removeItem("aygency_onboarding_complete");
+      localStorage.removeItem("aygency_company_id");
+      localStorage.removeItem("aygency_company_prefix");
+      localStorage.removeItem("aygency_agency_name");
+      localStorage.removeItem("aygency_ceo_name");
+      localStorage.removeItem("aygency_first_run");
+    }
+  }, [noCompanies]);
+
+  if (!forcePreview && !noCompanies) return null;
+  if (dismissed) return null;
 
   return <AygencyOnboardingWizard onComplete={() => setDismissed(true)} />;
 }
@@ -268,7 +298,7 @@ export function App() {
   return (
     <>
       <Routes>
-        <Route path="/" element={<Navigate to="/DPP/ceo-chat" replace />} />
+        <Route path="/" element={<Navigate to="/ceo-chat" replace />} />
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
@@ -314,6 +344,10 @@ export function App() {
           <Route path="agents/:agentId" element={<UnprefixedBoardRedirect />} />
           <Route path="agents/:agentId/:tab" element={<UnprefixedBoardRedirect />} />
           <Route path="agents/:agentId/runs/:runId" element={<UnprefixedBoardRedirect />} />
+          <Route path="leads" element={<UnprefixedBoardRedirect />} />
+          <Route path="properties" element={<UnprefixedBoardRedirect />} />
+          <Route path="properties/:tab" element={<UnprefixedBoardRedirect />} />
+          <Route path="properties/:propertyId" element={<UnprefixedBoardRedirect />} />
           <Route path="projects" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/overview" element={<UnprefixedBoardRedirect />} />
@@ -328,7 +362,8 @@ export function App() {
           <Route path="*" element={<NotFoundPage scope="global" />} />
         </Route>
       </Routes>
-      <OnboardingWizard />
+      {/* Paperclip's default OnboardingWizard disabled — Aygency wizard handles onboarding */}
+      {/* <OnboardingWizard /> */}
       <AygencyOnboardingGate />
     </>
   );

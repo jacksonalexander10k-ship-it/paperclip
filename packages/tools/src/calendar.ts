@@ -169,6 +169,11 @@ export const scheduleViewingExecutor: ToolExecutor = async (input, ctx) => {
     projectId?: string;
   };
 
+  const parsedDate = new Date(datetime);
+  if (isNaN(parsedDate.getTime())) {
+    return { error: `Invalid date: "${datetime}". Use ISO 8601 format (e.g. '2026-04-05T14:00:00').` };
+  }
+
   const viewing = await ctx.db
     .insert(aygentViewings)
     .values({
@@ -176,7 +181,7 @@ export const scheduleViewingExecutor: ToolExecutor = async (input, ctx) => {
       agentId: ctx.agentId,
       leadId,
       projectId: projectId ?? null,
-      datetime: new Date(datetime),
+      datetime: parsedDate,
       location: location ?? projectName,
       notes,
       status: "scheduled",

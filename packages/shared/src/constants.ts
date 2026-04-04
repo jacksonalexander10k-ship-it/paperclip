@@ -71,16 +71,16 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   devops: "DevOps",
   researcher: "Researcher",
   general: "General",
-  // Aygency World
-  sales: "Sales",
-  content: "Content",
-  marketing: "Marketing",
-  viewing: "Viewing",
-  finance: "Finance",
-  calling: "Calling",
-  manager: "Manager",
-  conveyancing: "Conveyancing",
-  compliance: "Compliance",
+  // Aygency World — Dubai real estate agency titles
+  sales: "Lead Agent",
+  content: "Creative & Marketing",
+  marketing: "Market Analyst",
+  viewing: "Lead Agent", // merged into sales — viewings are part of the sales cycle
+  finance: "Finance & Accounts",
+  calling: "Lead Agent", // merged into sales — calling is part of lead management
+  manager: "Operations",
+  conveyancing: "Operations", // handled by ops team, not a standalone department
+  compliance: "Compliance & RERA",
 };
 
 export const AGENT_ICON_NAMES = [

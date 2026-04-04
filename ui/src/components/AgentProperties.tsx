@@ -15,14 +15,14 @@ interface AgentPropertiesProps {
 }
 
 const adapterLabels: Record<string, string> = {
-  claude_local: "Claude (local)",
-  codex_local: "Codex (local)",
-  gemini_local: "Gemini CLI (local)",
-  opencode_local: "OpenCode (local)",
-  openclaw_gateway: "OpenClaw Gateway",
-  cursor: "Cursor (local)",
-  process: "Process",
-  http: "HTTP",
+  claude_local: "AI Agent",
+  codex_local: "AI Agent",
+  gemini_local: "AI Agent",
+  opencode_local: "AI Agent",
+  openclaw_gateway: "AI Agent",
+  cursor: "AI Agent",
+  process: "AI Agent",
+  http: "AI Agent",
 };
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
@@ -82,7 +82,7 @@ export function AgentProperties({ agent, runtimeState }: AgentPropertiesProps) {
           </PropertyRow>
         )}
         {agent.lastHeartbeatAt && (
-          <PropertyRow label="Last Heartbeat">
+          <PropertyRow label="Last Active">
             <span className="text-sm">{formatDate(agent.lastHeartbeatAt)}</span>
           </PropertyRow>
         )}

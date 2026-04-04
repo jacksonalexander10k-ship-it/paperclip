@@ -58,15 +58,15 @@ export const help: Record<string, string> = {
 };
 
 export const adapterLabels: Record<string, string> = {
-  claude_local: "Claude (local)",
-  codex_local: "Codex (local)",
-  gemini_local: "Gemini CLI (local)",
-  opencode_local: "OpenCode (local)",
-  openclaw_gateway: "OpenClaw Gateway",
-  cursor: "Cursor (local)",
-  hermes_local: "Hermes Agent",
-  process: "Process",
-  http: "HTTP",
+  claude_local: "AI Agent",
+  codex_local: "AI Agent",
+  gemini_local: "AI Agent",
+  opencode_local: "AI Agent",
+  openclaw_gateway: "AI Agent",
+  cursor: "AI Agent",
+  hermes_local: "AI Agent",
+  process: "AI Agent",
+  http: "AI Agent",
 };
 
 export const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;

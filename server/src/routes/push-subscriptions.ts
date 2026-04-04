@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { pushSubscriptions } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { pushNotificationService } from "../services/push-notifications.js";
 
 export function pushSubscriptionRoutes(db: Db) {
   const router = Router();
@@ -51,6 +52,47 @@ export function pushSubscriptionRoutes(db: Db) {
       .where(eq(pushSubscriptions.endpoint, endpoint));
 
     res.json({ unsubscribed: true });
+  });
+
+  // --------------------------------------------------------------------------
+  // #88-90 — Test push notification endpoint
+  // --------------------------------------------------------------------------
+  router.post("/companies/:companyId/test-push", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+
+    const { title, body } = req.body;
+    if (!title || !body) {
+      res.status(400).json({ error: "title and body are required" });
+      return;
+    }
+
+    const push = pushNotificationService(db);
+    await push.sendToCompany(companyId, {
+      title,
+      body,
+      url: req.body.url ?? undefined,
+      tag: req.body.tag ?? "test",
+    });
+
+    res.json({ sent: true });
+  });
+
+  // --------------------------------------------------------------------------
+  // #88-90 — Test morning brief endpoint
+  // --------------------------------------------------------------------------
+  router.post("/companies/:companyId/test-morning-brief", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+
+    // Dynamically import the morning brief worker to call generateBriefForCompany
+    try {
+      const { generateBriefForCompany } = await import("../workers/morning-brief.js");
+      await generateBriefForCompany(db, companyId);
+      res.json({ sent: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Failed to generate brief" });
+    }
   });
 
   return router;

@@ -1,6 +1,9 @@
 ---
 name: tools/search-leads
 description: Search leads in AygentDesk by name, phone, email, or stage
+metadata:
+  allowed-tools:
+    - search_leads
 ---
 
 # Tool: Search Leads

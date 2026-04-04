@@ -1,6 +1,12 @@
 ---
 name: deal-progression
 description: Step-by-step guide for progressing deals from offer to DLD transfer in Dubai
+metadata:
+  allowed-tools:
+    - update_deal
+    - calculate_dld_fees
+    - send_whatsapp
+    - send_email
 ---
 
 # Deal Progression — Dubai Real Estate

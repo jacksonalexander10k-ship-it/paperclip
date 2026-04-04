@@ -1,6 +1,13 @@
 ---
 name: lead-qualification
 description: Qualification questions sequence and scoring rubric for Dubai real estate leads
+metadata:
+  allowed-tools:
+    - search_leads
+    - update_lead
+    - search_dld_transactions
+    - match_deal_to_leads
+    - tag_lead
 ---
 
 # Lead Qualification

@@ -47,5 +47,6 @@ export function shouldRedirectCompanylessRouteToOnboarding(params: {
   pathname: string;
   hasCompanies: boolean;
 }): boolean {
-  return !params.hasCompanies && !isOnboardingPath(params.pathname);
+  // Disabled — Aygency onboarding wizard handles new user flow
+  return false;
 }

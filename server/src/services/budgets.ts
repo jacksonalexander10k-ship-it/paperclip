@@ -23,6 +23,7 @@ import type {
 } from "@paperclipai/shared";
 import { notFound, unprocessable } from "../errors.js";
 import { logActivity } from "./activity-log.js";
+import { pushNotificationService } from "./push-notifications.js";
 
 type ScopeRecord = {
   companyId: string;
@@ -671,6 +672,10 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         if (policy.notifyEnabled && observedAmount >= softThreshold) {
           const softIncident = await createIncidentIfNeeded(policy, "soft", observedAmount);
           if (softIncident) {
+            const scope = await resolveScopeRecord(db, policy.scopeType as BudgetScopeType, policy.scopeId);
+            const scopeLabel = normalizeScopeName(policy.scopeType as BudgetScopeType, scope.name);
+            const pct = Math.round((observedAmount / policy.amount) * 100);
+
             await logActivity(db, {
               companyId: policy.companyId,
               actorType: "system",
@@ -685,6 +690,14 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
                 amountLimit: policy.amount,
               },
             });
+
+            // Push notification for budget warning
+            pushNotificationService(db).sendToCompany(policy.companyId, {
+              title: "Budget Warning",
+              body: `${scopeLabel} has reached ${pct}% of its monthly budget ($${(observedAmount / 100).toFixed(2)} / $${(policy.amount / 100).toFixed(2)})`,
+              url: "/settings",
+              tag: "budget-warning",
+            }).catch(() => {});
           }
         }
 
@@ -693,6 +706,9 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           const hardIncident = await createIncidentIfNeeded(policy, "hard", observedAmount);
           await pauseAndCancelScopeForBudget(policy);
           if (hardIncident) {
+            const hardScope = await resolveScopeRecord(db, policy.scopeType as BudgetScopeType, policy.scopeId);
+            const hardScopeLabel = normalizeScopeName(policy.scopeType as BudgetScopeType, hardScope.name);
+
             await logActivity(db, {
               companyId: policy.companyId,
               actorType: "system",
@@ -708,6 +724,14 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
                 approvalId: hardIncident.approvalId ?? null,
               },
             });
+
+            // Push notification for hard budget stop
+            pushNotificationService(db).sendToCompany(policy.companyId, {
+              title: "Budget Limit Reached",
+              body: `${hardScopeLabel} has hit its budget cap ($${(policy.amount / 100).toFixed(2)}). Agents paused until budget is raised.`,
+              url: "/settings",
+              tag: "budget-hard-stop",
+            }).catch(() => {});
           }
         }
       }

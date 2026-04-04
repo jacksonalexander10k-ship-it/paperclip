@@ -22,6 +22,7 @@ interface HireAgentSpec {
   role: string;
   title: string;
   heartbeat_minutes: number;
+  department?: string;
   skills?: string[];
   tool_groups?: string[];
   custom_instructions?: string;
@@ -30,6 +31,14 @@ interface HireAgentSpec {
 interface HireTeamCommand {
   action: "hire_team";
   agents: HireAgentSpec[];
+  departments?: HireDepartmentSpec[];
+}
+
+interface HireDepartmentSpec {
+  name: string;
+  title: string;
+  /** Which agent names from the agents array belong to this department */
+  members: string[];
 }
 
 interface PauseAgentCommand {
@@ -173,20 +182,99 @@ export function ceoCommandService(db: Db) {
     const ceoId = ceoAgent?.id ?? actorAgentId;
     const projectId = await getDefaultProjectId(companyId);
 
+    // Step 1: Create department managers (paused, cosmetic — zero cost)
+    const deptManagerIds = new Map<string, string>(); // dept name → manager agent ID
+
+    if (cmd.departments && cmd.departments.length > 0) {
+      for (const dept of cmd.departments) {
+        try {
+          const manager = await agentsSvc.create(companyId, {
+            name: dept.name,
+            role: "general",
+            title: dept.title,
+            reportsTo: ceoId,
+            adapterType: "gemini_local",
+            adapterConfig: {},
+            runtimeConfig: {},
+            status: "paused",
+            pauseReason: "cosmetic",
+            capabilities: null,
+            budgetMonthlyCents: 500,
+            metadata: {
+              isDepartmentManager: true,
+              departmentMembers: dept.members,
+            },
+            permissions: undefined,
+          });
+          deptManagerIds.set(dept.name, manager.id);
+
+          publishLiveEvent({
+            companyId,
+            type: "agent.status",
+            payload: { agentId: manager.id, status: "paused" },
+          });
+
+          results.push(`📁 ${dept.name} (${dept.title}) — department created`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error({ err, dept: dept.name }, "ceo-commands: failed to create department manager");
+          results.push(`📁 ${dept.name} — FAILED: ${message}`);
+        }
+      }
+    }
+
+    // Step 2: Create worker agents
+    // Build a lookup: agent name → department manager ID
+    const agentToDeptManager = new Map<string, string>();
+    if (cmd.departments) {
+      for (const dept of cmd.departments) {
+        const managerId = deptManagerIds.get(dept.name);
+        if (managerId) {
+          for (const memberName of dept.members) {
+            agentToDeptManager.set(memberName.toLowerCase(), managerId);
+          }
+        }
+      }
+    }
+
     for (const spec of cmd.agents) {
       try {
+        // Determine who this agent reports to:
+        // 1. If a department was specified on the agent spec, use that manager
+        // 2. If the agent's name matches a department's members list, use that manager
+        // 3. Fall back to CEO
+        let reportsTo = ceoId;
+        if (spec.department && deptManagerIds.has(spec.department)) {
+          reportsTo = deptManagerIds.get(spec.department)!;
+        } else {
+          const deptManagerId = agentToDeptManager.get(spec.name.toLowerCase());
+          if (deptManagerId) reportsTo = deptManagerId;
+        }
+
+        // Budget per agent scales by role — customer-facing agents cost more
+        const roleBudgets: Record<string, number> = {
+          sales: 3000,     // $30/mo — highest volume (lead response, follow-ups)
+          content: 2000,   // $20/mo — daily content generation
+          marketing: 1500, // $15/mo — market sweeps, reports
+          viewing: 1000,   // $10/mo — scheduling only, low volume
+          finance: 1000,   // $10/mo — daily checks, low volume
+          calling: 1500,   // $15/mo — call handling
+          general: 2000,   // $20/mo — default
+        };
+        const agentBudget = roleBudgets[spec.role] ?? 2000;
+
         // Create the agent
         const created = await agentsSvc.create(companyId, {
           name: spec.name,
           role: spec.role,
           title: spec.title,
-          reportsTo: ceoId,
+          reportsTo,
           adapterType: "claude_local",
           adapterConfig: {},
           runtimeConfig: {},
           status: "idle",
           capabilities: null,
-          budgetMonthlyCents: 5000, // $50/month default
+          budgetMonthlyCents: agentBudget,
           metadata: {
             skills: spec.skills ?? [],
             tool_groups: spec.tool_groups ?? [],
@@ -232,11 +320,12 @@ export function ceoCommandService(db: Db) {
           payload: { agentId: created.id, status: "idle" },
         });
 
-        results.push(`${spec.name} (${spec.title}) -- hired, heartbeat every ${spec.heartbeat_minutes}m`);
+        const deptLabel = reportsTo !== ceoId ? ` → reports to ${cmd.departments?.find(d => deptManagerIds.get(d.name) === reportsTo)?.name ?? "manager"}` : "";
+        results.push(`${spec.name} (${spec.title}) — hired, heartbeat every ${spec.heartbeat_minutes}m${deptLabel}`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error({ err, agentSpec: spec.name }, "ceo-commands: failed to hire agent");
-        results.push(`${spec.name} -- FAILED: ${message}`);
+        results.push(`${spec.name} — FAILED: ${message}`);
       }
     }
 

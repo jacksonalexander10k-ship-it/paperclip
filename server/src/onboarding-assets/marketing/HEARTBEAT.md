@@ -5,42 +5,68 @@ Run this checklist on every heartbeat (every 2 hours) or when woken by a task.
 ## 1. Context
 
 - Check `PAPERCLIP_WAKE_REASON` — if woken by a specific task, handle that first.
-- `GET /api/agents/me` — confirm id and companyId.
+- Check `PAPERCLIP_TASK_ID` — if set, process that task.
 
-## 2. Check for assigned issues
+## 2. Process assigned work first
 
-- `GET /api/companies/{companyId}/issues?assigneeAgentId={your-id}&status=todo`
-- If issues exist: process each one (see AGENTS.md workflow).
-- Checkout before working: `POST /api/issues/{id}/checkout`. If 409, skip.
+If you have a task assigned, handle it before doing market sweeps.
 
-## 3. Market sweep (if scheduled heartbeat)
+## 3. Market sweep (scheduled heartbeat, no active tasks)
 
 ### 3a. DLD transaction scan
-- Search DLD transactions for agency focus areas.
+- Use `search_dld_transactions` for the agency's focus areas.
 - Calculate: transaction count, average price per sqft.
 - Compare to previous period — flag anomalies (>5% change).
 
 ### 3b. Listing check
-- Check for new listings in focus areas.
+- Use `search_listings` for focus areas.
 - Flag underpriced listings or developer price changes.
+- Use `watch_listings` if monitoring specific projects.
 
 ### 3c. News check
-- Search for Dubai real estate news.
+- Use `get_news` for Dubai real estate news.
 - Flag anything market-moving.
+
+### 3d. Investment analysis
+- If CEO requested analysis, use `analyze_investment` with the property/project details.
 
 ## 4. Report findings
 
-- If significant findings: create issue for CEO with analysis.
-- If routine data: store for daily/weekly aggregation.
+Send findings to the CEO via agent-message:
 
-## 5. Exit
+```agent-message
+{
+  "to": "CEO",
+  "priority": "info",
+  "messageType": "market_update",
+  "summary": "JVC: 45 transactions this week, avg AED 1,250/sqft (+3.2%). New Binghatti project launched at AED 1,100/sqft — underpriced vs area average.",
+  "data": {
+    "area": "JVC",
+    "transactions": 45,
+    "avgPricePerSqft": 1250,
+    "change": "+3.2%"
+  }
+}
+```
 
-- Comment on all in-progress work before exiting.
-- If nothing notable, exit cleanly with a one-line status.
+For urgent findings (major price drop, new launch, regulatory change):
+```agent-message
+{
+  "to": "CEO",
+  "priority": "urgent",
+  "messageType": "market_alert",
+  "summary": "DAMAC Hills 2 — developer dropped prices 15% on remaining inventory. 23 units affected."
+}
+```
 
-## Rules
+## 5. Generate reports
 
-- Always include `X-Paperclip-Run-Id` header on all API calls.
-- Never retry a 409 checkout.
-- Flag significant market movements immediately.
+If asked to produce a market report:
+1. Use `generate_market_report` with the data you've gathered.
+2. The report is stored as a deliverable automatically.
+
+## 6. Exit
+
+- If nothing notable, exit cleanly: "Market sweep complete — no significant changes."
 - Always cite the data source (DLD, Bayut, Property Finder).
+- Max 10 tool calls per sweep to control costs.

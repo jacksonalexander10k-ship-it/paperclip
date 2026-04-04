@@ -1,6 +1,11 @@
 ---
 name: financial-reporting
 description: Agency financial KPIs, reporting formats, and commission collection tracking
+metadata:
+  allowed-tools:
+    - get_commission_report
+    - get_pnl_report
+    - get_expense_report
 ---
 
 # Financial Reporting — Dubai Real Estate Agency

@@ -16,6 +16,8 @@ import type { Db } from "@paperclipai/db";
 import { aygentLeads, issues, agents } from "@paperclipai/db";
 import type { ParsedLead } from "./portal-email-parser.js";
 import { logActivity } from "./activity-log.js";
+import { autoReplyService } from "./auto-reply.js";
+import { logger } from "../middleware/logger.js";
 
 export interface IngestedLead {
   lead: typeof aygentLeads.$inferSelect;
@@ -151,6 +153,23 @@ export function leadIngestionService(db: Db) {
           issueId: issue.id,
         },
       });
+
+      // 6. Enqueue delayed auto-reply (if a rule exists for this lead source)
+      try {
+        const autoReply = autoReplyService(db);
+        await autoReply.enqueue({
+          companyId,
+          agentId: leadAgent.id,
+          leadId: lead.id,
+          leadSource: parsed.source,
+          recipientPhone: parsed.phone ?? undefined,
+          recipientEmail: parsed.email ?? undefined,
+          leadName: parsed.name ?? undefined,
+          agentName: leadAgent.name,
+        });
+      } catch (arErr) {
+        logger.warn({ arErr, leadId: lead.id }, "lead-ingestion: auto-reply enqueue failed");
+      }
 
       return { lead, issue };
     },

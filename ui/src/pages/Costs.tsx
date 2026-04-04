@@ -9,7 +9,8 @@ import type {
   FinanceEvent,
   QuotaWindow,
 } from "@paperclipai/shared";
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, Download, ReceiptText, Settings } from "lucide-react";
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, Download, ReceiptText, Settings, TrendingUp } from "lucide-react";
 import { budgetsApi } from "../api/budgets";
 import { costsApi } from "../api/costs";
 import { BillerSpendCard } from "../components/BillerSpendCard";
@@ -144,6 +145,154 @@ function FinanceSummaryCard({
         />
       </CardContent>
     </Card>
+  );
+}
+
+const MODEL_COLORS = [
+  "oklch(0.72 0.18 162)",   // emerald (primary)
+  "oklch(0.65 0.20 250)",   // blue
+  "oklch(0.70 0.18 60)",    // amber
+  "oklch(0.637 0.237 25)",  // red
+  "oklch(0.68 0.16 310)",   // purple
+  "oklch(0.72 0.14 180)",   // teal
+  "oklch(0.60 0.20 280)",   // indigo
+  "oklch(0.75 0.12 100)",   // lime
+];
+
+const PIE_TOOLTIP_STYLE = {
+  backgroundColor: "#1a1a2e",
+  border: "none",
+  borderRadius: "8px",
+  color: "#fff",
+  fontSize: "12px",
+};
+
+function CostProjectionAndModelChart({
+  spendCents,
+  budgetCents,
+  byAgentModel,
+  preset,
+}: {
+  spendCents: number;
+  budgetCents: number;
+  byAgentModel: CostByAgentModel[];
+  preset: string;
+}) {
+  // Cost projection: calculate daily average and project to month end
+  const now = new Date();
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const remainingDays = daysInMonth - dayOfMonth;
+  const dailyAvg = dayOfMonth > 0 ? spendCents / dayOfMonth : 0;
+  const projectedMonthEnd = spendCents + dailyAvg * remainingDays;
+  const overBudget = budgetCents > 0 && projectedMonthEnd > budgetCents;
+
+  // Model distribution: aggregate by model name
+  const modelData = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of byAgentModel) {
+      const key = row.model || "unknown";
+      map.set(key, (map.get(key) ?? 0) + row.costCents);
+    }
+    return Array.from(map.entries())
+      .map(([model, costCents]) => ({ model, costCents, cost: +(costCents / 100).toFixed(2) }))
+      .sort((a, b) => b.costCents - a.costCents);
+  }, [byAgentModel]);
+
+  const totalModelCost = modelData.reduce((sum, d) => sum + d.costCents, 0);
+
+  if (spendCents === 0 && modelData.length === 0) return null;
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      {/* Cost Projection Card */}
+      {preset === "mtd" && (
+        <Card>
+          <CardHeader className="px-5 pt-5 pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Month-End Projection
+            </CardTitle>
+            <CardDescription>
+              Based on ${(dailyAvg / 100).toFixed(2)}/day average over {dayOfMonth} days elapsed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-5 pb-5 pt-2 space-y-3">
+            <div className="text-3xl font-semibold tabular-nums">
+              {formatCents(Math.round(projectedMonthEnd))}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {remainingDays} days remaining in this billing period
+            </div>
+            {budgetCents > 0 && (
+              <div className="space-y-2">
+                <div className="h-2 overflow-hidden bg-muted">
+                  <div
+                    className={cn(
+                      "h-full transition-[width,background-color] duration-150",
+                      overBudget ? "bg-red-400" : "bg-emerald-400",
+                    )}
+                    style={{ width: `${Math.min(100, (projectedMonthEnd / budgetCents) * 100)}%` }}
+                  />
+                </div>
+                <div className={cn("text-xs", overBudget ? "text-red-400" : "text-muted-foreground")}>
+                  {overBudget
+                    ? `Projected to exceed budget by ${formatCents(Math.round(projectedMonthEnd - budgetCents))}`
+                    : `${Math.round((projectedMonthEnd / budgetCents) * 100)}% of ${formatCents(budgetCents)} budget`}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Model Distribution Chart */}
+      {modelData.length > 0 && (
+        <Card>
+          <CardHeader className="px-5 pt-5 pb-2">
+            <CardTitle className="text-base">Model Distribution</CardTitle>
+            <CardDescription>Cost split by AI model for the selected period.</CardDescription>
+          </CardHeader>
+          <CardContent className="px-5 pb-5 pt-2">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={modelData}
+                  dataKey="cost"
+                  nameKey="model"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={2}
+                  strokeWidth={0}
+                >
+                  {modelData.map((_, index) => (
+                    <Cell key={index} fill={MODEL_COLORS[index % MODEL_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip
+                  contentStyle={PIE_TOOLTIP_STYLE}
+                  formatter={(value: unknown, name: unknown) => {
+                    const numValue = Number(value ?? 0);
+                    const strName = String(name ?? "");
+                    const entry = modelData.find((d) => d.model === strName);
+                    const pct = totalModelCost > 0 && entry ? Math.round((entry.costCents / totalModelCost) * 100) : 0;
+                    return [`$${numValue.toFixed(2)} (${pct}%)`, strName];
+                  }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  formatter={(value: string) => (
+                    <span className="text-xs text-muted-foreground">{value}</span>
+                  )}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -837,6 +986,14 @@ export function Costs() {
                     <FinanceTimelineCard rows={topFinanceEvents.slice(0, 6)} emptyMessage="No finance events yet. Add account-level charges once biller invoices or credits land." />
                   </div>
                 </div>
+
+                {/* Cost Projection + Model Distribution */}
+                <CostProjectionAndModelChart
+                  spendCents={spendData?.summary.spendCents ?? 0}
+                  budgetCents={spendData?.summary.budgetCents ?? 0}
+                  byAgentModel={spendData?.byAgentModel ?? []}
+                  preset={preset}
+                />
               </>
             )}
           </TabsContent>

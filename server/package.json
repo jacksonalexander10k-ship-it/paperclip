@@ -43,6 +43,7 @@
     "typecheck": "pnpm --filter @paperclipai/plugin-sdk build && tsc --noEmit"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.16",
     "@anthropic-ai/sdk": "^0.80.0",
     "@aws-sdk/client-s3": "^3.888.0",
     "@aygent/tools": "workspace:^",
@@ -80,6 +81,7 @@
     "stripe": "^21.0.1",
     "web-push": "^3.6.7",
     "ws": "^8.19.0",
+    "qrcode": "^1.5.4",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -90,6 +92,7 @@
     "@types/node": "^24.6.0",
     "@types/sharp": "^0.32.0",
     "@types/supertest": "^6.0.2",
+    "@types/qrcode": "^1.5.5",
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1",
     "cross-env": "^10.1.0",

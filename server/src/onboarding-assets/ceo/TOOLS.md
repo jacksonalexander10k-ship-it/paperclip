@@ -9,6 +9,18 @@ Hire multiple agents at once. Used after the owner approves a team proposal.
 ```paperclip-command
 {
   "action": "hire_team",
+  "departments": [
+    {
+      "name": "Sales Manager",
+      "title": "Head of Sales & Lead Management",
+      "members": ["Layla"]
+    },
+    {
+      "name": "Marketing Manager",
+      "title": "Head of Marketing & Content",
+      "members": ["Noor"]
+    }
+  ],
   "agents": [
     {
       "name": "Layla",
@@ -40,6 +52,17 @@ Fields per agent:
 - `skills` (required): Array of skill names from the catalog.
 - `tool_groups` (required): Array of tool group names.
 - `custom_instructions` (optional): Free-text instructions specific to this agency.
+
+**Departments** (optional but recommended): Group agents under department managers for a proper org structure. Department managers are created automatically as lightweight relay agents (zero cost while paused).
+- `name` (required): Manager name, e.g. "Sales Manager", "Marketing Manager", "Operations Manager".
+- `title` (required): Full title, e.g. "Head of Sales & Lead Management".
+- `members` (required): Array of agent names (from the `agents` array) that belong to this department.
+
+**IMPORTANT:** Always include `departments` when hiring a team. Every agent should belong to a department. Group related agents logically:
+- Sales/Leads/Calls/Viewings → Sales department
+- Content/Social/Campaigns → Marketing department
+- Market research/Intelligence → Intelligence department
+- Portfolio/Property/Tenancy → Operations department
 
 ## pause_agent
 

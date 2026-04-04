@@ -5,6 +5,7 @@ import {
   aygentTenancies,
 } from "@paperclipai/db";
 import type { ToolDefinition, ToolExecutor } from "./types.js";
+import { storeDeliverable } from "./lib/deliverables.js";
 
 // ═══════════════════════════════════════════════════
 // manage_landlord
@@ -469,7 +470,11 @@ export const calculateReraRentExecutor: ToolExecutor = async (input, ctx) => {
     return { error: "currentRent is required (or provide propertyId with an active tenancy)" };
   }
 
-  const gapPercent = ((marketRent - currentRent) / marketRent) * 100;
+  if (!marketRent || marketRent <= 0) {
+    return { error: "marketRent must be a positive number." };
+  }
+
+  const gapPercent = marketRent > 0 ? ((marketRent - currentRent) / marketRent) * 100 : 0;
 
   let maxIncrease = 0;
   let band = "";
@@ -519,7 +524,7 @@ export const calculateDldFeesDefinition: ToolDefinition = {
   },
 };
 
-export const calculateDldFeesExecutor: ToolExecutor = async (input, _ctx) => {
+export const calculateDldFeesExecutor: ToolExecutor = async (input, ctx) => {
   const price = input.purchasePrice as number;
   const isOffPlan = (input.isOffPlan as boolean) ?? false;
   const isMortgaged = (input.isMortgaged as boolean) ?? false;
@@ -538,7 +543,7 @@ export const calculateDldFeesExecutor: ToolExecutor = async (input, _ctx) => {
   const totalFees = dldFee + adminFee + titleDeed + agentFee + nocFee + mortgageReg;
   const totalCost = price + totalFees;
 
-  return {
+  const result = {
     purchasePrice: price,
     breakdown: {
       dld_transfer_fee: { amount: dldFee, rate: "4%", description: "DLD Transfer Fee" },
@@ -558,4 +563,13 @@ export const calculateDldFeesExecutor: ToolExecutor = async (input, _ctx) => {
     } : { totalCashNeeded: totalCost },
     marketType: isOffPlan ? "off-plan" : "secondary/resale",
   };
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "dld_fee_calculation",
+    title: `DLD Fee Calculation — AED ${price.toLocaleString()} (${isOffPlan ? "off-plan" : "secondary"})`,
+    summary: `Total acquisition cost: AED ${totalCost.toLocaleString()}. Fees: AED ${totalFees.toLocaleString()}.`,
+    metadata: { toolInput: input, result },
+  });
+
+  return { ...result, deliverableId };
 };

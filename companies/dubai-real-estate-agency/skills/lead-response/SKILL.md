@@ -1,6 +1,12 @@
 ---
 name: lead-response
 description: Rules for responding to a new inbound lead for the first time
+metadata:
+  allowed-tools:
+    - search_leads
+    - update_lead
+    - send_whatsapp
+    - send_email
 ---
 
 # Lead Response Rules

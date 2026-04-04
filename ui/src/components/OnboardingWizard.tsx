@@ -77,6 +77,8 @@ const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the
 - break the roadmap into concrete tasks and start delegating work`;
 
 export function OnboardingWizard() {
+  // Disabled — Aygency World uses AygencyOnboardingWizard instead
+  return null;
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
   const { companies, setSelectedCompanyId, loading: companiesLoading } = useCompany();
   const queryClient = useQueryClient();
@@ -201,9 +203,9 @@ export function OnboardingWizard() {
     isFetching: adapterModelsFetching
   } = useQuery({
     queryKey: createdCompanyId
-      ? queryKeys.agents.adapterModels(createdCompanyId, adapterType)
+      ? queryKeys.agents.adapterModels(createdCompanyId!, adapterType)
       : ["agents", "none", "adapter-models", adapterType],
-    queryFn: () => agentsApi.adapterModels(createdCompanyId!, adapterType),
+    queryFn: () => agentsApi.adapterModels(createdCompanyId ?? "", adapterType),
     enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 2
   });
   const isLocalAdapter =
@@ -937,7 +939,7 @@ export function OnboardingWizard() {
                                 )}
                               >
                                 {selectedModel
-                                  ? selectedModel.label
+                                  ? selectedModel?.label
                                   : model ||
                                     (adapterType === "opencode_local"
                                       ? "Select model (required)"
@@ -1047,14 +1049,13 @@ export function OnboardingWizard() {
                         </div>
                       )}
 
-                      {adapterEnvResult &&
-                      adapterEnvResult.status === "pass" ? (
+                      {adapterEnvResult?.status === "pass" ? (
                         <div className="flex items-center gap-2 rounded-md border border-green-300 dark:border-green-500/40 bg-green-50 dark:bg-green-500/10 px-3 py-2 text-xs text-green-700 dark:text-green-300 animate-in fade-in slide-in-from-bottom-1 duration-300">
                           <Check className="h-3.5 w-3.5 shrink-0" />
                           <span className="font-medium">Passed</span>
                         </div>
                       ) : adapterEnvResult ? (
-                        <AdapterEnvironmentResult result={adapterEnvResult} />
+                        <AdapterEnvironmentResult result={adapterEnvResult!} />
                       ) : null}
 
                       {shouldSuggestUnsetAnthropicApiKey && (
@@ -1081,7 +1082,7 @@ export function OnboardingWizard() {
                         </div>
                       )}
 
-                      {adapterEnvResult && adapterEnvResult.status === "fail" && (
+                      {adapterEnvResult?.status === "fail" && (
                         <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-[11px] space-y-1.5">
                           <p className="font-medium">Manual debug</p>
                           <p className="text-muted-foreground font-mono break-all">

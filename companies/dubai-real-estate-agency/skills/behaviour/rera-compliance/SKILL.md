@@ -1,6 +1,10 @@
 ---
 name: rera-compliance
 description: RERA licensing, Trakheesi permits, advertising regulations, and broker card management
+metadata:
+  allowed-tools:
+    - get_trakheesi_permit
+    - manage_broker_card
 ---
 
 # RERA Compliance — Dubai Real Estate

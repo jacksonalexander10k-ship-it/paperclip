@@ -5,6 +5,7 @@ import {
   aygentCampaignEnrollments,
 } from "@paperclipai/db";
 import type { ToolDefinition, ToolExecutor } from "./types.js";
+import { storeDeliverable } from "./lib/deliverables.js";
 
 // ═══════════════════════════════════════════════════
 // generate_pitch_deck
@@ -214,10 +215,31 @@ export const generateSocialContentDefinition: ToolDefinition = {
   },
 };
 
-export const generateSocialContentExecutor: ToolExecutor = async (input, _ctx) => {
+export const generateSocialContentExecutor: ToolExecutor = async (input, ctx) => {
+  const { projectName, platforms, tone, highlights } = input as {
+    projectName?: string; platforms?: string[]; tone?: string; highlights?: string[];
+  };
+  const platformList = platforms?.join(", ") ?? "instagram";
+  const title = projectName
+    ? `Social Content — ${projectName} (${platformList})`
+    : `Social Content (${platformList})`;
+
+  const summaryParts = [`Requested for ${platformList}`];
+  if (tone) summaryParts.push(`${tone} tone`);
+  if (projectName) summaryParts.push(`project: ${projectName}`);
+  if (highlights?.length) summaryParts.push(`highlights: ${highlights.join(", ")}`);
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "social_content",
+    title,
+    summary: summaryParts.join(", ") + ".",
+    metadata: { toolInput: input },
+  });
+
   return {
     status: "ai_generation",
     message: "Social content generation is AI-driven. Use the project details and platform requirements to generate content directly in conversation.",
+    deliverableId,
     ...input,
   };
 };
@@ -254,10 +276,28 @@ export const generateContentDefinition: ToolDefinition = {
   },
 };
 
-export const generateContentExecutor: ToolExecutor = async (input, _ctx) => {
+export const generateContentExecutor: ToolExecutor = async (input, ctx) => {
+  const { title: inputTitle, instructions, format } = input as {
+    title?: string; instructions?: string; format?: string;
+  };
+  const title = inputTitle ?? "Generated Content";
+  const safeInstructions = instructions ?? "";
+
+  const summaryText = safeInstructions.length > 0
+    ? `Requested: ${safeInstructions.slice(0, 300)}${safeInstructions.length > 300 ? "..." : ""}. Format: ${format ?? "text"}.`
+    : `Content generation request. Format: ${format ?? "text"}.`;
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "generated_content",
+    title,
+    summary: summaryText,
+    metadata: { toolInput: input, format: format ?? "text" },
+  });
+
   return {
     status: "ai_generation",
     message: "Content generation is AI-driven. Use the instructions and any referenced project data to generate the content directly.",
+    deliverableId,
     ...input,
   };
 };
@@ -282,10 +322,30 @@ export const generateMarketReportDefinition: ToolDefinition = {
   },
 };
 
-export const generateMarketReportExecutor: ToolExecutor = async (input, _ctx) => {
+export const generateMarketReportExecutor: ToolExecutor = async (input, ctx) => {
+  const { area, propertyType, clientName, format } = input as {
+    area: string; propertyType?: string; clientName?: string; format?: string;
+  };
+  const title = clientName
+    ? `Market Report — ${area} (for ${clientName})`
+    : `Market Report — ${area}`;
+
+  const summaryParts = [`Market briefing requested for ${area}`];
+  if (propertyType) summaryParts.push(`property type: ${propertyType}`);
+  if (clientName) summaryParts.push(`prepared for ${clientName}`);
+  summaryParts.push(`format: ${format ?? "summary"}`);
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "market_report",
+    title,
+    summary: summaryParts.join(", ") + ".",
+    metadata: { toolInput: input },
+  });
+
   return {
     status: "ai_generation",
     message: "Market report generation is AI-driven. Use DLD transaction data, news, and project info to generate the report.",
+    deliverableId,
     ...input,
   };
 };

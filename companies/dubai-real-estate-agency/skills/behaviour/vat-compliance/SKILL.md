@@ -1,6 +1,10 @@
 ---
 name: vat-compliance
 description: UAE 5% VAT rules for real estate agencies — what's taxable, filing deadlines, penalties
+metadata:
+  allowed-tools:
+    - calculate_vat
+    - get_vat_report
 ---
 
 # VAT Compliance — UAE Real Estate

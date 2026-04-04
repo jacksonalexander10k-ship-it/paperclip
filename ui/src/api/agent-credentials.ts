@@ -7,6 +7,12 @@ export interface AgentWhatsAppStatus {
   connectedAt: string | null;
 }
 
+export interface AgentGmailStatus {
+  connected: boolean;
+  gmailAddress: string | null;
+  connectedAt: string | null;
+}
+
 export const agentCredentialsApi = {
   /** Get WhatsApp connection status for an agent */
   getWhatsAppStatus: (agentId: string) =>
@@ -19,6 +25,27 @@ export const agentCredentialsApi = {
   /** Disconnect WhatsApp from an agent */
   disconnectWhatsApp: (agentId: string) =>
     api.delete(`/agents/${agentId}/connect/whatsapp`),
+
+  /** Get Gmail connection status for an agent */
+  getGmailStatus: (agentId: string) =>
+    api.get<AgentGmailStatus>(`/agents/${agentId}/connect/gmail`),
+
+  /** Connect Gmail to an agent (manual token entry or OAuth callback) */
+  connectGmail: (agentId: string, data: {
+    accessToken: string;
+    refreshToken: string;
+    gmailAddress: string;
+    expiresAt?: string;
+  }) =>
+    api.post<{ connected: boolean }>(`/agents/${agentId}/connect/gmail`, data),
+
+  /** Disconnect Gmail from an agent */
+  disconnectGmail: (agentId: string) =>
+    api.delete(`/agents/${agentId}/connect/gmail`),
+
+  /** Start Gmail OAuth flow — returns the Google OAuth URL to redirect to */
+  getGmailOAuthUrl: (agentId: string) =>
+    api.get<{ url: string }>(`/agents/${agentId}/connect/gmail/oauth-url`),
 
   /** List all credentials for an agent */
   list: (agentId: string) =>

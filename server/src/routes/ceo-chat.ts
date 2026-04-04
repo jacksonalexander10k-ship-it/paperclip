@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { routedStream, routedGenerate } from "../services/model-router.js";
 import { fileURLToPath } from "node:url";
 import type { Db } from "@paperclipai/db";
 import {
@@ -23,12 +23,10 @@ import { logger } from "../middleware/logger.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const CEO_CHAT_TITLE = "CEO Chat";
-const MODEL_SONNET = "claude-sonnet-4-5";
-const MODEL_OPUS = "claude-opus-4";
 const MAX_TOKENS = 4096;
-const MAX_TOKENS_OPUS = 8192;
+const MAX_TOKENS_DEEP_THINK = 8192;
 const HISTORY_LIMIT = 20;
-const OPUS_MONTHLY_CAP = 50;
+const DEEP_THINK_MONTHLY_CAP = 50;
 
 let soulMd: string;
 try {
@@ -39,6 +37,18 @@ try {
 } catch {
   soulMd = "You are the CEO of a Dubai real estate agency.";
 }
+
+let onboardingDemoMd: string;
+try {
+  onboardingDemoMd = readFileSync(
+    resolve(__dirname, "../onboarding-assets/ceo/ONBOARDING_DEMO.md"),
+    "utf-8",
+  );
+} catch {
+  onboardingDemoMd = "";
+}
+
+const ONBOARDING_COMMENT_THRESHOLD = 5;
 
 function getDubaiDateTime(): string {
   return new Date().toLocaleString("en-GB", {
@@ -75,10 +85,9 @@ export function ceoChatRoutes(db: Db) {
       return;
     }
 
-    // Resolve model: Opus for Deep Think mode (with monthly cap)
-    let useOpus = false;
+    // Deep Think: uses Sonnet (premium tier) with monthly cap
+    let useDeepThink = false;
     if (deepThink) {
-      // Check monthly Opus usage via cost events
       try {
         const now = new Date();
         const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -90,23 +99,22 @@ export function ceoChatRoutes(db: Db) {
           .where(
             andOp(
               eqOp(costEvents.companyId, companyId),
-              eqOp(costEvents.model, MODEL_OPUS),
+              eqOp(costEvents.model, "claude-sonnet-4-6"),
               gte(costEvents.occurredAt, monthStart),
             ),
           );
-        const opusUsedThisMonth = row?.count ?? 0;
-        if (opusUsedThisMonth < OPUS_MONTHLY_CAP) {
-          useOpus = true;
+        const deepThinkUsedThisMonth = row?.count ?? 0;
+        if (deepThinkUsedThisMonth < DEEP_THINK_MONTHLY_CAP) {
+          useDeepThink = true;
         } else {
-          logger.info({ companyId, opusUsedThisMonth }, "ceo-chat: Opus monthly cap reached, falling back to Sonnet");
+          logger.info({ companyId, deepThinkUsedThisMonth }, "ceo-chat: Deep Think monthly cap reached, using standard model");
         }
       } catch (err) {
-        logger.warn({ err }, "ceo-chat: failed to check Opus cap, falling back to Sonnet");
+        logger.warn({ err }, "ceo-chat: failed to check Deep Think cap, using standard model");
       }
     }
 
-    const activeModel = useOpus ? MODEL_OPUS : MODEL_SONNET;
-    const activeMaxTokens = useOpus ? MAX_TOKENS_OPUS : MAX_TOKENS;
+    const activeMaxTokens = useDeepThink ? MAX_TOKENS_DEEP_THINK : MAX_TOKENS;
 
     const isvc = issueService(db);
     const asvc = agentService(db);
@@ -123,6 +131,28 @@ export function ceoChatRoutes(db: Db) {
     if (!ceoChatIssue) {
       res.status(404).json({ error: "CEO Chat issue not found. Please open the CEO Chat page first." });
       return;
+    }
+
+    // Rate limit: max CEO Chat messages per day (prevents runaway costs)
+    const CEO_CHAT_DAILY_LIMIT = 100;
+    try {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const recentComments = await isvc.listComments(ceoChatIssue.id, {
+        order: "desc",
+        limit: CEO_CHAT_DAILY_LIMIT + 10,
+      });
+      const todayUserMessages = recentComments.filter(
+        (c) => c.authorUserId && !c.authorAgentId && new Date(c.createdAt) >= todayStart,
+      );
+      if (todayUserMessages.length >= CEO_CHAT_DAILY_LIMIT) {
+        res.status(429).json({
+          error: `Daily CEO Chat limit reached (${CEO_CHAT_DAILY_LIMIT} messages). Resets at midnight UTC.`,
+        });
+        return;
+      }
+    } catch (err) {
+      logger.warn({ err }, "ceo-chat: failed to check daily rate limit, proceeding");
     }
 
     // Save the owner's message as a comment
@@ -164,6 +194,19 @@ export function ceoChatRoutes(db: Db) {
     // Build rich agency context for the system prompt
     // -----------------------------------------------------------------------
 
+    // Load company for onboarding context stored in description
+    let onboardingContext = "";
+    try {
+      const { companies } = await import("@paperclipai/db");
+      const { eq: eqComp } = await import("drizzle-orm");
+      const [company] = await db.select().from(companies).where(eqComp(companies.id, companyId)).limit(1);
+      if (company?.description) {
+        onboardingContext = `\n### Agency Profile (from onboarding)\n${company.description}`;
+      }
+    } catch (err) {
+      logger.warn({ err }, "ceo-chat: failed to load onboarding context");
+    }
+
     // Agents
     const agentsList = await asvc.list(companyId);
     const agentLines = agentsList
@@ -188,8 +231,8 @@ export function ceoChatRoutes(db: Db) {
 - Tasks: ${summary.tasks.open ?? 0} open, ${summary.tasks.inProgress ?? 0} in progress, ${summary.tasks.done ?? 0} done
 - Month spend: ${formatCents(summary.costs.monthSpendCents)} of ${formatCents(summary.costs.monthBudgetCents)} budget (${summary.costs.monthUtilizationPercent}%)
 - Pending approvals: ${summary.pendingApprovals}`;
-    } catch {
-      // Dashboard data not critical — continue without it
+    } catch (err) {
+      logger.warn({ err }, "ceo-chat: failed to load dashboard summary");
     }
 
     // Pending approvals detail
@@ -206,8 +249,8 @@ export function ceoChatRoutes(db: Db) {
         });
         approvalsContext = `\n### Pending Approvals (${pending.length})\n${lines.join("\n")}`;
       }
-    } catch {
-      // Non-critical
+    } catch (err) {
+      logger.warn({ err }, "ceo-chat: failed to load pending approvals");
     }
 
     // Recent activity (last 10 events)
@@ -224,8 +267,8 @@ export function ceoChatRoutes(db: Db) {
         });
         activityContext = `\n### Recent Activity\n${lines.join("\n")}`;
       }
-    } catch {
-      // Non-critical
+    } catch (err) {
+      logger.warn({ err }, "ceo-chat: failed to load activity");
     }
 
     // Open tasks
@@ -242,8 +285,8 @@ export function ceoChatRoutes(db: Db) {
         });
         tasksContext = `\n### Open Tasks (${openTasks.length})\n${lines.join("\n")}`;
       }
-    } catch {
-      // Non-critical
+    } catch (err) {
+      logger.warn({ err }, "ceo-chat: failed to load tasks");
     }
 
     // Agent learnings and inter-agent messages
@@ -286,16 +329,21 @@ export function ceoChatRoutes(db: Db) {
       teamRecsContext = await teamSvc.formatForBrief(companyId);
     } catch { /* non-critical */ }
 
+    // Detect onboarding mode: use demo prompt if fewer than ONBOARDING_COMMENT_THRESHOLD total comments
+    const totalCommentCount = recentComments.length;
+    const isOnboardingMode = onboardingDemoMd && totalCommentCount < ONBOARDING_COMMENT_THRESHOLD;
+    const basePrompt = isOnboardingMode ? onboardingDemoMd : soulMd;
+
     // Build system prompt
-    const systemPrompt = `${soulMd}
+    const systemPrompt = `${basePrompt}
 
 ## Current Agency Context
 
 Today is ${getDubaiDateTime()} (Dubai time).
 
 ### Your Team
-${agentLines || "No agents hired yet. You're in Builder Mode — interview the owner and propose a team."}
-${dashboardContext}${approvalsContext}${activityContext}${tasksContext}${learningsContext}${agentCommsContext}${predictionsContext}${teamRecsContext}
+${agentLines || "No agents hired yet. You're in Builder Mode — propose a team based on the owner's profile below."}
+${onboardingContext}${dashboardContext}${approvalsContext}${activityContext}${tasksContext}${learningsContext}${agentCommsContext}${predictionsContext}${teamRecsContext}
 
 ## How to Respond
 
@@ -323,7 +371,7 @@ When you want to send a WhatsApp, email, Instagram post, or any outbound communi
 }
 \`\`\`
 
-Supported actions: send_whatsapp, send_email, post_instagram, send_pitch_deck, confirm_viewing, hire_agent, skill_amendment.
+Supported actions: send_whatsapp, send_email, post_instagram, send_pitch_deck, confirm_viewing, hire_agent, hire_team, skill_amendment, bulk_whatsapp, launch_fb_campaign, ceo_proposal.
 
 ### When proposing a skill improvement
 When accumulated learnings reveal a pattern worth codifying into a skill file, propose a skill amendment:
@@ -390,64 +438,23 @@ You can also use these commands:
     let fullAssistantText = "";
 
     try {
-      // Build the full prompt for Claude Code CLI
-      const conversationParts: string[] = [];
-      for (const msg of anthropicHistory) {
-        const role = msg.role === "user" ? "Human" : "Assistant";
-        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-        conversationParts.push(`${role}: ${content}`);
-      }
+      // Route through model router: deep_think → Sonnet (premium), ceo_chat → Gemini 3.1 Pro
+      const taskType = useDeepThink ? "deep_think" : "ceo_chat";
+      const abortController = new AbortController();
+      req.on("close", () => { abortController.abort(); });
 
-      const fullPrompt = `${systemPrompt}\n\n${conversationParts.join("\n\n")}`;
-
-      // Spawn Claude Code CLI — uses the user's Claude subscription, no API key needed
-      fullAssistantText = await new Promise<string>((resolvePromise, rejectPromise) => {
-        const proc = spawn("claude", [
-          "--print",
-          "--model", activeModel,
-          "--max-turns", "1",
-        ], {
-          env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
-          stdio: ["pipe", "pipe", "pipe"],
-        });
-
-        let output = "";
-        let stderr = "";
-
-        proc.stdout.on("data", (chunk: Buffer) => {
-          const text = chunk.toString();
-          output += text;
-          // Stream each chunk to the client via SSE
+      const result = await routedStream({
+        taskType,
+        systemPrompt,
+        messages: anthropicHistory,
+        maxTokens: activeMaxTokens,
+        onText: (text) => {
+          fullAssistantText += text;
           if (!aborted) {
             send({ type: "text", text });
           }
-        });
-
-        proc.stderr.on("data", (chunk: Buffer) => {
-          stderr += chunk.toString();
-        });
-
-        proc.on("close", (code) => {
-          if (code === 0) {
-            resolvePromise(output);
-          } else {
-            logger.error({ code, stderr: stderr.slice(0, 500) }, "ceo-chat: claude process failed");
-            rejectPromise(new Error(`Claude process exited with code ${code}`));
-          }
-        });
-
-        proc.on("error", (err) => {
-          rejectPromise(err);
-        });
-
-        // Write the prompt to stdin and close
-        proc.stdin.write(fullPrompt);
-        proc.stdin.end();
-
-        // Kill if client disconnects
-        req.on("close", () => {
-          if (!proc.killed) proc.kill("SIGTERM");
-        });
+        },
+        signal: abortController.signal,
       });
 
       // Parse for approval blocks and create real approval records
@@ -480,7 +487,8 @@ You can also use these commands:
           }
         }
 
-        await isvc.addComment(ceoChatIssue.id, savedText, {}).catch((err: unknown) => {
+        const ceoAgentId = ceoAgent?.id ?? undefined;
+        await isvc.addComment(ceoChatIssue.id, savedText, { agentId: ceoAgentId }).catch((err: unknown) => {
           logger.error({ err }, "ceo-chat: failed to persist assistant reply");
         });
 
@@ -506,7 +514,7 @@ You can also use these commands:
       if (createdApprovalIds.length > 0) {
         send({ type: "approvals_created", approvalIds: createdApprovalIds });
       }
-      send({ type: "done", model: activeModel, deepThink: useOpus });
+      send({ type: "done", model: taskType, deepThink: useDeepThink });
     } catch (error) {
       if (!aborted) {
         const msg = error instanceof Error ? error.message : "Streaming error";
@@ -516,6 +524,200 @@ You can also use these commands:
     } finally {
       res.end();
     }
+  });
+
+  // ── First-run: Claude reasons about team proposal during onboarding loading screen ──
+  router.post("/companies/:companyId/ceo-chat/first-run", async (req, res) => {
+    const { companyId } = req.params;
+    try { assertCompanyAccess(req, companyId); } catch { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const isvc = issueService(db);
+    const asvc = agentService(db);
+    const approvalsSvc = approvalService(db);
+
+    const allIssues = await isvc.list(companyId);
+    const ceoChatIssue = allIssues.find((i) => i.title.startsWith(CEO_CHAT_TITLE));
+    if (!ceoChatIssue) { res.status(404).json({ error: "CEO Chat not found" }); return; }
+
+    const agentsList = await asvc.list(companyId);
+    const ceo = agentsList.find((a) => a.role === "ceo");
+    if (!ceo) { res.status(404).json({ error: "CEO not found" }); return; }
+
+    // Idempotent — skip if already ran
+    const existing = await isvc.listComments(ceoChatIssue.id, { order: "asc", limit: 1 });
+    if (existing.length > 0) { res.json({ ok: true, alreadyRan: true }); return; }
+
+    // Load company context from onboarding
+    let agencyContext = "";
+    let agencyName = "your agency";
+    try {
+      const { companies } = await import("@paperclipai/db");
+      const { eq: eqC } = await import("drizzle-orm");
+      const [company] = await db.select().from(companies).where(eqC(companies.id, companyId)).limit(1);
+      agencyContext = company?.description ?? "";
+      agencyName = company?.name ?? "your agency";
+    } catch { /* non-critical */ }
+
+    // ── Call Claude to generate personalized welcome + team proposal ──
+    const firstRunPrompt = `${soulMd}
+
+## Your Task — First Run Welcome
+
+You are ${ceo.name}, the newly hired CEO of ${agencyName}. The agency owner just completed onboarding. Here is everything they told you:
+
+${agencyContext}
+
+Generate your first messages to the owner. You must output EXACTLY this JSON structure and nothing else:
+
+{
+  "welcome": "Your greeting message. Be warm, personal, use the owner's agency name. One short paragraph.",
+  "context": "Acknowledge what you learned from their onboarding. Reference their specific focus areas, locations, lead sources, and anything they mentioned in free text. Show you actually read it. One paragraph.",
+  "teamIntro": "A short line introducing your team recommendation. One sentence.",
+  "agents": [
+    {
+      "defaultName": "A culturally appropriate Dubai name",
+      "role": "sales|content|marketing|viewing|finance|calling",
+      "title": "Lead Agent|Content Agent|Market Intel Agent|Viewing Agent|Portfolio Agent|Call Agent",
+      "department": "Sales|Marketing|Operations",
+      "reason": "Why this specific agent based on what the owner told you. Reference their specific needs/notes. 1-2 sentences."
+    }
+  ],
+  "reasoning": "A paragraph explaining WHY you chose this team structure. Reference the owner's specific situation, challenges, and notes. This shows you actually thought about it."
+}
+
+Rules:
+- Propose 2-5 agents based on what they need. Don't over-hire.
+- Available roles: sales (Lead Agent), content (Content Agent), marketing (Market Intel Agent), viewing (Viewing Agent), finance (Portfolio Agent), calling (Call Agent)
+- Available departments: Sales, Marketing, Operations
+- Default names should be Dubai-appropriate (Arabic, South Asian, Western mix)
+- Your reasoning MUST reference specific things from the onboarding data
+- Be concise. No filler. Sound like a real CEO, not a chatbot.
+- Output ONLY valid JSON. No markdown, no explanation outside the JSON.`;
+
+    let aiResult: {
+      welcome: string;
+      context: string;
+      teamIntro: string;
+      agents: Array<{ defaultName: string; role: string; title: string; department: string; reason: string }>;
+      reasoning: string;
+    } | null = null;
+
+    try {
+      // Use model router for first-run (quality tier = Gemini 3.1 Pro)
+      const result = await routedGenerate({
+        taskType: "ceo_chat",
+        systemPrompt: "",
+        userMessage: firstRunPrompt,
+        maxTokens: MAX_TOKENS,
+      });
+      const output = result.text;
+
+      // Extract JSON from the output (Claude may wrap it in markdown)
+      const jsonMatch = output.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        aiResult = JSON.parse(jsonMatch[0]);
+      }
+    } catch (err) {
+      logger.error({ err }, "ceo-chat first-run: Claude call failed, using fallback");
+    }
+
+    // ── Fallback if Claude fails — use onboarding data directly ──
+    if (!aiResult) {
+      const contextLines = agencyContext.split("\n");
+      const getVal = (key: string) => {
+        const line = contextLines.find((l) => l.startsWith(key + ":"));
+        return line ? line.slice(key.length + 1).trim() : "";
+      };
+
+      // Parse departments from onboarding pack selection
+      const deptLines = contextLines.filter((l) => l.startsWith("Department:"));
+      const fallbackAgents: Array<{ defaultName: string; role: string; title: string; department: string; reason: string }> = [];
+      const namePool = ["Layla", "Omar", "Rania", "Tariq", "Sara", "Zain", "Khalid", "Nour"];
+      let nameIdx = 0;
+      const roleToTitle: Record<string, string> = {
+        "Lead Agent": "Lead Agent", "Content Agent": "Content Agent", "Market Intel": "Market Intel Agent",
+        "Viewing Agent": "Viewing Agent", "Portfolio Agent": "Portfolio Agent", "Call Agent": "Call Agent",
+      };
+      const titleToRole: Record<string, string> = {
+        "Lead Agent": "sales", "Content Agent": "content", "Market Intel": "marketing",
+        "Viewing Agent": "viewing", "Portfolio Agent": "finance", "Call Agent": "calling",
+      };
+
+      for (const line of deptLines) {
+        // Format: "Department: Sales Manager → Lead Agent, Viewing Agent"
+        const match = line.match(/Department:\s*(.+?)\s*→\s*(.+)/);
+        if (!match) continue;
+        const deptName = match[1].replace(" Manager", "");
+        const agentTitles = match[2].split(",").map((s) => s.trim());
+        for (const title of agentTitles) {
+          fallbackAgents.push({
+            defaultName: namePool[nameIdx % namePool.length],
+            role: titleToRole[title] ?? "sales",
+            title,
+            department: deptName,
+            reason: `Part of your ${deptName} department.`,
+          });
+          nameIdx++;
+        }
+      }
+
+      // If no departments parsed, use basic defaults
+      if (fallbackAgents.length === 0) {
+        fallbackAgents.push(
+          { defaultName: "Layla", role: "sales", title: "Lead Agent", department: "Sales", reason: "Handles inbound leads and follow-ups." },
+          { defaultName: "Omar", role: "content", title: "Content Agent", department: "Marketing", reason: "Builds your social presence." },
+        );
+      }
+
+      const focus = getVal("Focus") || "real estate";
+      const areas = getVal("Areas") || "Dubai";
+      const sources = getVal("Lead sources") || "various channels";
+      const ownerNotes = getVal("Owner's notes");
+
+      aiResult = {
+        welcome: `Hey! I'm ${ceo.name}, your new CEO. Welcome to ${agencyName}. 👋`,
+        context: `I've reviewed your setup. Focus: **${focus}**. Covering **${areas}**. Leads from **${sources}**.${ownerNotes ? `\n\nYou mentioned: *"${ownerNotes}"* — I'll factor that in.` : ""}`,
+        teamIntro: `Here's the team I'd recommend for ${agencyName}. You can rename anyone before approving:`,
+        agents: fallbackAgents,
+        reasoning: `Based on your focus on ${focus} in ${areas}, this team covers your immediate needs. ${ownerNotes ? `I've noted what you said about "${ownerNotes.slice(0, 100)}" and structured the team accordingly.` : ""}`,
+      };
+    }
+
+    // ── Save messages as CEO Chat comments ──
+
+    // Message 1: Welcome
+    await isvc.addComment(ceoChatIssue.id, aiResult.welcome, { agentId: ceo.id });
+
+    // Message 2: Context acknowledgment
+    await isvc.addComment(ceoChatIssue.id, aiResult.context, { agentId: ceo.id });
+
+    // Message 3: Team intro + reasoning
+    await isvc.addComment(ceoChatIssue.id,
+      `${aiResult.teamIntro}\n\n${aiResult.reasoning}`,
+      { agentId: ceo.id },
+    );
+
+    // Message 4: Team proposal approval card
+    const teamPayload = {
+      type: "approval_required" as const,
+      action: "hire_team",
+      agents: aiResult.agents,
+    };
+
+    const approval = await approvalsSvc.create(companyId, {
+      type: "hire_team",
+      requestedByAgentId: ceo.id,
+      status: "pending",
+      payload: teamPayload,
+    });
+
+    const enrichedPayload = { ...teamPayload, approval_id: approval.id };
+    await isvc.addComment(ceoChatIssue.id,
+      "```json\n" + JSON.stringify(enrichedPayload, null, 2) + "\n```",
+      { agentId: ceo.id },
+    );
+
+    res.json({ ok: true, approvalId: approval.id, proposedAgents: aiResult.agents.length });
   });
 
   return router;

@@ -1,6 +1,11 @@
 ---
 name: commission-structure
 description: UAE real estate commission rates, agent split formulas, and invoicing rules
+metadata:
+  allowed-tools:
+    - record_commission
+    - create_invoice
+    - get_commission_report
 ---
 
 # Commission Structure — Dubai Real Estate

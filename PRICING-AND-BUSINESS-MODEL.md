@@ -81,19 +81,35 @@ During trial: CEO sends morning briefs, Sales Agent responds to leads, approval 
 
 ## AI Model Strategy (Cost Optimisation)
 
-### The Full Model Landscape
+### The Full Model Landscape (Updated April 2026)
 
 | Model | Input (per 1M) | Output (per 1M) | Quality | Speed | Best for |
 |-------|---------------|-----------------|---------|-------|----------|
 | **Ollama (local)** | **$0** | **$0** | Good (Llama 4, Qwen 3) | Medium | Routing, classification, scoring — anything that doesn't need the best quality |
-| **Gemini 2.5 Flash** | $0 (free 500 req/day) / $0.15 paid | $0 / $0.60 | Very good | Fast | Summarisation, data assembly, qualification flows, scheduling |
+| **Gemini 3.1 Flash Lite** | **$0.25** | **$1.50** | Very good | **Extremely fast (382 tok/s)** | Context assembly, qualification flows, analysis, scheduling |
+| **Gemini 2.5 Flash** | $0 (free 500 req/day) / $0.15 paid | $0 / $0.60 | Good | Fast | Fallback for free-tier tasks |
 | **DeepSeek V3** | $0.27 | $1.10 | Good | Fast | General tasks, analysis, reporting |
-| **Kimi K2** | $0.60 | $2.00 | Very good | Medium | Complex reasoning at half Sonnet price |
-| **Groq (Llama 4 Scout)** | $0.11 | $0.34 | Good | Extremely fast | Real-time routing, instant classification |
-| **Sonnet 4.6** | $3.00 | $15.00 | Excellent | Medium | Customer-facing writing, nuanced communication |
+| **Gemini 3.1 Pro** | **$2.00** | **$12.00** | **Excellent** | Medium | Customer-facing writing, agent heartbeats, CEO Chat |
+| **Sonnet 4.6** | $3.00 | $15.00 | Excellent | Medium | Premium "Deep Think" mode (Scale/Enterprise only) |
 | **Opus 4.6** | $15.00 | $75.00 | Best | Slow | Never use for agents — too expensive |
 
-### The Three-Tier Model Strategy
+### Why Gemini 3.1 Pro Over Sonnet for Default Quality Tier
+
+Research (April 2026 benchmarks):
+
+- **Writing quality:** Sonnet 4.6 has a slight edge in emotionally nuanced, personal writing. Gemini 3.1 Pro is stronger in structured, informative content. For real estate messages (professional, data-driven, factual), both are excellent — Gemini is arguably better.
+- **Reasoning:** Gemini 3.1 Pro leads significantly on ARC-AGI-2, GPQA Diamond, and HLE (18-25 point gaps). Doubled reasoning performance over Gemini 3.0.
+- **Tool use:** Gemini 3.1 Pro has a "customtools" variant that prioritises registered tools over generic fallback — perfect for our MCP tool setup. Suppresses bash fallback, actively chooses registered functions.
+- **Multimodal:** Native text/image/audio/video/PDF in one model. Useful for reading property brochures, analysing listing photos.
+- **Context window:** 1M tokens input, 64K output. More than enough.
+- **Cost:** 24% cheaper than Sonnet on input, 20% cheaper on output. Compounds across thousands of runs.
+- **Rate limits:** More generous than Anthropic at paid tiers. 30K RPM system limit on Vertex AI.
+- **Knowledge work (one caveat):** Sonnet 4.6 leads on GDPval-AA (Elo 1,633 vs Gemini's 1,317) for expert-level tasks like financial modelling. But our agents write WhatsApp messages, not research papers.
+- **Agent reliability (one caveat):** Sonnet has marginally better multi-step tool chain reliability. For our use case (2-5 tool calls per heartbeat, not 20+ step chains), this doesn't matter.
+
+**Verdict:** Gemini 3.1 Pro is the right default. Better reasoning, better tool use, native multimodal, 24% cheaper. Keep Sonnet as premium "Deep Think" for owners who want the absolute best on a specific question.
+
+### The Four-Tier Model Strategy
 
 **Tier 1 — FREE (Ollama local, $0)**
 Run Llama 4 Scout 17B or Qwen 3 8B locally on your VPS. Zero API cost. Handles:
@@ -105,8 +121,8 @@ Run Llama 4 Scout 17B or Qwen 3 8B locally on your VPS. Zero API cost. Handles:
 
 Cost: $0. Just CPU/GPU on your VPS. One $40/mo GPU instance runs thousands of requests/day.
 
-**Tier 2 — CHEAP (Gemini Flash / DeepSeek / Groq, $0-0.01 per run)**
-For tasks that need more intelligence but aren't customer-facing:
+**Tier 2 — CHEAP (Gemini 3.1 Flash Lite, ~$0.002 per run)**
+For tasks that need intelligence but aren't customer-facing:
 - Morning brief data assembly and summarisation
 - Lead qualification flows (structured Q&A)
 - Ad performance analysis and recommendations
@@ -114,19 +130,31 @@ For tasks that need more intelligence but aren't customer-facing:
 - Agency context updates
 - Report generation
 
-Cost: ~$0.005 per run average.
+382 tokens/sec — 2.5x faster than Gemini 2.5 Flash. Quality benchmarks score well above median for its price tier (Intelligence Index: 34 vs median 19). 1M token context window.
 
-**Tier 3 — QUALITY (Sonnet, $0.10-0.35 per run)**
-Only for output that a customer or the agency owner will read:
+Cost: ~$0.002 per run average.
+
+**Tier 3 — QUALITY (Gemini 3.1 Pro, ~$0.016 per run)**
+For output that a customer or the agency owner will read:
 - WhatsApp message drafting (leads read this)
 - CEO Chat responses (owner reads this)
 - Instagram post captions (public)
 - Pitch deck content (client-facing)
 - Email drafts (leads/landlords read this)
+- Full agent heartbeats with tool use
 
-### Optimised: Sonnet Only Writes the Final Message
+Cost: ~$0.016 per run (~2K input, 1K output tokens). 24% cheaper than Sonnet.
 
-Instead of a full Sonnet session for every agent run:
+**Tier 4 — PREMIUM (Sonnet 4.6, ~$0.021 per run) — Scale/Enterprise only**
+For "Deep Think" mode — owner toggles this in CEO Chat for specific questions:
+- Complex investment analysis
+- Multi-property comparison strategy
+- Nuanced negotiation advice
+- 50 runs/month on Scale, unlimited on Enterprise
+
+### Optimised: Gemini Pro Only Writes the Final Message
+
+Instead of a full session for every agent run:
 
 ```
 OLD (expensive):
@@ -134,12 +162,12 @@ OLD (expensive):
 
 NEW (cheap):
   Event → Ollama routes it (free)
-  → Gemini Flash assembles context + decides action ($0.005)
-  → IF message needed: Sonnet writes ONLY the message ($0.10)
-  → Total: $0.105 instead of $0.35
+  → Gemini 3.1 Flash Lite assembles context + decides action ($0.002)
+  → IF message needed: Gemini 3.1 Pro writes ONLY the message ($0.016)
+  → Total: $0.018 instead of $0.35 — 95% cost reduction
 ```
 
-Sonnet never reads the full context. It receives a pre-assembled brief: "Write a WhatsApp follow-up to Ahmed, budget AED 1.2M, interested in JVC, speaks Arabic, last contact 48h ago." Sonnet writes the message and nothing else. 70% cost reduction on every customer-facing task.
+Gemini Pro never reads the full context. It receives a pre-assembled brief: "Write a WhatsApp follow-up to Ahmed, budget AED 1.2M, interested in JVC, speaks Arabic, last contact 48h ago." Gemini Pro writes the message and nothing else.
 
 ### The Task-to-Model Map
 
@@ -149,17 +177,18 @@ Sonnet never reads the full context. It receives a pre-assembled brief: "Write a
 | Lead scoring | 1 (Free) | Ollama | $0 |
 | Template selection | 1 (Free) | Ollama | $0 |
 | "Is this spam?" check | 1 (Free) | Ollama | $0 |
-| Morning brief assembly | 2 (Cheap) | Gemini Flash | $0.005 |
-| Lead qualification flow | 2 (Cheap) | Gemini Flash | $0.005 |
-| Ad performance analysis | 2 (Cheap) | DeepSeek V3 | $0.01 |
-| Content queue planning | 2 (Cheap) | Gemini Flash | $0.005 |
-| Report generation | 2 (Cheap) | Gemini Flash | $0.005 |
-| Complex strategy (CEO delegation) | 2 (Cheap) | Kimi K2 | $0.02 |
-| WhatsApp message draft | 3 (Quality) | Sonnet | $0.10 |
-| CEO Chat response | 3 (Quality) | Sonnet | $0.10 |
-| Instagram caption | 3 (Quality) | Sonnet | $0.10 |
-| Pitch deck content | 3 (Quality) | Sonnet | $0.15 |
-| Email draft | 3 (Quality) | Sonnet | $0.10 |
+| Morning brief assembly | 2 (Cheap) | Gemini 3.1 Flash Lite | $0.002 |
+| Lead qualification flow | 2 (Cheap) | Gemini 3.1 Flash Lite | $0.002 |
+| Ad performance analysis | 2 (Cheap) | Gemini 3.1 Flash Lite | $0.003 |
+| Content queue planning | 2 (Cheap) | Gemini 3.1 Flash Lite | $0.002 |
+| Report generation | 2 (Cheap) | Gemini 3.1 Flash Lite | $0.003 |
+| Complex strategy (CEO delegation) | 3 (Quality) | Gemini 3.1 Pro | $0.016 |
+| WhatsApp message draft | 3 (Quality) | Gemini 3.1 Pro | $0.016 |
+| CEO Chat response | 3 (Quality) | Gemini 3.1 Pro | $0.016 |
+| Instagram caption | 3 (Quality) | Gemini 3.1 Pro | $0.016 |
+| Pitch deck content | 3 (Quality) | Gemini 3.1 Pro | $0.020 |
+| Email draft | 3 (Quality) | Gemini 3.1 Pro | $0.016 |
+| Deep Think (CEO, on-demand) | 4 (Premium) | Sonnet 4.6 | $0.021 |
 
 ### No Heartbeat Polling — Event-Driven Only
 
@@ -194,18 +223,18 @@ At 50 agencies: $120/mo for a GPU instance handling ALL Tier 1 routing for every
 
 ---
 
-## Cost Per Agency — With Full Model Optimisation
+## Cost Per Agency — With Gemini 3.1 Model Optimisation
 
 ### How Every Agent Run Actually Works
 
 ```
 Event arrives (webhook, CEO message, scheduled cron)
   → Ollama classifies + routes (FREE)
-  → Gemini Flash / DeepSeek assembles context + decides action (~$0.005)
+  → Gemini 3.1 Flash Lite assembles context + decides action (~$0.002)
   → IF customer-facing output needed:
-      Sonnet writes ONLY the message with pre-assembled context ($0.10)
+      Gemini 3.1 Pro writes ONLY the message with pre-assembled context ($0.016)
   → IF no output needed (just internal state update):
-      Done. Total cost: $0.005
+      Done. Total cost: $0.002
 ```
 
 ### Starter Tier (CEO + 2 Agents)
@@ -214,51 +243,51 @@ Event arrives (webhook, CEO message, scheduled cron)
 
 | Cost | Monthly |
 |------|---------|
-| Sonnet (CEO chat × 3/day, WA drafts × 5/day = 240 runs @ $0.10) | $24 |
-| Gemini Flash / DeepSeek (routing, scoring, brief = 300 runs @ $0.005) | $2 |
+| Gemini 3.1 Pro (CEO chat × 3/day, WA drafts × 5/day = 240 runs @ $0.016) | $4 |
+| Gemini 3.1 Flash Lite (routing, scoring, brief = 300 runs @ $0.002) | $1 |
 | Ollama (classification, all routing) | $0 |
 | WhatsApp (Meta fees) | $10 |
 | Image generation | $2 |
 | 360dialog share (10 agencies) | $55 |
 | Infrastructure + Ollama GPU share | $7 |
-| **Total USD** | **$100** |
-| **Total AED** | **~AED 367** |
+| **Total USD** | **$79** |
+| **Total AED** | **~AED 290** |
 | **Revenue AED** | **999** |
-| **Margin** | **AED 632 (63%)** |
+| **Margin** | **AED 709 (71%)** |
 
 **Average Use** — Active agency, 5 leads/day, daily CEO interaction
 
 | Cost | Monthly |
 |------|---------|
-| Sonnet (CEO × 8/day, WA × 10/day, content × 2/day = 600 runs @ $0.10) | $60 |
-| Gemini Flash / DeepSeek (700 runs @ $0.005) | $4 |
+| Gemini 3.1 Pro (CEO × 8/day, WA × 10/day, content × 2/day = 600 runs @ $0.016) | $10 |
+| Gemini 3.1 Flash Lite (700 runs @ $0.002) | $2 |
 | Ollama | $0 |
 | WhatsApp (Meta fees) | $20 |
 | Image generation | $3 |
 | 360dialog share | $55 |
 | Infrastructure share | $7 |
-| **Total USD** | **$149** |
-| **Total AED** | **~AED 547** |
+| **Total USD** | **$97** |
+| **Total AED** | **~AED 356** |
 | **Revenue AED** | **999** |
-| **Margin** | **AED 452 (45%)** |
+| **Margin** | **AED 643 (64%)** |
 
 **Heavy Use** — Busy agency, 10+ leads/day, constant CEO chat
 
 | Cost | Monthly |
 |------|---------|
-| Sonnet (CEO × 15/day, WA × 20/day, content × 4/day = 1,170 runs @ $0.10) | $117 |
-| Gemini Flash / DeepSeek (1,500 runs @ $0.005) | $8 |
+| Gemini 3.1 Pro (CEO × 15/day, WA × 20/day, content × 4/day = 1,170 runs @ $0.016) | $19 |
+| Gemini 3.1 Flash Lite (1,500 runs @ $0.002) | $3 |
 | Ollama | $0 |
 | WhatsApp (Meta fees) | $40 |
 | Image generation | $5 |
 | 360dialog share | $55 |
 | Infrastructure share | $7 |
-| **Total USD** | **$232** |
-| **Total AED** | **~AED 851** |
+| **Total USD** | **$129** |
+| **Total AED** | **~AED 473** |
 | **Revenue AED** | **999** |
-| **Margin** | **AED 148 (15%)** |
+| **Margin** | **AED 526 (53%)** |
 
-**Starter verdict: Profitable at every usage level.** Even heavy use has 15% margin.
+**Starter verdict: 53% margin even on heavy users.** Gemini 3.1 eliminates the thin-margin risk entirely.
 
 ### Growth Tier (CEO + 4 Agents) — THE MONEY MAKER
 
@@ -266,34 +295,34 @@ Event arrives (webhook, CEO message, scheduled cron)
 
 | Cost | Monthly |
 |------|---------|
-| Sonnet (all customer-facing across 5 agents = 900 runs @ $0.10) | $90 |
-| Gemini Flash / DeepSeek (1,200 runs @ $0.005) | $6 |
+| Gemini 3.1 Pro (all customer-facing across 5 agents = 900 runs @ $0.016) | $15 |
+| Gemini 3.1 Flash Lite (1,200 runs @ $0.002) | $3 |
 | Ollama | $0 |
 | WhatsApp (Meta, 3 numbers) | $40 |
 | Image generation | $5 |
 | Video generation (3 videos) | $30 |
 | 360dialog share | $55 |
 | Infrastructure share | $7 |
-| **Total USD** | **$233** |
-| **Total AED** | **~AED 855** |
+| **Total USD** | **$155** |
+| **Total AED** | **~AED 569** |
 | **Revenue AED** | **1,499** |
-| **Margin** | **AED 644 (43%)** |
+| **Margin** | **AED 930 (62%)** |
 
 **Heavy Use** — All 4 agents active, 15+ leads/day
 
 | Cost | Monthly |
 |------|---------|
-| Sonnet (1,800 runs @ $0.10) | $180 |
-| Gemini Flash / DeepSeek (2,500 runs @ $0.005) | $13 |
+| Gemini 3.1 Pro (1,800 runs @ $0.016) | $29 |
+| Gemini 3.1 Flash Lite (2,500 runs @ $0.002) | $5 |
 | Ollama | $0 |
 | WhatsApp + images + video | $85 |
 | 360dialog + infra | $62 |
-| **Total USD** | **$340** |
-| **Total AED** | **~AED 1,248** |
+| **Total USD** | **$181** |
+| **Total AED** | **~AED 664** |
 | **Revenue AED** | **1,499** |
-| **Margin** | **AED 251 (17%)** |
+| **Margin** | **AED 835 (56%)** |
 
-**Growth verdict: Profitable at every usage level.** 43% on average, 17% on heavy.
+**Growth verdict: 56% margin even on heavy users.** vs 17% with Sonnet.
 
 ### Scale Tier (CEO + 8 Agents)
 
@@ -301,25 +330,39 @@ Event arrives (webhook, CEO message, scheduled cron)
 
 | Cost | Monthly |
 |------|---------|
-| Sonnet (1,500 runs @ $0.10) | $150 |
-| Gemini Flash / DeepSeek (2,000 runs @ $0.005) | $10 |
+| Gemini 3.1 Pro (1,500 runs @ $0.016) | $24 |
+| Gemini 3.1 Flash Lite (2,000 runs @ $0.002) | $4 |
 | Ollama | $0 |
 | WhatsApp + images + video | $75 |
 | 360dialog + infra | $62 |
-| **Total USD** | **$297** |
-| **Total AED** | **~AED 1,090** |
+| **Total USD** | **$165** |
+| **Total AED** | **~AED 605** |
 | **Revenue AED** | **2,499** |
-| **Margin** | **AED 1,409 (56%)** |
+| **Margin** | **AED 1,894 (76%)** |
 
-### Summary — All Tiers, All Scenarios
+**Heavy Use**
+
+| Cost | Monthly |
+|------|---------|
+| Gemini 3.1 Pro (3,000 runs @ $0.016) | $48 |
+| Gemini 3.1 Flash Lite (4,000 runs @ $0.002) | $8 |
+| Ollama | $0 |
+| WhatsApp + images + video | $120 |
+| 360dialog + infra | $62 |
+| **Total USD** | **$238** |
+| **Total AED** | **~AED 873** |
+| **Revenue AED** | **2,499** |
+| **Margin** | **AED 1,626 (65%)** |
+
+### Summary — All Tiers, All Scenarios (Gemini 3.1 vs old Sonnet strategy)
 
 | | Starter (AED 999) | Growth (AED 1,499) | Scale (AED 2,499) |
 |--|--|--|--|
-| **Light use margin** | 63% | 60% | 66% |
-| **Average use margin** | 45% | 43% | 56% |
-| **Heavy use margin** | 15% | 17% | 30% |
+| **Light use margin** | **71%** (was 63%) | **73%** (was 60%) | **80%** (was 66%) |
+| **Average use margin** | **64%** (was 45%) | **62%** (was 43%) | **76%** (was 56%) |
+| **Heavy use margin** | **53%** (was 15%) | **56%** (was 17%) | **65%** (was 30%) |
 
-**Every tier is profitable at every usage level.** The three-tier model strategy (Ollama free → Gemini cheap → Sonnet quality) is the key differentiator.
+**Every tier is massively profitable.** The Gemini 3.1 switch turns heavy users from margin risk (15%) to strong profit (53%). The four-tier model strategy (Ollama free → Flash Lite cheap → Gemini Pro quality → Sonnet premium) is the key.
 
 ---
 
@@ -336,19 +379,23 @@ Event arrives (webhook, CEO message, scheduled cron)
 
 **Month 12 MRR: ~AED 70,000 ($19,000)**
 
-### Year 1 — Costs at Month 12 (45 agencies)
+### Year 1 — Costs at Month 12 (45 agencies, Gemini 3.1 strategy)
 
 | Cost | Monthly (AED) |
 |------|--------------|
-| Claude API (all agencies, optimised) | 28,000 |
-| Gemini Flash (paid tier by now) | 1,500 |
+| Gemini 3.1 Pro API (quality tier, all agencies) | 4,500 |
+| Gemini 3.1 Flash Lite API (cheap tier) | 550 |
+| Sonnet API (Deep Think, Scale/Enterprise only) | 500 |
+| Ollama GPU instance | 450 |
 | 360dialog | 2,000 |
 | WhatsApp (Meta, all agencies) | 3,500 |
 | Image/video generation | 2,000 |
 | VPS infrastructure | 750 |
-| **Total** | **37,750** |
+| **Total** | **14,250** |
 
-**Month 12: AED 70,000 revenue − AED 37,750 costs = AED 32,250 gross margin (46%)**
+**Month 12: AED 70,000 revenue − AED 14,250 costs = AED 55,750 gross margin (80%)**
+
+vs old Sonnet strategy: AED 37,750 costs, 46% margin. Gemini 3.1 saves AED 23,500/month.
 
 ### The AygentDesk Cross-Sell (Revenue Multiplier)
 

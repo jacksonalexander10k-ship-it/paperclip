@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   FileText,
   Users,
+  UserSearch,
   Activity,
   BookOpen,
   CheckSquare,
@@ -135,7 +136,9 @@ export function Sidebar() {
         {/* Primary nav — no section header */}
         <div className="flex flex-col gap-0.5">
           <SidebarNavItem to="/ceo-chat" label="CEO Chat" icon={MessageSquare} badge={sidebarBadges?.ceoChatUnread} />
-          <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+          <div data-tour="sidebar-dashboard">
+            <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+          </div>
           <SidebarNavItem
             to="/inbox"
             label="Inbox"
@@ -156,18 +159,23 @@ export function Sidebar() {
         {/* WORK */}
         <SidebarSection label="Work">
           <SidebarNavItem to="/issues" label="Tasks" icon={CheckSquare} />
-          <SidebarNavItem
-            to="/approvals/pending"
-            label="Approvals"
-            icon={ShieldCheck}
-            badge={pendingApprovals}
-          />
+          <div data-tour="sidebar-approvals">
+            <SidebarNavItem
+              to="/approvals/pending"
+              label="Approvals"
+              icon={ShieldCheck}
+              badge={pendingApprovals}
+            />
+          </div>
           <SidebarNavItem to="/routines" label="Automations" icon={Repeat} />
-          <SidebarNavItem to="/deliverables" label="Deliverables" icon={FileText} />
+          <SidebarNavItem to="/deliverables" label="Documents" icon={FileText} />
         </SidebarSection>
 
         {/* INVENTORY */}
         <SidebarSection label="Inventory">
+          <div data-tour="sidebar-leads">
+            <SidebarNavItem to="/leads" label="Leads" icon={UserSearch} />
+          </div>
           <SidebarNavItem to="/properties" label="Properties" icon={Building2} />
         </SidebarSection>
 
@@ -177,11 +185,15 @@ export function Sidebar() {
         </SidebarSection>
 
         {/* Individual agents */}
-        <SidebarAgents />
+        <div data-tour="sidebar-agents">
+          <SidebarAgents />
+        </div>
 
         {/* AGENCY */}
         <SidebarSection label="Agency">
-          <SidebarNavItem to="/costs" label="Budget" icon={DollarSign} />
+          <div data-tour="sidebar-budget">
+            <SidebarNavItem to="/costs" label="Budget" icon={DollarSign} />
+          </div>
           <button
             onClick={toggleActivityPanel}
             className="flex items-center gap-2.5 px-2 py-1.5 text-[12.5px] font-medium rounded-lg text-muted-foreground/60 hover:bg-accent/50 hover:text-foreground transition-all duration-150 w-full text-left"
@@ -190,7 +202,9 @@ export function Sidebar() {
             <span className="truncate">Live Activity</span>
           </button>
           <SidebarNavItem to="/knowledge-base" label="Knowledge Base" icon={FolderOpen} />
-          <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+          <div data-tour="sidebar-settings">
+            <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+          </div>
         </SidebarSection>
 
         <PluginSlotOutlet
@@ -202,18 +216,10 @@ export function Sidebar() {
         />
       </nav>
 
-      {/* Footer — theme toggle + docs + user avatar */}
+      {/* Footer — theme toggle + user avatar */}
       <div className="border-t border-sidebar-border/50 px-2 py-2 flex items-center gap-1">
         <ThemeToggle />
-        <a
-          href="https://docs.paperclip.ing/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-2 py-1.5 text-[12.5px] font-medium text-muted-foreground/40 hover:bg-accent/50 hover:text-foreground transition-all duration-150 flex-1 rounded-lg"
-        >
-          <BookOpen className="w-[13px] h-[13px] shrink-0" />
-          <span className="truncate">Docs</span>
-        </a>
+        <div className="flex-1" />
         <div
           className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0"
           title={session?.user?.name ?? session?.user?.email ?? ""}

@@ -5,10 +5,12 @@ import { notFound, unprocessable } from "../errors.js";
 import { redactCurrentUserText } from "../log-redaction.js";
 import { agentService } from "./agents.js";
 import { approvalExecutorService } from "./approval-executor.js";
+import { autoApproveService } from "./auto-approve.js";
 import { budgetService } from "./budgets.js";
 import { notifyHireApproved } from "./hire-hook.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { pushNotificationService } from "./push-notifications.js";
+import { logger } from "../middleware/logger.js";
 
 export function approvalService(db: Db) {
   const agentsSvc = agentService(db);
@@ -101,10 +103,82 @@ export function approvalService(db: Db) {
         .returning()
         .then((rows) => rows[0]);
 
-      // Send push notification for new approval
+      if (!row) return row;
+
       const payload = data.payload as Record<string, unknown> | null;
       const action = String(payload?.action ?? data.type ?? "action");
       const agentName = String(payload?.agentName ?? "An agent");
+
+      // --- Auto-approve evaluation ---
+      // For reply messages (send_whatsapp, send_email) that are NOT first contact,
+      // evaluate whether the approval can be auto-approved without human intervention.
+      try {
+        const autoApproveSvc = autoApproveService(db);
+        const evalResult = await autoApproveSvc.evaluate(companyId, {
+          id: row.id,
+          type: String(data.type),
+          payload: payload ?? {},
+          requestedByAgentId: data.requestedByAgentId ?? null,
+        });
+
+        if (evalResult.autoApprove && evalResult.confidence >= 0.7) {
+          // Auto-approve: update status and execute immediately
+          const now = new Date();
+          await db
+            .update(approvals)
+            .set({
+              status: "approved",
+              autoApproved: true,
+              autoApproveReason: evalResult.reason,
+              decidedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(approvals.id, row.id));
+
+          // Execute the action immediately
+          if (data.type !== "hire_agent" && data.type !== "budget_override_required") {
+            const executor = approvalExecutorService(db);
+            const agentId = data.requestedByAgentId;
+            if (agentId) {
+              const execResult = await executor.execute(
+                row.id,
+                agentId,
+                companyId,
+                action,
+                payload ?? {},
+              );
+              if (!execResult.executed && execResult.blockedReason) {
+                await db
+                  .update(approvals)
+                  .set({
+                    status: "pending",
+                    autoApproved: false,
+                    autoApproveReason: `Auto-execute blocked: ${execResult.blockedReason}`,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(approvals.id, row.id));
+              } else {
+                logger.info(
+                  { approvalId: row.id, action, reason: evalResult.reason },
+                  "approvals: auto-approved and executed",
+                );
+                // Still notify so the owner knows what happened (non-blocking)
+                pushNotificationService(db).sendToCompany(companyId, {
+                  title: "Auto-Approved",
+                  body: `${agentName} auto-sent ${action}`,
+                  url: "/approvals/pending",
+                  tag: "approval",
+                }).catch(() => {});
+                return { ...row, status: "approved", autoApproved: true, autoApproveReason: evalResult.reason };
+              }
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, approvalId: row.id }, "approvals: auto-approve evaluation failed, falling back to manual");
+      }
+
+      // Manual flow: send push notification for new approval
       pushNotificationService(db).sendToCompany(companyId, {
         title: "Approval Needed",
         body: `${agentName} wants to ${action}`,

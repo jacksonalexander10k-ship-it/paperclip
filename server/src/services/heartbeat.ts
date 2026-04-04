@@ -2561,6 +2561,9 @@ export function heartbeatService(db: Db) {
         );
       }
 
+      // Pass agent role to adapter so it can configure role-scoped MCP tools
+      context.paperclipAgentRole = (agent as Record<string, unknown>).role ?? "general";
+
       const adapter = getServerAdapter(agent.adapterType);
       const authToken = adapter.supportsLocalAgentJwt
         ? createLocalAgentJwt(agent.id, agent.companyId, agent.adapterType, run.id)
@@ -2819,6 +2822,93 @@ export function heartbeatService(db: Db) {
         }
       }
 
+      // Parse approval_required blocks from agent output and create real approval records
+      if (outcome === "succeeded" && stdoutExcerpt) {
+        try {
+          // Match both ```json and ```approval blocks containing approval_required payloads
+          const approvalPattern = /```(?:json|approval)\s*([\s\S]*?)```/g;
+          let approvalMatch = approvalPattern.exec(stdoutExcerpt);
+          let approvalCount = 0;
+          while (approvalMatch !== null && approvalCount < 20) {
+            try {
+              const parsed = JSON.parse(approvalMatch[1]!);
+              if (parsed?.type === "approval_required" && parsed.action) {
+                const { approvalService: getApprovalSvc } = await import("./approvals.js");
+                const approvalSvc = getApprovalSvc(db);
+                await approvalSvc.create(agent.companyId, {
+                  type: String(parsed.action),
+                  requestedByAgentId: agent.id,
+                  status: "pending",
+                  payload: parsed,
+                });
+                approvalCount++;
+              }
+            } catch { /* not valid JSON or not approval — skip */ }
+            approvalMatch = approvalPattern.exec(stdoutExcerpt);
+          }
+          if (approvalCount > 0) {
+            logger.info(
+              { companyId: agent.companyId, agentId: agent.id, approvalCount },
+              "heartbeat: created approval records from agent output",
+            );
+            // Notify the owner that approvals are waiting
+            pushNotificationService(db).sendToCompany(agent.companyId, {
+              title: `${(agent as Record<string, unknown>).name ?? "Agent"} needs approval`,
+              body: `${approvalCount} action${approvalCount > 1 ? "s" : ""} pending your review`,
+              url: "/approvals/pending",
+              tag: `agent-approvals-${agent.id}`,
+            }).catch(() => {});
+          }
+        } catch (err) {
+          logger.warn({ err, agentId: agent.id }, "heartbeat: failed to parse approval blocks from output");
+        }
+      }
+
+      // Parse tool_use events from stdout and emit activity log entries
+      if (outcome === "succeeded" && stdoutExcerpt) {
+        try {
+          const { logActivity: logAct } = await import("./activity-log.js");
+          const lines = stdoutExcerpt.split("\n");
+          let toolCallCount = 0;
+          for (const line of lines) {
+            if (toolCallCount >= 50) break; // cap to avoid flooding
+            let parsed: Record<string, unknown> | null = null;
+            try { parsed = JSON.parse(line); } catch { continue; }
+            if (!parsed || typeof parsed !== "object") continue;
+            if (parsed.type !== "assistant") continue;
+            const msg = parsed.message as Record<string, unknown> | undefined;
+            const content = Array.isArray(msg?.content) ? msg!.content : [];
+            for (const block of content) {
+              if (toolCallCount >= 50) break;
+              if (typeof block !== "object" || block === null) continue;
+              const b = block as Record<string, unknown>;
+              if (b.type !== "tool_use") continue;
+              const toolName = typeof b.name === "string" ? b.name : "unknown";
+              toolCallCount++;
+              await logAct(db, {
+                companyId: agent.companyId,
+                actorType: "agent",
+                actorId: agent.id,
+                action: "tool_call",
+                entityType: "agent",
+                entityId: agent.id,
+                agentId: agent.id,
+                runId: run.id,
+                details: { tool: toolName },
+              });
+            }
+          }
+          if (toolCallCount > 0) {
+            logger.info(
+              { companyId: agent.companyId, agentId: agent.id, toolCallCount },
+              "heartbeat: emitted tool_call activity events",
+            );
+          }
+        } catch (err) {
+          logger.warn({ err, agentId: agent.id }, "heartbeat: failed to parse tool_use events from stdout");
+        }
+      }
+
       if (finalizedRun) {
         await updateRuntimeState(agent, finalizedRun, adapterResult, {
           legacySessionId: nextSessionState.legacySessionId,
@@ -2907,6 +2997,14 @@ export function heartbeatService(db: Db) {
         }
       }
 
+      // Push notification with run failure details
+      pushNotificationService(db).sendToCompany(agent.companyId, {
+        title: "Heartbeat Failed",
+        body: `${agent.name} run failed: ${message.slice(0, 120)}`,
+        url: "/inbox",
+        tag: `run-failed-${run.id}`,
+      }).catch(() => {});
+
       await finalizeAgentStatus(agent.id, "failed");
     }
     } catch (outerErr) {
@@ -2937,6 +3035,17 @@ export function heartbeatService(db: Db) {
           }
           // Ensure the agent is not left stuck in "running" if the inner catch handler's
           // DB calls threw (e.g. a transient DB error in finalizeAgentStatus).
+          // Push notification for setup failure
+          const outerAgent = await getAgent(run.agentId).catch(() => null);
+          if (outerAgent) {
+            pushNotificationService(db).sendToCompany(outerAgent.companyId, {
+              title: "Heartbeat Failed",
+              body: `${outerAgent.name} run failed: ${message.slice(0, 120)}`,
+              url: "/inbox",
+              tag: `run-failed-${runId}`,
+            }).catch(() => {});
+          }
+
           await finalizeAgentStatus(run.agentId, "failed").catch(() => undefined);
         } finally {
           await releaseRuntimeServicesForRun(run.id).catch(() => undefined);

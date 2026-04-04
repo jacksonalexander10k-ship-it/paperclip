@@ -1,6 +1,12 @@
 ---
 name: rent-collection
 description: Cheque management, payment tracking, arrears handling, and landlord settlement for Dubai rental agencies
+metadata:
+  allowed-tools:
+    - record_payment
+    - get_payment_history
+    - send_email
+    - send_whatsapp
 ---
 
 # Rent Collection — Dubai Real Estate

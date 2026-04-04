@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { aygentWhatsappMessages, aygentWhatsappWindows } from "@paperclipai/db";
 import { agentCredentialService } from "../services/agent-credentials.js";
 import { issueService, agentService } from "../services/index.js";
+import { autoReplyService } from "../services/auto-reply.js";
 import { logActivity } from "../services/activity-log.js";
 import { logger } from "../middleware/logger.js";
 
@@ -161,6 +162,21 @@ export function whatsappWebhookRoutes(db?: Db) {
             { issueId: issue.id, agentName: agent.name, from },
             "whatsapp-webhook: issue created for inbound message",
           );
+
+          // Enqueue delayed auto-reply (if a rule exists for "whatsapp" leads)
+          try {
+            const autoReply = autoReplyService(db);
+            await autoReply.enqueue({
+              companyId: agent.companyId,
+              agentId: agent.id,
+              leadSource: "whatsapp",
+              recipientPhone: from,
+              leadName: payload.contacts?.[0]?.profile?.name ?? undefined,
+              agentName: agent.name,
+            });
+          } catch (arErr) {
+            logger.warn({ arErr, from }, "whatsapp-webhook: auto-reply enqueue failed");
+          }
         } catch (err) {
           logger.error({ err, from }, "whatsapp-webhook: failed to process inbound message");
         }

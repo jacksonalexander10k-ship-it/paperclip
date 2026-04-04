@@ -36,6 +36,7 @@ import { gmailWebhookRoutes } from "./routes/gmail-webhook.js";
 import { facebookWebhookRoutes } from "./routes/facebook-webhook.js";
 import { agentCredentialRoutes } from "./routes/agent-credentials.js";
 import { whatsappConnectRoutes } from "./routes/whatsapp-connect.js";
+import { gmailConnectRoutes } from "./routes/gmail-connect.js";
 import { facebookConnectRoutes } from "./routes/facebook-connect.js";
 import { billingRoutes, stripeWebhookRoutes } from "./routes/billing.js";
 import { analyticsRoutes } from "./routes/analytics.js";
@@ -48,6 +49,11 @@ import { pushSubscriptionRoutes } from "./routes/push-subscriptions.js";
 import { agentLearningRoutes } from "./routes/agent-learnings.js";
 import { agentMessageRoutes } from "./routes/agent-messages.js";
 import { demoOrchestratorRoutes } from "./routes/demo-orchestrator.js";
+import { baileysRoutes } from "./routes/baileys.js";
+import { orgDepartmentRoutes } from "./routes/org-departments.js";
+import { autoReplyRulesRoutes } from "./routes/auto-reply-rules.js";
+import { testIntegrationRoutes } from "./routes/test-integrations.js";
+import { baileysSessionManager } from "./services/baileys-session-manager.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -111,6 +117,8 @@ export async function createApp(
   app.use(facebookWebhookRoutes(db));
   // Stripe webhook — mounted before auth so Stripe can POST freely
   app.use(stripeWebhookRoutes(db));
+  // Google OAuth callback — mounted before auth so the redirect works without a session
+  app.use(gmailConnectRoutes(db));
 
   app.use(httpLogger);
   const privateHostnameGateEnabled =
@@ -184,6 +192,7 @@ export async function createApp(
   api.use(ceoChatRoutes(db));
   api.use(agentCredentialRoutes(db));
   api.use(whatsappConnectRoutes(db));
+  api.use(gmailConnectRoutes(db));
   api.use(facebookConnectRoutes(db));
   api.use(billingRoutes(db));
   api.use(analyticsRoutes(db));
@@ -196,6 +205,11 @@ export async function createApp(
   api.use(agentLearningRoutes(db));
   api.use(agentMessageRoutes(db));
   api.use(demoOrchestratorRoutes(db));
+  api.use(baileysRoutes(db));
+  api.use(orgDepartmentRoutes(db));
+  api.use(autoReplyRulesRoutes(db));
+  // TEST-ONLY routes — mock OAuth connections and data seeding for development
+  api.use(testIntegrationRoutes(db));
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
@@ -339,6 +353,11 @@ export async function createApp(
       async (pluginId) => (await pluginRegistry.getById(pluginId))?.packagePath ?? null,
     )
     : null;
+  // Restore Baileys WhatsApp sessions from DB
+  void baileysSessionManager.restoreAllSessions(db).catch((err) => {
+    logger.error({ err }, "Failed to restore Baileys sessions on startup");
+  });
+
   void loader.loadAll().then((result) => {
     if (!result) return;
     for (const loaded of result.results) {

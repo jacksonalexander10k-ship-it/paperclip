@@ -19,7 +19,7 @@ import { ActivityRow } from "../components/ActivityRow";
 import { AgentStatusCard } from "../components/AgentStatusCard";
 import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle, Brain, MessageSquare } from "lucide-react";
+import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle, Brain, MessageSquare, TrendingUp, Clock, Target, CheckCircle2 } from "lucide-react";
 import { agentLearningsApi } from "../api/agent-learnings";
 import { agentMessagesApi } from "../api/agent-messages";
 import { Button } from "@/components/ui/button";
@@ -371,13 +371,13 @@ export function Dashboard() {
               </div>
             ) : null}
 
-            {/* Your Team — .sec header + .ag2 grid */}
+            {/* Your Team — org chart grid */}
             {(agents ?? []).length > 0 && (
               <div>
-                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]">
+                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-3">
                   Your Team
                 </h3>
-                <div className="grid grid-cols-2 gap-[8px]">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                   {(agents ?? []).filter((a: Agent) => a.status !== "terminated").map((agent: Agent, index: number) => {
                     const run = runByAgentId.get(agent.id);
                     const currentAction = run?.issueId
@@ -410,7 +410,7 @@ export function Dashboard() {
             {recentActivity.length > 0 && (
               <div>
                 <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]">
-                  What Just Happened
+                  Recent Activity
                 </h3>
                 <div className="flex flex-col gap-px">
                   {recentActivity.map((event) => (
@@ -444,6 +444,71 @@ export function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <DailyCostChart data={analytics.trends.dailyCosts ?? []} />
                   <DailyRunsChart data={analytics.trends.dailyRuns ?? []} />
+                </div>
+              </div>
+            )}
+
+            {/* Analytics — performance metrics */}
+            {analytics && (analytics.totals.runs > 0 || (issues ?? []).length > 0) && (
+              <div>
+                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]">
+                  Performance
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-[10px]">
+                  {/* Task Completion Rate */}
+                  {(() => {
+                    const allIssues = issues ?? [];
+                    const total = allIssues.length;
+                    const done = allIssues.filter((i: Issue) => i.status === "done").length;
+                    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                    return (
+                      <MetricCard
+                        icon={CheckCircle2}
+                        value={pct}
+                        label="Completion Rate"
+                        valueColor={pct >= 50 ? "green" : "default"}
+                        description={<span>{done} of {total} tasks done</span>}
+                      />
+                    );
+                  })()}
+
+                  {/* Agent Success Rate */}
+                  <MetricCard
+                    icon={Target}
+                    value={`${Math.round(analytics.totals.successRate)}%`}
+                    label="Run Success Rate"
+                    valueColor={analytics.totals.successRate >= 90 ? "green" : analytics.totals.successRate >= 70 ? "amber" : "default"}
+                    description={<span>{analytics.totals.succeededRuns} of {analytics.totals.runs} runs</span>}
+                  />
+
+                  {/* Cost per Task */}
+                  {(() => {
+                    const completed = analytics.totals.tasksCompleted || (issues ?? []).filter((i: Issue) => i.status === "done").length;
+                    const costPerTask = completed > 0 ? analytics.totals.costCents / completed : 0;
+                    return (
+                      <MetricCard
+                        icon={TrendingUp}
+                        value={`$${(costPerTask / 100).toFixed(2)}`}
+                        label="Cost per Task"
+                        description={<span>{completed} tasks completed</span>}
+                      />
+                    );
+                  })()}
+
+                  {/* Avg Runs per Day */}
+                  {(() => {
+                    const dailyRuns = analytics.trends.dailyRuns ?? [];
+                    const totalRuns = dailyRuns.reduce((sum, d) => sum + d.total, 0);
+                    const avgPerDay = dailyRuns.length > 0 ? Math.round(totalRuns / dailyRuns.length) : 0;
+                    return (
+                      <MetricCard
+                        icon={Clock}
+                        value={avgPerDay}
+                        label="Avg Runs / Day"
+                        description={<span>{analytics.totals.runs} total over {dailyRuns.length}d</span>}
+                      />
+                    );
+                  })()}
                 </div>
               </div>
             )}

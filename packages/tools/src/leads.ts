@@ -19,6 +19,7 @@ import {
   aygentLeadTags,
 } from "@paperclipai/db";
 import type { ToolDefinition, ToolExecutor } from "./types.js";
+import { storeDeliverable } from "./lib/deliverables.js";
 
 // ═══════════════════════════════════════════════════
 // search_leads
@@ -779,21 +780,31 @@ export const bulkFollowUpExecutor: ToolExecutor = async (input, ctx) => {
 
   if (leads.length === 0) return { error: "No leads found matching criteria" };
 
+  const leadSummaries = leads.map((l) => ({
+    id: l.id,
+    name: l.name,
+    phone: l.phone,
+    email: l.email,
+    score: l.score,
+    stage: l.stage,
+    lastContactAt: l.lastContactAt?.toISOString() ?? null,
+  }));
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "bulk_follow_up",
+    title: `Bulk Follow-Up — ${leads.length} lead(s)${tag ? ` [${tag}]` : ""}`,
+    summary: `Follow-up batch for ${leads.length} leads.${message ? ` Theme: ${message}` : ""} Lead names: ${leads.map((l) => l.name).join(", ")}.`,
+    metadata: { toolInput: input, leadCount: leads.length, leadIds: leads.map((l) => l.id) },
+  });
+
   // In the Aygency World context, we return the lead list for the agent to process.
   // The actual message generation happens through the agent's heartbeat + approval flow.
   return {
     message: `Found ${leads.length} leads for follow-up. Draft personalized messages for each and queue for approval.`,
     leadCount: leads.length,
-    leads: leads.map((l) => ({
-      id: l.id,
-      name: l.name,
-      phone: l.phone,
-      email: l.email,
-      score: l.score,
-      stage: l.stage,
-      lastContactAt: l.lastContactAt?.toISOString() ?? null,
-    })),
+    leads: leadSummaries,
     messageHint: message ?? null,
+    deliverableId,
   };
 };
 
@@ -897,7 +908,67 @@ export const bulkLeadActionExecutor: ToolExecutor = async (input, ctx) => {
     };
   }
 
-  return { error: `Unknown action: ${action}` };
+  if (action === "tag") {
+    if (!payload?.tagName) {
+      return { error: "payload.tagName is required for tag action" };
+    }
+
+    // Find or create the tag
+    const tagName = payload.tagName.toLowerCase().trim();
+    let tagRows = await ctx.db
+      .select()
+      .from(aygentTags)
+      .where(
+        and(
+          eq(aygentTags.companyId, ctx.companyId),
+          eq(aygentTags.name, tagName),
+        ),
+      )
+      .limit(1);
+
+    if (tagRows.length === 0) {
+      // Auto-create the tag
+      tagRows = await ctx.db
+        .insert(aygentTags)
+        .values({ companyId: ctx.companyId, name: tagName })
+        .returning();
+    }
+
+    const tag = tagRows[0]!;
+    let applied = 0;
+
+    for (const leadId of resolvedIds) {
+      try {
+        await ctx.db.insert(aygentLeadTags).values({
+          leadId,
+          tagId: tag.id,
+        });
+        applied++;
+      } catch (error: unknown) {
+        // Skip duplicate key errors (lead already has this tag)
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          (error as { code: string }).code === "23505"
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return {
+      success: true,
+      count: resolvedIds.length,
+      applied,
+      action,
+      tagName: tag.name,
+      message: `Applied tag "${tag.name}" to ${applied} leads (${resolvedIds.length - applied} already had it)`,
+    };
+  }
+
+  return { error: `Unknown action: ${action}. Supported actions: stage, tag` };
 };
 
 // ═══════════════════════════════════════════════════
@@ -978,25 +1049,37 @@ export const matchDealToLeadsExecutor: ToolExecutor = async (input, ctx) => {
     return true;
   });
 
+  const matchSummaries = matches.slice(0, 10).map((lead) => ({
+    id: lead.id,
+    name: lead.name,
+    phone: lead.phone,
+    email: lead.email,
+    score: lead.score,
+    stage: lead.stage,
+    budget: lead.budget,
+    preferredAreas: lead.preferredAreas,
+    propertyType: lead.propertyType,
+    lastContactAt: lead.lastContactAt?.toISOString() ?? null,
+    notes: lead.notes?.substring(0, 200),
+  }));
+
+  const safePrice = price ?? 0;
+  const safeArea = area ?? "Unknown";
+
+  const deliverableId = await storeDeliverable(ctx, {
+    type: "deal_match",
+    title: `Deal Match — ${safeArea} AED ${safePrice.toLocaleString()} (${matches.length} match${matches.length !== 1 ? "es" : ""})`,
+    summary: `Matched listing in ${safeArea} (AED ${safePrice.toLocaleString()}) against pipeline. ${matches.length} lead(s) matched.${matches.length > 0 ? ` Top: ${matches[0]?.name} (score ${matches[0]?.score}/10).` : ""}`,
+    metadata: { toolInput: input, matchCount: matches.length, matchIds: matches.slice(0, 10).map((l) => l.id) },
+  });
+
   return {
     totalLeads: leads.length,
     matchingLeads: matches.length,
-    matches: matches.slice(0, 10).map((lead) => ({
-      id: lead.id,
-      name: lead.name,
-      phone: lead.phone,
-      email: lead.email,
-      score: lead.score,
-      stage: lead.stage,
-      budget: lead.budget,
-      preferredAreas: lead.preferredAreas,
-      propertyType: lead.propertyType,
-      lastContactAt: lead.lastContactAt?.toISOString() ?? null,
-      notes: lead.notes?.substring(0, 200),
-    })),
+    matches: matchSummaries,
     listing: {
-      price,
-      area,
+      price: price ?? 0,
+      area: area ?? "",
       propertyType: propertyType ?? null,
       bedrooms: bedrooms ?? null,
       purpose: purpose ?? "sale",
@@ -1006,6 +1089,7 @@ export const matchDealToLeadsExecutor: ToolExecutor = async (input, ctx) => {
       matches.length > 0
         ? `Found ${matches.length} matching leads. Top match: ${matches[0]?.name} (score ${matches[0]?.score}/10). Want me to draft personalized messages to all ${Math.min(matches.length, 10)} matches?`
         : "No matching leads in your pipeline for this listing.",
+    deliverableId,
   };
 };
 
@@ -1078,28 +1162,41 @@ export const reactivateStaleLeadsExecutor: ToolExecutor = async (
     .orderBy(desc(aygentLeads.score))
     .limit(take);
 
+  const leadSummaries = staleLeads.map((lead) => ({
+    id: lead.id,
+    name: lead.name,
+    phone: lead.phone,
+    email: lead.email,
+    score: lead.score,
+    stage: lead.stage,
+    lastContactAt: lead.lastContactAt?.toISOString() ?? null,
+    preferredAreas: lead.preferredAreas,
+    propertyType: lead.propertyType,
+    budget: lead.budget,
+    notes: lead.notes?.substring(0, 200),
+  }));
+
+  let deliverableId: string | null = null;
+  if (staleLeads.length > 0) {
+    deliverableId = await storeDeliverable(ctx, {
+      type: "stale_lead_reactivation",
+      title: `Stale Lead Reactivation — ${staleLeads.length} lead(s), ${days}+ days inactive`,
+      summary: `Found ${staleLeads.length} leads inactive for ${days}+ days. Angle: ${angle}. Stage filter: ${stageFilter}. Leads: ${staleLeads.map((l) => l.name).join(", ")}.`,
+      metadata: { toolInput: input, leadCount: staleLeads.length, leadIds: staleLeads.map((l) => l.id) },
+    });
+  }
+
   return {
     totalFound: staleLeads.length,
     daysSinceContact: days,
     stageFilter,
     messageAngle: angle,
-    leads: staleLeads.map((lead) => ({
-      id: lead.id,
-      name: lead.name,
-      phone: lead.phone,
-      email: lead.email,
-      score: lead.score,
-      stage: lead.stage,
-      lastContactAt: lead.lastContactAt?.toISOString() ?? null,
-      preferredAreas: lead.preferredAreas,
-      propertyType: lead.propertyType,
-      budget: lead.budget,
-      notes: lead.notes?.substring(0, 200),
-    })),
+    leads: leadSummaries,
     instruction:
       staleLeads.length > 0
         ? `Found ${staleLeads.length} leads not contacted in ${days}+ days. Draft personalized ${angle} messages for each, using their preferences and last conversation context. Present as approval cards for WhatsApp.`
         : `All leads have been contacted within the last ${days} days. Pipeline is active.`,
+    deliverableId,
   };
 };
 

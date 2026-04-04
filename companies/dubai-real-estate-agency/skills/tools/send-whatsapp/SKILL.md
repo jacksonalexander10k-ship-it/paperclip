@@ -1,6 +1,9 @@
 ---
 name: tools/send-whatsapp
 description: Queue a WhatsApp message for owner approval — NEVER sends directly
+metadata:
+  allowed-tools:
+    - send_whatsapp
 ---
 
 # Tool: Send WhatsApp (Approval Queue)

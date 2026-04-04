@@ -1,15 +1,17 @@
 import { ChangeEvent, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
+import { agentLearningsApi, type AgentLearning } from "../api/agent-learnings";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Check, Download, Upload, MessageCircle, Mail, Calendar, Camera, Bell } from "lucide-react";
+import { Check, Download, Upload, MessageCircle, Mail, Calendar, Camera, Bell, Brain, Trash2, ArrowRight } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
+import { AutoReplyRules } from "../components/AutoReplyRules";
 import {
   ToggleField,
   HintIcon
@@ -194,6 +196,28 @@ export function CompanySettings() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.companies.stats
       });
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({
+      companyId,
+      nextCompanyId
+    }: {
+      companyId: string;
+      nextCompanyId: string | null;
+    }) => companiesApi.remove(companyId).then(() => ({ nextCompanyId })),
+    onSuccess: async ({ nextCompanyId }) => {
+      if (nextCompanyId) {
+        setSelectedCompanyId(nextCompanyId);
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.companies.all
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.companies.stats
+      });
+      pushToast({ title: "Agency deleted" });
     }
   });
 
@@ -394,8 +418,8 @@ export function CompanySettings() {
             {/* Hiring toggle */}
             <div className="pt-2 border-t border-border/40">
               <ToggleField
-                label="Require board approval for new hires"
-                hint="New agent hires stay pending until approved by board."
+                label="Require your approval before hiring new agents"
+                hint="New agent hires stay pending until you approve them."
                 checked={!!selectedCompany.requireBoardApprovalForNewAgents}
                 onChange={(v) => settingsMutation.mutate(v)}
               />
@@ -440,8 +464,8 @@ export function CompanySettings() {
           </div>
         </div>
 
-        {/* Invites section */}
-        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+        {/* Invites section — hidden from non-technical users */}
+        <div className="hidden rounded-xl border border-border/50 bg-card/80 overflow-hidden">
           <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
             <span className="text-[12px] font-bold">Agent Invites</span>
           </div>
@@ -512,8 +536,8 @@ export function CompanySettings() {
           </div>
         </div>
 
-        {/* Import / Export */}
-        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+        {/* Import / Export — hidden from non-technical users */}
+        <div className="hidden rounded-xl border border-border/50 bg-card/80 overflow-hidden">
           <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
             <span className="text-[12px] font-bold">Company Packages</span>
           </div>
@@ -580,6 +604,54 @@ export function CompanySettings() {
           </div>
         </div>
 
+        {/* Agent Learnings / Instincts section */}
+        <CompanyLearningsSection companyId={selectedCompanyId!} />
+
+        {/* Auto-Reply Rules */}
+        <AutoReplyRules companyId={selectedCompanyId!} />
+
+        {/* Export agency data */}
+        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+          <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
+            <span className="text-[12px] font-bold">Data Export</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-[11.5px] text-muted-foreground">
+              Export your agency data as a portable company package (agents, skills, configuration).
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[11px] h-7"
+              onClick={() => {
+                companiesApi
+                  .exportBundle(selectedCompanyId!, {})
+                  .then((result) => {
+                    const blob = new Blob([JSON.stringify(result, null, 2)], {
+                      type: "application/json",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${selectedCompany.name.replace(/\s+/g, "-").toLowerCase()}-export.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    pushToast({ title: "Agency data exported successfully" });
+                  })
+                  .catch((err) => {
+                    pushToast({
+                      title: err instanceof Error ? err.message : "Export failed",
+                      tone: "error",
+                    });
+                  });
+              }}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export Agency Data
+            </Button>
+          </div>
+        </div>
+
         {/* Danger Zone */}
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 overflow-hidden">
           <div className="px-3.5 py-3 border-b border-destructive/20 bg-destructive/5">
@@ -631,8 +703,201 @@ export function CompanySettings() {
                 </span>
               )}
             </div>
+
+            {/* Delete Agency */}
+            <div className="pt-3 border-t border-destructive/20 space-y-2">
+              <p className="text-[11.5px] text-muted-foreground">
+                Permanently delete this agency and all its data. This action cannot be undone.
+              </p>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="text-[11px] h-7"
+                disabled={deleteMutation.isPending}
+                onClick={() => {
+                  if (!selectedCompanyId) return;
+                  const confirmed = window.confirm(
+                    `Permanently delete "${selectedCompany.name}"? This cannot be undone.`
+                  );
+                  if (!confirmed) return;
+                  const secondConfirm = window.confirm(
+                    `Are you absolutely sure? All agents, tasks, learnings, and history will be permanently deleted.`
+                  );
+                  if (!secondConfirm) return;
+                  const nextCompanyId =
+                    companies.find(
+                      (company) =>
+                        company.id !== selectedCompanyId &&
+                        company.status !== "archived"
+                    )?.id ?? null;
+                  deleteMutation.mutate({
+                    companyId: selectedCompanyId,
+                    nextCompanyId
+                  });
+                }}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                {deleteMutation.isPending ? "Deleting..." : "Delete agency permanently"}
+              </Button>
+              {deleteMutation.isError && (
+                <span className="text-[11px] text-destructive">
+                  {deleteMutation.error instanceof Error
+                    ? deleteMutation.error.message
+                    : "Failed to delete company"}
+                </span>
+              )}
+            </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CompanyLearningsSection({ companyId }: { companyId: string }) {
+  const queryClient = useQueryClient();
+
+  const { data: learnings, isLoading } = useQuery({
+    queryKey: queryKeys.agentLearnings.list(companyId),
+    queryFn: () => agentLearningsApi.list(companyId),
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: queryKeys.agentLearnings.stats(companyId),
+    queryFn: () => agentLearningsApi.stats(companyId),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (learningId: string) =>
+      agentLearningsApi.remove(companyId, learningId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentLearnings.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentLearnings.stats(companyId) });
+    },
+  });
+
+  const activeLearnings = (learnings ?? []).filter((l) => l.active);
+
+  const typeColors: Record<string, string> = {
+    correction: "bg-blue-500/10 text-blue-600",
+    rejection: "bg-red-500/10 text-red-600",
+    compacted: "bg-amber-500/10 text-amber-600",
+    observation: "bg-green-500/10 text-green-600",
+    outcome: "bg-purple-500/10 text-purple-600",
+  };
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
+      <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
+        <div className="flex items-center gap-2">
+          <Brain className="h-3.5 w-3.5 text-primary" />
+          <span className="text-[12px] font-bold">Agency Learnings</span>
+          {stats && stats.active > 0 && (
+            <span className="text-[10px] text-muted-foreground">
+              ({stats.active} active)
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="p-4 space-y-3">
+        {isLoading && (
+          <div className="h-16 bg-muted/30 rounded-lg animate-pulse" />
+        )}
+
+        {!isLoading && activeLearnings.length === 0 && (
+          <p className="text-[11.5px] text-muted-foreground">
+            No learnings yet. Agents will start learning when you edit or reject their approval cards.
+          </p>
+        )}
+
+        {stats && stats.active > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/40 bg-background p-2.5">
+              <div className="text-lg font-bold">{stats.corrections}</div>
+              <div className="text-[10px] text-muted-foreground">Corrections</div>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-background p-2.5">
+              <div className="text-lg font-bold">{stats.rejections}</div>
+              <div className="text-[10px] text-muted-foreground">Rejections</div>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-background p-2.5">
+              <div className="text-lg font-bold">{stats.totalApplied}</div>
+              <div className="text-[10px] text-muted-foreground">Times Applied</div>
+            </div>
+          </div>
+        )}
+
+        {activeLearnings.slice(0, 10).map((learning) => (
+          <div
+            key={learning.id}
+            className="rounded-lg border border-border/40 bg-background px-3 py-2.5 space-y-1.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                    typeColors[learning.type] ?? "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {learning.type}
+                </span>
+                {learning.actionType && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {learning.actionType}
+                  </span>
+                )}
+                {learning.appliedCount > 0 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Applied {learning.appliedCount}x
+                  </span>
+                )}
+              </div>
+              <button
+                className="text-muted-foreground hover:text-destructive transition-colors p-0.5"
+                onClick={() => removeMutation.mutate(learning.id)}
+                title="Delete this learning"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+
+            {learning.type === "correction" && (
+              <div className="space-y-0.5">
+                <p className="text-[11px] text-muted-foreground line-through truncate">
+                  {learning.original}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <ArrowRight className="h-3 w-3 text-green-500 shrink-0" />
+                  <p className="text-[11px] text-foreground truncate">
+                    {learning.corrected}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {learning.type === "rejection" && (
+              <p className="text-[11px] text-muted-foreground line-through truncate">
+                {learning.original}
+              </p>
+            )}
+
+            {(learning.type === "compacted" || learning.type === "observation" || learning.type === "outcome") && (
+              <p className="text-[11px] text-foreground truncate">
+                {learning.corrected || learning.original}
+              </p>
+            )}
+
+            {learning.context && (
+              <p className="text-[10px] text-muted-foreground truncate">{learning.context}</p>
+            )}
+          </div>
+        ))}
+
+        {activeLearnings.length > 10 && (
+          <p className="text-[10.5px] text-muted-foreground text-center">
+            +{activeLearnings.length - 10} more learnings (view per-agent in agent detail)
+          </p>
+        )}
       </div>
     </div>
   );

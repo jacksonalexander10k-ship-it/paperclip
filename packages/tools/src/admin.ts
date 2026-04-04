@@ -149,7 +149,12 @@ export const setGuardrailsDefinition: ToolDefinition = {
 };
 
 export const setGuardrailsExecutor: ToolExecutor = async (input, ctx) => {
-  const { guardrails } = input as { guardrails: string[] };
+  const rawGuardrails = (input as Record<string, unknown>).guardrails;
+  const guardrails: string[] = Array.isArray(rawGuardrails)
+    ? rawGuardrails
+    : typeof rawGuardrails === "string"
+      ? [rawGuardrails]
+      : [];
 
   // Delete existing guardrails for this agent, then insert new ones
   await ctx.db

@@ -52,6 +52,7 @@ import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
 import { startTokenRefreshWorker } from "./workers/token-refresh.js";
 import { startAgentIntelligenceWorker } from "./workers/agent-intelligence.js";
+import { startMorningBriefWorker } from "./workers/morning-brief.js";
 
 type BetterAuthSessionUser = {
   id: string;
@@ -626,7 +627,19 @@ export async function startServer(): Promise<StartedServer> {
         });
     }, config.heartbeatSchedulerIntervalMs);
   }
-  
+
+  // Auto-reply queue processor — polls every 10 seconds for delayed template messages
+  {
+    const { autoReplyService: autoReplySvc } = await import("./services/auto-reply.js");
+    const autoReply = autoReplySvc(db);
+    setInterval(() => {
+      void autoReply.processQueue().catch((err) => {
+        logger.error({ err }, "auto-reply queue processor failed");
+      });
+    }, 10_000);
+    logger.info("auto-reply queue processor started (10s interval)");
+  }
+
   if (config.databaseBackupEnabled) {
     const backupIntervalMs = config.databaseBackupIntervalMinutes * 60 * 1000;
     let backupInFlight = false;
@@ -737,6 +750,7 @@ export async function startServer(): Promise<StartedServer> {
   
   startTokenRefreshWorker(db as any);
   startAgentIntelligenceWorker(db as any);
+  startMorningBriefWorker(db as any);
 
   if (embeddedPostgres && embeddedPostgresStartedByThisProcess) {
     const shutdown = async (signal: "SIGINT" | "SIGTERM") => {

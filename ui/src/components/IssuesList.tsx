@@ -205,9 +205,9 @@ function IssuesSearchInput({ initialValue, onValueCommitted }: IssuesSearchInput
       <Input
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Search issues..."
+        placeholder="Search tasks..."
         className="pl-7 text-xs sm:text-sm"
-        aria-label="Search issues"
+        aria-label="Search tasks"
       />
     </div>
   );
@@ -370,7 +370,7 @@ export function IssuesList({
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Button size="sm" variant="outline" onClick={() => openNewIssue(newIssueDefaults())}>
             <Plus className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">New Issue</span>
+            <span className="hidden sm:inline">New Task</span>
           </Button>
           <IssuesSearchInput
             initialValue={initialSearch ?? ""}
