@@ -164,6 +164,22 @@ import {
   getCampaignStatsExecutor,
 } from "./admin.js";
 
+// Compliance tools
+import {
+  runKycCheckDefinition,
+  runKycCheckExecutor,
+  screenPepSanctionsDefinition,
+  screenPepSanctionsExecutor,
+  trackBrokerCardDefinition,
+  trackBrokerCardExecutor,
+  generateCddReportDefinition,
+  generateCddReportExecutor,
+  checkTrakheesiValidityDefinition,
+  checkTrakheesiValidityExecutor,
+  trackAmlTrainingDefinition,
+  trackAmlTrainingExecutor,
+} from "./compliance.js";
+
 export type { ToolDefinition, ToolExecutor, ToolContext };
 
 const allDefinitions: ToolDefinition[] = [
@@ -239,6 +255,13 @@ const allDefinitions: ToolDefinition[] = [
   setGuardrailsDefinition,
   getNewsDefinition,
   getCampaignStatsDefinition,
+  // Compliance (6)
+  runKycCheckDefinition,
+  screenPepSanctionsDefinition,
+  trackBrokerCardDefinition,
+  generateCddReportDefinition,
+  checkTrakheesiValidityDefinition,
+  trackAmlTrainingDefinition,
 ];
 
 const allExecutors: Record<string, ToolExecutor> = {
@@ -314,6 +337,13 @@ const allExecutors: Record<string, ToolExecutor> = {
   set_guardrails: setGuardrailsExecutor,
   get_news: getNewsExecutor,
   get_campaign_stats: getCampaignStatsExecutor,
+  // Compliance
+  run_kyc_check: runKycCheckExecutor,
+  screen_pep_sanctions: screenPepSanctionsExecutor,
+  track_broker_card: trackBrokerCardExecutor,
+  generate_cdd_report: generateCddReportExecutor,
+  check_trakheesi_validity: checkTrakheesiValidityExecutor,
+  track_aml_training: trackAmlTrainingExecutor,
 };
 
 export function createToolRegistry() {
