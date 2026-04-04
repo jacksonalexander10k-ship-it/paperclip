@@ -14,6 +14,7 @@ import {
   aygentWhatsappWindows,
   costEvents,
   approvals,
+  issues,
 } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 
@@ -382,6 +383,175 @@ export function testIntegrationRoutes(db: Db) {
     } catch (err) {
       logger.error({ err }, "test: failed to seed landing page approval");
       res.status(500).json({ error: "Failed to seed landing page approval" });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /companies/:companyId/test/simulate-lead
+  // Simulates the FULL lead lifecycle:
+  //   1. Fakes a WhatsApp webhook payload (as if 360dialog/Meta posted it)
+  //   2. Hits the real /webhook/whatsapp endpoint internally
+  //   3. This triggers: message stored → issue created → agent woken → auto-reply enqueued
+  //
+  // Use this to test the entire inbound lead flow without a real WhatsApp number.
+  // -----------------------------------------------------------------------
+  router.post("/companies/:companyId/test/simulate-lead", async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const {
+        name = "Test Lead",
+        phone = "971501234567",
+        message = "Hi, I'm interested in apartments in JVC. Budget around 1.5M AED.",
+        language, // optional override
+      } = req.body as {
+        name?: string;
+        phone?: string;
+        message?: string;
+        language?: string;
+      };
+
+      // Find an agent with WhatsApp credentials (or any lead/sales agent)
+      const companyAgents = await db
+        .select({ id: agents.id, name: agents.name, role: agents.role })
+        .from(agents)
+        .where(eq(agents.companyId, companyId));
+
+      if (companyAgents.length === 0) {
+        return res.status(400).json({ error: "No agents found. Create agents first." });
+      }
+
+      // Prefer lead > sales > any non-CEO agent > CEO
+      const targetAgent =
+        companyAgents.find((a) => a.role === "lead") ??
+        companyAgents.find((a) => a.role === "sales") ??
+        companyAgents.find((a) => a.role !== "ceo") ??
+        companyAgents[0]!;
+
+      // Check if agent has a WhatsApp credential — if not, create a fake one
+      const existingCred = await db
+        .select()
+        .from(aygentAgentCredentials)
+        .where(
+          and(
+            eq(aygentAgentCredentials.agentId, targetAgent.id),
+            eq(aygentAgentCredentials.service, "whatsapp_baileys"),
+          ),
+        )
+        .limit(1);
+
+      let phoneNumberId = "simulated_phone_" + targetAgent.id.slice(0, 8);
+      if (existingCred.length > 0 && existingCred[0].whatsappPhoneNumberId) {
+        phoneNumberId = existingCred[0].whatsappPhoneNumberId;
+      } else if (existingCred.length === 0) {
+        // Create a fake credential so the webhook can resolve the agent
+        await db.insert(aygentAgentCredentials).values(
+          makeCredentialValues(companyId, targetAgent.id, "whatsapp_baileys", {
+            whatsappPhoneNumberId: phoneNumberId,
+            scopes: "whatsapp_business_messaging",
+          }),
+        );
+        logger.info({ agentId: targetAgent.id }, "simulate-lead: created fake WhatsApp credential");
+      }
+
+      // Build a payload that matches what the WhatsApp webhook expects
+      const fakeWebhookPayload = {
+        metadata: { phone_number_id: phoneNumberId },
+        contacts: [{ profile: { name }, wa_id: phone }],
+        messages: [
+          {
+            from: phone,
+            id: `sim_${randomUUID().slice(0, 12)}`,
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            type: "text",
+            text: { body: message },
+          },
+        ],
+      };
+
+      // Fire the payload at our own webhook endpoint internally
+      // (avoids needing a real HTTP call — just invoke the route handler logic directly)
+      const { whatsappWebhookRoutes: _unused, ..._ } = await import("./whatsapp-webhook.js");
+      // Actually, easier to just make an internal HTTP request to our own server
+      const port = process.env.PORT ?? "3100";
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      const webhookRes = await fetch(`${baseUrl}/webhook/whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fakeWebhookPayload),
+      });
+
+      // Give the async processing a moment
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Check what was created
+      const recentMessages = await db
+        .select()
+        .from(aygentWhatsappMessages)
+        .where(
+          and(
+            eq(aygentWhatsappMessages.companyId, companyId),
+            eq(aygentWhatsappMessages.chatJid, phone),
+          ),
+        )
+        .limit(5);
+
+      const recentIssues = await db
+        .select({ id: issues.id, title: issues.title, status: issues.status, assigneeAgentId: issues.assigneeAgentId })
+        .from(issues)
+        .where(eq(issues.companyId, companyId))
+        .limit(10);
+
+      const leadIssue = recentIssues.find((i) => i.title.includes(name));
+
+      // Check auto-reply queue
+      const { aygentAutoReplyQueue } = await import("@paperclipai/db");
+      const pendingReplies = await db
+        .select()
+        .from(aygentAutoReplyQueue)
+        .where(
+          and(
+            eq(aygentAutoReplyQueue.companyId, companyId),
+            eq(aygentAutoReplyQueue.recipient, phone),
+          ),
+        )
+        .limit(5);
+
+      const result = {
+        ok: true,
+        simulation: {
+          leadName: name,
+          phone,
+          message,
+          targetAgent: { id: targetAgent.id, name: targetAgent.name, role: targetAgent.role },
+        },
+        results: {
+          webhookStatus: webhookRes.status,
+          messageStored: recentMessages.length > 0,
+          messageCount: recentMessages.length,
+          issueCreated: !!leadIssue,
+          issueId: leadIssue?.id ?? null,
+          issueAssignedTo: leadIssue?.assigneeAgentId ?? null,
+          autoReplyEnqueued: pendingReplies.length > 0,
+          autoReplyCount: pendingReplies.length,
+        },
+        nextSteps: [
+          leadIssue
+            ? `Issue "${leadIssue.title}" created and assigned to ${targetAgent.name}`
+            : "No issue found — check webhook logs",
+          pendingReplies.length > 0
+            ? `Auto-reply queued (will send in ${pendingReplies[0]?.sendAt ? Math.round((new Date(pendingReplies[0].sendAt).getTime() - Date.now()) / 1000) : '?'}s)`
+            : "No auto-reply rule matched — create one via /auto-reply-rules",
+          `Agent heartbeat will pick up the issue on next run (or was woken immediately)`,
+          `Check CEO Chat for agent activity`,
+        ],
+      };
+
+      logger.info(result, "simulate-lead: complete");
+      res.json(result);
+    } catch (err) {
+      logger.error({ err }, "simulate-lead: failed");
+      res.status(500).json({ error: "Simulation failed", details: err instanceof Error ? err.message : String(err) });
     }
   });
 
