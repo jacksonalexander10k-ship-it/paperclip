@@ -788,12 +788,14 @@ export function approvalExecutorService(db: Db) {
         case "confirm_viewing":
         case "approve_plan":
         case "ceo_proposal":
-          // These approval types are informational — approval itself is the action
+        case "approve_ceo_strategy":
+          // These approval types are informational — approval itself is the action.
+          // No side-effect needed beyond recording the decision.
           logger.info({ action, approvalId }, "approval-executor: informational approval executed");
           return { executed: true, action };
         default:
-          logger.warn({ action, approvalId }, "approval-executor: unrecognized action");
-          return { executed: true, action };
+          logger.error({ action, approvalId }, "approval-executor: unrecognized action — no handler exists");
+          return { executed: false, action, error: `No executor handler for action: ${action}` };
       }
   }
 }

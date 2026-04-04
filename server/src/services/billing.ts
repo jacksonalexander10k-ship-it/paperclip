@@ -254,21 +254,62 @@ export function billingService(db: Db) {
 
         case "invoice.payment_failed": {
           const invoice = event.data.object;
+          const failedCustomerId = typeof invoice.customer === "string" ? invoice.customer : null;
           logger.warn(
-            { customerId: invoice.customer, invoiceId: invoice.id },
+            { customerId: failedCustomerId, invoiceId: invoice.id },
             "billing: payment failed — grace period starts",
           );
-          // TODO: Start 3-day grace period, then pause agents
+
+          // Mark subscription as past_due — grace period logic is in isActive()
+          if (failedCustomerId) {
+            await db
+              .update(companySubscriptions)
+              .set({ status: "past_due", updatedAt: new Date() })
+              .where(eq(companySubscriptions.stripeCustomerId, failedCustomerId));
+          }
           break;
         }
 
         case "customer.subscription.deleted": {
           const subscription = event.data.object;
+          const cancelledCustomerId = typeof subscription.customer === "string" ? subscription.customer : null;
           logger.warn(
-            { customerId: subscription.customer, subscriptionId: subscription.id },
-            "billing: subscription cancelled",
+            { customerId: cancelledCustomerId, subscriptionId: subscription.id },
+            "billing: subscription cancelled — pausing all agents",
           );
-          // TODO: Pause all agents for this company
+
+          if (cancelledCustomerId) {
+            // Find the company and pause all their agents
+            const [sub] = await db
+              .select()
+              .from(companySubscriptions)
+              .where(eq(companySubscriptions.stripeCustomerId, cancelledCustomerId));
+
+            if (sub) {
+              await db
+                .update(companySubscriptions)
+                .set({ status: "cancelled", updatedAt: new Date() })
+                .where(eq(companySubscriptions.companyId, sub.companyId));
+
+              // Pause all agents for this company
+              try {
+                const { agentService: getAgentSvc } = await import("./agents.js");
+                const agentSvc = getAgentSvc(db);
+                const companyAgents = await agentSvc.list(sub.companyId);
+                for (const agent of companyAgents) {
+                  if (agent.status !== "paused" && agent.status !== "terminated") {
+                    await agentSvc.pause(agent.id, "system");
+                  }
+                }
+                logger.info(
+                  { companyId: sub.companyId, agentCount: companyAgents.length },
+                  "billing: all agents paused due to subscription cancellation",
+                );
+              } catch (err) {
+                logger.error({ err, companyId: sub.companyId }, "billing: failed to pause agents");
+              }
+            }
+          }
           break;
         }
 
