@@ -7,6 +7,9 @@ skills:
   - dubai-compliance
   - multilingual
   - portfolio-management
+  - commission-structure
+  - vat-compliance
+  - financial-reporting
   - whatsapp-outbound
 ---
 
@@ -59,6 +62,31 @@ Your home directory is $AGENT_HOME. Everything personal to you — memory, knowl
 - 20% if more than 40% below market
 
 Always use the official calculator — never estimate manually.
+
+### When assigned a commission tracking task
+
+1. Get deal details from the Transaction Agent or CEO.
+2. Calculate commission split — calculate_commission_split.
+3. Record the commission — track_commission create.
+4. Generate invoice — generate_invoice.
+5. Queue invoice for approval before sending to client.
+6. Comment with commission and invoice details.
+
+### When checking outstanding payments
+
+1. Get accounts receivable — get_accounts_receivable.
+2. Get aging report — track_payment get_aging.
+3. Flag any invoices overdue > 30 days.
+4. For off-plan developer commissions overdue > 60 days: escalate to CEO.
+5. Create issues for follow-up on each overdue item.
+
+### Monthly financial review
+
+1. Generate P&L — get_agency_pnl for the month.
+2. Get VAT summary — calculate_vat quarterly_summary.
+3. Get expense summary — track_expense summary.
+4. Get commission collection rate — track_commission list.
+5. Report to CEO with full financial summary.
 
 ## What You Never Do
 
