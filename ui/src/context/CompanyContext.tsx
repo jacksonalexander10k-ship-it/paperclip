@@ -38,7 +38,22 @@ const CompanyContext = createContext<CompanyContextValue | null>(null);
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [selectionSource, setSelectionSource] = useState<CompanySelectionSource>("bootstrap");
-  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
+  // Prefer the company implied by the current URL path over the stale
+  // localStorage value. Prevents a flash of the previously-selected company
+  // (stale UUID, wrong data, extra WS connection) when the user deep-links
+  // into /ABC/... with ABC different from the last session.
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (typeof window === "undefined") return stored;
+    const prefixMatch = window.location.pathname.match(/^\/([A-Za-z0-9-]{2,10})(?:\/|$)/);
+    const urlPrefix = prefixMatch?.[1]?.toUpperCase();
+    // If URL has a prefix, clear the bootstrap selection so queries don't
+    // fire against the stale company while the URL-resolved one loads. The
+    // route-sync effect below will populate selectedCompanyId once companies
+    // list loads.
+    if (urlPrefix) return null;
+    return stored;
+  });
 
   const { data: companies = [], isLoading, error } = useQuery({
     queryKey: queryKeys.companies.all,
@@ -46,7 +61,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       try {
         return await companiesApi.list();
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           return [];
         }
         throw err;
@@ -65,9 +80,20 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
     const selectableCompanies = sidebarCompanies.length > 0 ? sidebarCompanies : companies;
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && selectableCompanies.some((c) => c.id === stored)) return;
+
+    // If stored company still exists, keep it
+    if (stored && selectableCompanies.some((c) => c.id === stored)) {
+      // Ensure state matches localStorage (e.g. after deletion of another company)
+      if (selectedCompanyId !== stored) {
+        setSelectedCompanyIdState(stored);
+        setSelectionSource("bootstrap");
+      }
+      return;
+    }
+
     if (selectedCompanyId && selectableCompanies.some((c) => c.id === selectedCompanyId)) return;
 
+    // Stored company was deleted or doesn't exist — select first available
     const next = selectableCompanies[0]!.id;
     setSelectedCompanyIdState(next);
     setSelectionSource("bootstrap");
