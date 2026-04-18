@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   LayoutDashboard,
   DollarSign,
@@ -16,8 +17,12 @@ import {
   FolderOpen,
   Sun,
   Moon,
+  LogOut,
+  Settings as SettingsIcon,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@/lib/router";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarAgents } from "./SidebarAgents";
@@ -30,6 +35,11 @@ import { authApi } from "../api/auth";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
 function ThemeToggle() {
@@ -186,13 +196,100 @@ export function Sidebar() {
       <div className="border-t border-sidebar-border/50 px-2 py-2 flex items-center gap-1">
         <ThemeToggle />
         <div className="flex-1" />
-        <div
-          className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0"
-          title={session?.user?.name ?? session?.user?.email ?? ""}
-        >
-          {userInitials}
-        </div>
+        <ProfileMenu
+          initials={userInitials}
+          displayName={session?.user?.name ?? session?.user?.email ?? ""}
+        />
       </div>
     </aside>
+  );
+}
+
+function ProfileMenu({
+  initials,
+  displayName,
+}: {
+  initials: string;
+  displayName: string;
+}) {
+  const navigate = useNavigate();
+  const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
+  const [open, setOpen] = useState(false);
+
+  const onSignOut = async () => {
+    try {
+      await authApi.signOut();
+    } catch {
+      /* ignore — redirect regardless */
+    }
+    setOpen(false);
+    window.location.href = "/auth";
+  };
+
+  const switchable = companies.filter((c) => c.id !== selectedCompanyId);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          title={displayName}
+          aria-label="Account menu"
+        >
+          {initials}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" side="top" className="w-60 p-1.5">
+        <div className="px-2 py-2 border-b border-border/40 mb-1.5">
+          <div className="text-[11.5px] font-semibold text-foreground truncate">
+            {displayName || "Signed in"}
+          </div>
+          <div className="text-[10.5px] text-muted-foreground mt-0.5">Signed in</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            navigate("/company/settings");
+          }}
+          className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-foreground hover:bg-accent/60"
+        >
+          <SettingsIcon className="h-3.5 w-3.5 text-muted-foreground" />
+          Account settings
+        </button>
+        {switchable.length > 0 && (
+          <div className="mt-1 pt-1 border-t border-border/40">
+            <div className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+              Switch workspace
+            </div>
+            {switchable.slice(0, 5).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  setSelectedCompanyId(c.id, { source: "manual" });
+                  setOpen(false);
+                }}
+                className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-foreground hover:bg-accent/60"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="truncate">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-1 pt-1 border-t border-border/40">
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-destructive hover:bg-destructive/10"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

@@ -1334,7 +1334,12 @@ function AutoApproveToggle({ agent }: { agent: AgentDetailRecord }) {
   const current = meta.autoApprove === true;
 
   const mutation = useMutation({
-    mutationFn: (enabled: boolean) => agentsApi.setAutoApprove(agent.id, enabled),
+    mutationFn: (enabled: boolean) =>
+      agentsApi.update(
+        agent.id,
+        { metadata: { ...meta, autoApprove: enabled } },
+        agent.companyId,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agent", agent.id] });
       queryClient.invalidateQueries({ queryKey: ["agents", agent.companyId] });

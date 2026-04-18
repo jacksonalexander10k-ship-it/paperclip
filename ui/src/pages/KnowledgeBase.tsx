@@ -6,11 +6,10 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
-import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Upload, Trash2, FileText, Image, FileSpreadsheet, File, Folder } from "lucide-react";
+import { Upload, Trash2, FileText, Image, FileSpreadsheet, File, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function formatBytes(bytes: number): string {
@@ -170,10 +169,9 @@ export function KnowledgeBase() {
       <div className="flex-1 overflow-y-auto p-4">
         {files.length === 0 ? (
           <div className="space-y-4">
-            <EmptyState
-              icon={FolderOpen}
-              message="No files uploaded yet. Add brand guides, brochures, and other documents your agents can reference."
-            />
+            <p className="text-sm text-muted-foreground">
+              No files uploaded yet. Add brand guides, brochures, and other documents your agents can reference.
+            </p>
             <div
               className="rounded-xl border-2 border-dashed border-border/50 p-10 text-center cursor-pointer hover:border-border/70 transition-colors"
               onClick={() => fileInputRef.current?.click()}

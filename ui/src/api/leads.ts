@@ -32,6 +32,8 @@ export interface LeadFilters {
   scoreMin?: number;
   scoreMax?: number;
   search?: string;
+  /** "all" | "assigned" | "unassigned" — maps to the sub-tabs above the list. */
+  assigned?: "all" | "assigned" | "unassigned";
 }
 
 function buildQuery(filters?: LeadFilters): string {
@@ -39,6 +41,7 @@ function buildQuery(filters?: LeadFilters): string {
   const params = new URLSearchParams();
   if (filters.source) params.set("source", filters.source);
   if (filters.stage) params.set("stage", filters.stage);
+  if (filters.assigned && filters.assigned !== "all") params.set("assigned", filters.assigned);
   if (filters.scoreMin !== undefined) params.set("scoreMin", String(filters.scoreMin));
   if (filters.scoreMax !== undefined) params.set("scoreMax", String(filters.scoreMax));
   if (filters.search) params.set("search", filters.search);
@@ -79,4 +82,33 @@ export const leadsApi = {
       form,
     );
   },
+
+  /**
+   * Bulk actions on a set of lead ids.
+   * Supported actions map to POST /companies/:id/leads/bulk on the server:
+   *   - assign       { agentId }
+   *   - unassign
+   *   - archive
+   *   - delete
+   *   - set_stage    { stage }
+   *   - start_outreach { templateId?, customMessage?, delaySecs? }
+   */
+  bulk: (
+    companyId: string,
+    body:
+      | { action: "assign"; leadIds: string[]; params: { agentId: string } }
+      | { action: "unassign"; leadIds: string[] }
+      | { action: "archive"; leadIds: string[] }
+      | { action: "delete"; leadIds: string[] }
+      | { action: "set_stage"; leadIds: string[]; params: { stage: string } }
+      | {
+          action: "start_outreach";
+          leadIds: string[];
+          params?: { templateId?: string; customMessage?: string; delaySecs?: number };
+        },
+  ) =>
+    api.post<{
+      count?: number;
+      results?: Array<{ leadId: string; enqueued: boolean; reason?: string }>;
+    }>(`/companies/${encodeURIComponent(companyId)}/leads/bulk`, body),
 };

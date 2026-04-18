@@ -15,10 +15,9 @@
  * Without --apply it runs as a dry-run and prints what it would merge.
  */
 
-import "dotenv/config";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { issues } from "../packages/db/src/schema/issues.js";
 
 function parseArgs(): { companyId: string; apply: boolean } {
@@ -40,9 +39,11 @@ function normalise(title: string): string {
 
 async function main() {
   const { companyId, apply } = parseArgs();
+  // Default to the embedded Postgres used by `pnpm dev` when DATABASE_URL is
+  // unset. Matches packages/db/src/seed-demo-user.ts.
   const connStr =
     process.env.DATABASE_URL ??
-    "postgres://aygency:aygency@localhost:54329/postgres";
+    "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
   const sqlClient = postgres(connStr, { max: 1 });
   const db = drizzle(sqlClient);
 
@@ -106,7 +107,7 @@ async function main() {
     return;
   }
 
-  const result = await db
+  await db
     .update(issues)
     .set({
       status: "archived",
@@ -114,7 +115,7 @@ async function main() {
     })
     .where(inArray(issues.id, toArchive));
 
-  console.log(`[dedup] Archived ${toArchive.length} rows.`, result);
+  console.log(`[dedup] Archived ${toArchive.length} rows.`);
   await sqlClient.end();
 }
 

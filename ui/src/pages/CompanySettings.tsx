@@ -50,17 +50,24 @@ export function CompanySettings() {
   // read-only "Team summary" field below. If the DB contains a legacy
   // auto-populated dump (old onboarding wrote one), we detect and clear it
   // so the owner sees a genuinely blank textarea.
+  // Remember the exact values we initialised the form with so `generalDirty`
+  // compares against them, not the raw DB row. (The DB row may include a
+  // legacy auto-populated description that we strip on load — without the
+  // pristine snapshot, the form would look dirty the moment the page opens.)
+  const [pristine, setPristine] = useState<{ name: string; description: string; brandColor: string } | null>(null);
+
   useEffect(() => {
     if (!selectedCompany) return;
-    setCompanyName(selectedCompany.name);
     const rawDesc = selectedCompany.description ?? "";
-    // Legacy seeded-dump detection — these patterns only ever came from the
-    // old onboarding flow that dumped agency state into description.
     const isLegacyDump =
       /^Agency:\s/m.test(rawDesc) && /Hired agents/i.test(rawDesc);
-    setDescription(isLegacyDump ? "" : rawDesc);
-    setBrandColor(selectedCompany.brandColor ?? "");
+    const cleanDesc = isLegacyDump ? "" : rawDesc;
+    const color = selectedCompany.brandColor ?? "";
+    setCompanyName(selectedCompany.name);
+    setDescription(cleanDesc);
+    setBrandColor(color);
     setLogoUrl(selectedCompany.logoUrl ?? "");
+    setPristine({ name: selectedCompany.name, description: cleanDesc, brandColor: color });
   }, [selectedCompany]);
 
   // Live roster — used for the read-only "Team summary" field.
@@ -79,10 +86,13 @@ export function CompanySettings() {
     const ceo = agents.find((a) => String(a.role ?? "").toLowerCase() === "ceo");
     const nonCeo = agents.filter((a) => String(a.role ?? "").toLowerCase() !== "ceo");
     if (nonCeo.length === 0) return "CEO only — no agents hired yet.";
-    const roster = nonCeo
+    // List ALL agents (CEO first if present) by "{name} ({role})" joined with ", ".
+    const ordered = ceo ? [ceo, ...nonCeo] : nonCeo;
+    const roster = ordered
       .map((a) => `${a.name}${a.role ? ` (${a.role})` : ""}`)
       .join(", ");
-    return `${ceo ? "CEO + " : ""}${nonCeo.length} agent${nonCeo.length === 1 ? "" : "s"} — ${roster}`;
+    const countTail = `${ceo ? "CEO + " : ""}${nonCeo.length} agent${nonCeo.length === 1 ? "" : "s"}`;
+    return `${roster} — ${countTail}`;
   })();
 
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -90,11 +100,15 @@ export function CompanySettings() {
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
 
+  // Only report dirty once the form has been hydrated from the server
+  // (pristine is non-null after the init effect above). This prevents the
+  // Save button from appearing enabled on first paint while the query is
+  // still in flight.
   const generalDirty =
-    !!selectedCompany &&
-    (companyName !== selectedCompany.name ||
-      description !== (selectedCompany.description ?? "") ||
-      brandColor !== (selectedCompany.brandColor ?? ""));
+    !!pristine &&
+    (companyName !== pristine.name ||
+      description !== pristine.description ||
+      brandColor !== pristine.brandColor);
 
   const generalMutation = useMutation({
     mutationFn: (data: {

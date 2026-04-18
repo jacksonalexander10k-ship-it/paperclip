@@ -139,6 +139,16 @@ function relativeTime(dateStr: string | null): string {
 // Add Lead Dialog (inline)
 // ---------------------------------------------------------------------------
 
+const PROPERTY_TYPES = ["apartment", "villa", "townhouse", "penthouse", "studio", "any"] as const;
+const TIMELINES = [
+  { value: "asap", label: "ASAP" },
+  { value: "1-3 months", label: "1-3 months" },
+  { value: "3-6 months", label: "3-6 months" },
+  { value: "6+ months", label: "6+ months" },
+  { value: "exploring", label: "Just exploring" },
+] as const;
+const LANGUAGES = ["English", "Arabic", "Russian", "Chinese", "Hindi/Urdu", "Other"] as const;
+
 function AddLeadDialog({
   open,
   onClose,
@@ -154,6 +164,16 @@ function AddLeadDialog({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [source, setSource] = useState("manual");
+  // Optional fields
+  const [stage, setStage] = useState<string>("lead");
+  const [propertyType, setPropertyType] = useState<string>("");
+  const [area, setArea] = useState("");
+  const [budgetMin, setBudgetMin] = useState("");
+  const [budgetMax, setBudgetMax] = useState("");
+  const [timeline, setTimeline] = useState("");
+  const [language, setLanguage] = useState("");
+  const [notes, setNotes] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -161,14 +181,49 @@ function AddLeadDialog({
       setPhone("");
       setEmail("");
       setSource("manual");
+      setStage("lead");
+      setPropertyType("");
+      setArea("");
+      setBudgetMin("");
+      setBudgetMax("");
+      setTimeline("");
+      setLanguage("");
+      setNotes("");
+      setMoreOpen(false);
     }
   }, [open]);
 
   if (!open) return null;
 
+  function handleSubmit() {
+    const payload: Record<string, unknown> = {
+      name: name.trim(),
+      source,
+      stage,
+    };
+    if (phone.trim()) payload.phone = phone.trim();
+    if (email.trim()) payload.email = email.trim();
+    if (propertyType) payload.propertyType = propertyType;
+    if (area.trim()) payload.preferredAreas = [area.trim()];
+    if (timeline) payload.timeline = timeline;
+    if (language) payload.language = language;
+    if (notes.trim()) payload.notes = notes.trim();
+
+    const min = budgetMin ? Number(budgetMin) : undefined;
+    const max = budgetMax ? Number(budgetMax) : undefined;
+    if (min !== undefined || max !== undefined) {
+      const budget: Record<string, number> = {};
+      if (min !== undefined && !Number.isNaN(min)) budget.min = min;
+      if (max !== undefined && !Number.isNaN(max)) budget.max = max;
+      if (Object.keys(budget).length > 0) payload.budget = budget;
+    }
+
+    onSubmit(payload);
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-card border border-border rounded-xl shadow-lg w-full max-w-md p-6 space-y-4">
+      <div className="bg-card border border-border rounded-xl shadow-lg w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-[14px] font-bold">Add Lead</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -231,6 +286,147 @@ function AddLeadDialog({
               ))}
             </select>
           </div>
+
+          {/* Collapsible "More details" */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setMoreOpen((o) => !o)}
+              className="inline-flex items-center gap-1 text-[11.5px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronDown
+                className={cn("w-3 h-3 transition-transform", moreOpen && "rotate-180")}
+              />
+              {moreOpen ? "Hide details" : "More details"}
+            </button>
+          </div>
+
+          {moreOpen && (
+            <div className="space-y-3 pt-1 border-t border-border/40">
+              <div className="grid grid-cols-2 gap-3 pt-3">
+                <div>
+                  <label className="text-[12px] font-medium text-muted-foreground block mb-1">
+                    Stage
+                  </label>
+                  <select
+                    value={stage}
+                    onChange={(e) => setStage(e.target.value)}
+                    className="w-full h-8 px-2.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    {LEAD_STAGES.filter((s) => s !== "archived").map((s) => (
+                      <option key={s} value={s}>
+                        {STAGE_LABELS[s] ?? s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[12px] font-medium text-muted-foreground block mb-1">
+                    Property type
+                  </label>
+                  <select
+                    value={propertyType}
+                    onChange={(e) => setPropertyType(e.target.value)}
+                    className="w-full h-8 px-2.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">—</option>
+                    {PROPERTY_TYPES.map((p) => (
+                      <option key={p} value={p}>
+                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground block mb-1">
+                  Area
+                </label>
+                <input
+                  type="text"
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  className="w-full h-8 px-2.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="JVC, Downtown, Dubai Marina..."
+                />
+              </div>
+
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground block mb-1">
+                  Budget (AED)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="number"
+                    min={0}
+                    value={budgetMin}
+                    onChange={(e) => setBudgetMin(e.target.value)}
+                    className="w-full h-8 px-2.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder="Min"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={budgetMax}
+                    onChange={(e) => setBudgetMax(e.target.value)}
+                    className="w-full h-8 px-2.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder="Max"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[12px] font-medium text-muted-foreground block mb-1">
+                    Timeline
+                  </label>
+                  <select
+                    value={timeline}
+                    onChange={(e) => setTimeline(e.target.value)}
+                    className="w-full h-8 px-2.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">—</option>
+                    {TIMELINES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[12px] font-medium text-muted-foreground block mb-1">
+                    Language
+                  </label>
+                  <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="w-full h-8 px-2.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">—</option>
+                    {LANGUAGES.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground block mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                  placeholder="Any background, preferences, or context..."
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
@@ -241,14 +437,7 @@ function AddLeadDialog({
             size="sm"
             className="text-[12px] h-8"
             disabled={!name.trim() || submitting}
-            onClick={() =>
-              onSubmit({
-                name: name.trim(),
-                phone: phone.trim() || undefined,
-                email: email.trim() || undefined,
-                source,
-              })
-            }
+            onClick={handleSubmit}
           >
             {submitting ? "Adding..." : "Add Lead"}
           </Button>
