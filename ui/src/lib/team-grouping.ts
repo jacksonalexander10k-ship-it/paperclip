@@ -61,6 +61,28 @@ export function agentDepartmentLabel(agent: Agent): string {
 }
 
 /**
+ * Ghost "department manager" agents are seeded server-side during company
+ * creation (Sales Manager, Operations Manager, Marketing Manager, …). They're
+ * cosmetic org-chart scaffolding and do NOT represent real agents the user
+ * hired. Every user-facing iteration of the agents list must filter these out
+ * to keep counts, grouping, and labels consistent across screens.
+ *
+ * We match by:
+ *   - metadata.isDepartmentManager = true
+ *   - role matching `*_manager` (sales_manager, operations_manager, …)
+ *   - role === "general" AND name ending in " Manager" (legacy seed shape)
+ */
+export function isGhostDepartmentManager(agent: Agent): boolean {
+  const meta = (agent as { metadata?: Record<string, unknown> }).metadata;
+  if (meta && meta.isDepartmentManager === true) return true;
+  const role = String(agent.role ?? "").toLowerCase();
+  if (/_manager$/.test(role)) return true;
+  const name = (agent.name ?? "").trim().toLowerCase();
+  if (role === "general" && (name.endsWith(" manager") || name === "manager")) return true;
+  return false;
+}
+
+/**
  * Heuristic: an agent is a manager if either its role is in MANAGER_ROLES,
  * its title contains "Manager", or its name equals the generic placeholder
  * like "Sales Manager" / "Operations Manager". This also catches placeholder

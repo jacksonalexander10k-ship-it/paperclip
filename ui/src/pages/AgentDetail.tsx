@@ -49,6 +49,7 @@ import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { PackageFileTree, buildFileTree } from "../components/PackageFileTree";
 import { ScrollToBottom } from "../components/ScrollToBottom";
 import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd } from "../lib/utils";
+import { formatClockTime } from "../lib/format-time";
 import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -425,7 +426,7 @@ function WorkspaceOperationLogViewer({
               {chunks.map((chunk, index) => (
                 <div key={`${chunk.ts}-${index}`} className="flex gap-2">
                   <span className="shrink-0 text-neutral-500">
-                    {new Date(chunk.ts).toLocaleTimeString("en-US", { hour12: false })}
+                    {formatClockTime(chunk.ts, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </span>
                   <span
                     className={cn(
@@ -800,26 +801,23 @@ export function AgentDetail() {
         crumbs.push({ label: "History" });
       } else if (activeView === "budget") {
         crumbs.push({ label: "Budget" });
+      } else if (activeView === "whatsapp") {
+        crumbs.push({ label: "Messages" });
+      } else if (activeView === "training") {
+        crumbs.push({ label: "Training" });
+      } else if (activeView === "schedule") {
+        crumbs.push({ label: "Schedule" });
       } else {
-        crumbs.push({ label: "Dashboard" });
+        crumbs.push({ label: "Home" });
       }
     }
     setBreadcrumbs(crumbs);
   }, [setBreadcrumbs, agent, routeAgentRef, canonicalAgentRef, activeView, urlRunId]);
 
-  // Browser tab title — wait for the agent to load so we never flash the raw
-  // lowercase URL slug (e.g. "saif · Agents · Aygency World"). Setting
-  // document.title here runs AFTER the breadcrumb effect above, so this wins.
-  useEffect(() => {
-    if (!agent?.name) return;
-    const name = agent.name;
-    const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
-    const prev = document.title;
-    document.title = `${capitalized} · Agents · Aygency World`;
-    return () => {
-      document.title = prev;
-    };
-  }, [agent?.name]);
+  // Note: the browser tab title is set by BreadcrumbProvider from the
+  // breadcrumb labels above. When the agent record loads we update
+  // breadcrumbs (which includes the tab label like "Messages"/"Training"),
+  // so document.title reflects the active tab automatically.
 
   useEffect(() => {
     closePanel();
@@ -977,7 +975,9 @@ export function AgentDetail() {
             // Show Messages tab for ALL agents so the tab set is uniform across
             // the roster. Agents without messaging capability render an empty
             // state inside the tab — see `canMessage` check below.
-            base.push({ value: "whatsapp", label: "Messages" });
+            // URL value is `messages` (user-friendly); we also accept the
+            // legacy `/whatsapp` path for backwards compatibility.
+            base.push({ value: "messages", label: "Messages" });
             base.push({ value: "training", label: "Training" });
             base.push({ value: "schedule", label: "Schedule" });
             base.push({ value: "configuration", label: "Settings" });
@@ -985,10 +985,10 @@ export function AgentDetail() {
           })()).map((t) => (
             <button
               key={t.value}
-              data-testid={t.value === "whatsapp" ? "agent-tab-whatsapp" : undefined}
+              data-testid={t.value === "messages" ? "agent-tab-whatsapp" : undefined}
               className={cn(
                 "py-2.5 px-3 text-sm font-semibold cursor-pointer border-b-2 transition-colors",
-                activeView === t.value
+                (activeView === t.value || (t.value === "messages" && activeView === "whatsapp"))
                   ? "text-primary border-b-primary"
                   : "text-muted-foreground border-transparent hover:text-foreground"
               )}
@@ -2791,7 +2791,7 @@ function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      Managed: Paperclip stores and serves the instructions bundle. External: you provide a path on disk where the instructions live.
+                      Managed: Aygency stores and serves the instructions bundle. External: you provide a path on disk where the instructions live.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -2846,7 +2846,7 @@ function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      The absolute directory on disk where the instructions bundle lives. In managed mode this is set by Paperclip automatically.
+                      The absolute directory on disk where the instructions bundle lives. In managed mode this is set by Aygency automatically.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -3377,9 +3377,9 @@ function AgentSkillsTab({
   const unsupportedSkillMessage = useMemo(() => {
     if (skillSnapshot?.mode !== "unsupported") return null;
     if (agent.adapterType === "openclaw_gateway") {
-      return "Paperclip cannot manage OpenClaw skills here. Visit your OpenClaw instance to manage this agent's skills.";
+      return "External agent skills aren't managed from here. Visit your external agent instance to manage this agent's skills.";
     }
-    return "Paperclip cannot manage skills for this adapter yet. Manage them in the adapter directly.";
+    return "Skills for this adapter can't be managed from here yet. Manage them in the adapter directly.";
   }, [agent.adapterType, skillSnapshot?.mode]);
   const hasUnsavedChanges = !arraysEqual(skillDraft, lastSavedSkills);
   const saveStatusLabel = syncSkills.isPending
@@ -3537,7 +3537,7 @@ function AgentSkillsTab({
                   <section className="border-y border-border">
                     <div className="border-b border-border bg-muted/40 px-3 py-2">
                       <span className="text-xs font-medium text-muted-foreground">
-                        Required by Paperclip
+                        Required
                       </span>
                     </div>
                     {requiredSkillRows.map(renderSkillRow)}
@@ -3554,7 +3554,7 @@ function AgentSkillsTab({
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setUnmanagedOpen((v) => !v); } }}
                     >
                       <span className="text-xs font-medium text-muted-foreground">
-                        ({unmanagedSkillRows.length}) User-installed skills, not managed by Paperclip
+                        ({unmanagedSkillRows.length}) User-installed skills, not managed
                       </span>
                       {unmanagedOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                     </div>
@@ -3872,8 +3872,8 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
   }, [isRunning, run.startedAt]);
 
   const timeFormat: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false };
-  const startTime = run.startedAt ? new Date(run.startedAt).toLocaleTimeString("en-US", timeFormat) : null;
-  const endTime = run.finishedAt ? new Date(run.finishedAt).toLocaleTimeString("en-US", timeFormat) : null;
+  const startTime = run.startedAt ? formatClockTime(run.startedAt, timeFormat) : null;
+  const endTime = run.finishedAt ? formatClockTime(run.finishedAt, timeFormat) : null;
   const durationSec = run.startedAt && run.finishedAt
     ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)
     : null;
@@ -4637,7 +4637,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
               return (
                 <div key={evt.id} className="flex gap-2">
                   <span className="text-neutral-400 dark:text-neutral-600 shrink-0 select-none w-16">
-                    {new Date(evt.createdAt).toLocaleTimeString("en-US", { hour12: false })}
+                    {formatClockTime(evt.createdAt, { hour12: false })}
                   </span>
                   <span className={cn("shrink-0 w-4", evt.stream ? (streamColors[evt.stream] ?? "text-neutral-500") : "text-neutral-500")}>
                     {evt.stream === "stderr" ? "!" : ""}

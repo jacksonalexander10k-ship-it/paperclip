@@ -18,7 +18,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ActivityRow } from "../components/ActivityRow";
 import { AgentStatusCard } from "../components/AgentStatusCard";
 import { DepartmentCard } from "../components/DepartmentCard";
-import { groupTeam } from "../lib/team-grouping";
+import { groupTeam, isGhostDepartmentManager } from "../lib/team-grouping";
 import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle, Brain, MessageSquare, TrendingUp, Clock, Target, CheckCircle2 } from "lucide-react";
@@ -122,6 +122,15 @@ export function Dashboard() {
     staleTime: 30_000,
   });
 
+  // Ghost department-manager agents (Sales Manager, Marketing Manager, …) are
+  // org-chart scaffolding, not real hires. Every user-visible team count or
+  // card on this page must be computed against this filtered list to stay
+  // consistent with the sidebar and /agents view.
+  const visibleAgents = useMemo(
+    () => (agents ?? []).filter((a) => !isGhostDepartmentManager(a)),
+    [agents],
+  );
+
   const recentActivity = useMemo(() => {
     // pageview events are noise in the business log, hide them here
     const isPageview = (e: { type?: string; action?: string; name?: string }) => {
@@ -130,6 +139,9 @@ export function Dashboard() {
       const name = (e.name ?? "").toLowerCase();
       if (type === "view" || action === "view") return true;
       if (action.startsWith("view.") || action.startsWith("pageview")) return true;
+      // Read-marker events ("issue.read_marked", "comment.read_marked") render
+      // as "You viewed X" — same UX noise as a pageview.
+      if (action.endsWith(".read_marked")) return true;
       if (name.startsWith("viewed")) return true;
       return false;
     };
@@ -259,7 +271,7 @@ export function Dashboard() {
     return <PageSkeleton variant="dashboard" />;
   }
 
-  const hasNoAgents = agents !== undefined && agents.length === 0;
+  const hasNoAgents = agents !== undefined && visibleAgents.length === 0;
   const pendingApprovalCount =
     (data?.pendingApprovals ?? 0) + (data?.budgets?.pendingApprovals ?? 0);
 
@@ -349,7 +361,7 @@ export function Dashboard() {
                 to="/agents"
                 description={
                   <span>
-                    of {(agents ?? []).length} agents{" "}
+                    of {visibleAgents.length} agents{" "}
                     {data.agents.running > 0 ? "running" : "idle"}
                   </span>
                 }
@@ -418,12 +430,12 @@ export function Dashboard() {
               );
             })() : null}
 
-            {/* Your Team — one card per department, click to expand and see agents */}
-            {(agents ?? []).length > 0 && (() => {
-              const sections = groupTeam(agents ?? []);
+            {/* Team — one card per department, click to expand and see agents */}
+            {visibleAgents.length > 0 && (() => {
+              const sections = groupTeam(visibleAgents);
               // Pre-compute status for every agent (used inside expanded dept cards)
               const statusByAgent = new Map<string, { status: "idle" | "working" | "waiting" | "paused" | "error"; subtitle: string }>();
-              for (const a of agents ?? []) {
+              for (const a of visibleAgents) {
                 const run = runByAgentId.get(a.id);
                 const pending = pendingApprovalsByAgentId.get(a.id) ?? 0;
                 const currentAction = run?.issueId ? (issueById.get(run.issueId)?.title ?? null) : null;
@@ -442,7 +454,7 @@ export function Dashboard() {
               return (
                 <div>
                   <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-3">
-                    Your Team
+                    Team
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-start" data-testid="team-grid">
                     {sections.map((section) => {

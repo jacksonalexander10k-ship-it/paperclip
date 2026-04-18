@@ -14,6 +14,7 @@ import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { formatClockTime } from "../lib/format-time";
 import {
   Select,
   SelectContent,
@@ -112,10 +113,41 @@ export function Activity() {
     return <PageSkeleton variant="list" />;
   }
 
+  // Hide low-signal internal events from the user-facing feed.
+  // tool_call, direct_response, raw inbound WhatsApp logs are internal plumbing.
+  // Show only business-relevant events: messages sent, approvals, leads, hires, deals.
+  const NOISY_ACTIONS = new Set([
+    "agent.tool_call",
+    "tool_call",
+    "agent.direct_response",
+    "agent.heartbeat_started",
+    "agent.heartbeat_completed",
+    "whatsapp.received",
+    "agent.run_started",
+    "agent.run_completed",
+    // Read-marker / pageview bookkeeping events — UI signals, not business events.
+    "issue.read_marked",
+    "comment.read_marked",
+    "pageview",
+    "view",
+  ]);
+  const cleaned = data?.filter((e) => {
+    const action = String(e.action ?? "").toLowerCase();
+    if (NOISY_ACTIONS.has(action)) return false;
+    // Any *.read_marked action is noise too, regardless of entity.
+    if (/\.read_marked$/.test(action)) return false;
+    // Pageview spam — mirror the filter used on the dashboard's recent activity.
+    const type = String((e as { type?: string }).type ?? "").toLowerCase();
+    const name = String((e as { name?: string }).name ?? "").toLowerCase();
+    if (type === "view" || action === "view") return false;
+    if (/^(view\.|pageview)/.test(action)) return false;
+    if (/^viewed/.test(name)) return false;
+    return true;
+  });
   const filtered =
-    data && filter !== "all"
-      ? data.filter((e) => e.entityType === filter)
-      : data;
+    cleaned && filter !== "all"
+      ? cleaned.filter((e) => e.entityType === filter)
+      : cleaned;
 
   const entityTypes = data
     ? [...new Set(data.map((e) => e.entityType))].sort()
@@ -181,7 +213,7 @@ export function Activity() {
                     <div className="text-[11px] text-muted-foreground truncate">
                       {run.invocationSource}
                       {run.startedAt && (
-                        <> &middot; started {new Date(run.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>
+                        <> &middot; started {formatClockTime(run.startedAt)}</>
                       )}
                     </div>
                   </div>

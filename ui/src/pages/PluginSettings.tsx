@@ -25,6 +25,7 @@ import {
   getDefaultValues,
   type JsonSchemaNode,
 } from "@/components/JsonSchemaForm";
+import { formatClockTime } from "@/lib/format-time";
 
 /**
  * PluginSettings page component.
@@ -326,8 +327,8 @@ export function PluginSettings() {
                               >
                                 <div className="flex min-w-0 items-center gap-2">
                                   <JobStatusDot status={run.status} />
-                                  <span className="truncate font-mono text-xs" title={run.jobKey ?? run.jobId}>
-                                    {run.jobKey ?? run.jobId.slice(0, 8)}
+                                  <span className="truncate text-xs" title={run.jobKey ?? undefined}>
+                                    {run.jobKey ?? formatRelativeTime(run.createdAt)}
                                   </span>
                                   <Badge variant="outline" className="px-1 py-0 text-[10px]">
                                     {run.trigger}
@@ -379,7 +380,7 @@ export function PluginSettings() {
 
                       <div className="flex items-center gap-1.5 border-t border-border/50 pt-2 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
-                        Last checked: {new Date(dashboardData.checkedAt).toLocaleTimeString()}
+                        Last checked: {formatClockTime(dashboardData.checkedAt)}
                       </div>
                     </>
                   ) : (
@@ -414,7 +415,7 @@ export function PluginSettings() {
                                   : "text-muted-foreground"
                           }`}
                         >
-                          <span className="shrink-0 text-muted-foreground/50">{new Date(entry.createdAt).toLocaleTimeString()}</span>
+                          <span className="shrink-0 text-muted-foreground/50">{formatClockTime(entry.createdAt)}</span>
                           <Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px]">{entry.level}</Badge>
                           <span className="truncate" title={entry.message}>{entry.message}</span>
                         </div>

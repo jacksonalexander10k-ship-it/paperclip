@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { leadsApi, type Lead, type LeadFilters } from "../api/leads";
 import { agentsApi } from "../api/agents";
@@ -506,7 +507,13 @@ function LeadRow({
       {/* Name + contact */}
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="font-medium text-foreground truncate">{lead.name}</span>
+          <Link
+            to={`/leads/${lead.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="font-medium text-foreground truncate hover:underline focus-visible:underline focus:outline-none"
+          >
+            {lead.name}
+          </Link>
           {lead.phone && onWhatsAppClick && (
             <button
               data-testid="lead-whatsapp-btn"

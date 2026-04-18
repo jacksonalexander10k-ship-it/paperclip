@@ -8,6 +8,7 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { agentLearningsApi, type AgentLearning } from "../api/agent-learnings";
 import { agentsApi } from "../api/agents";
+import { isGhostDepartmentManager } from "../lib/team-grouping";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Check, Download, Upload, MessageCircle, Mail, Calendar, Camera, Bell, Brain, Trash2, ArrowRight } from "lucide-react";
@@ -70,7 +71,10 @@ export function CompanySettings() {
   });
 
   const teamSummary = (() => {
-    const agents = companyAgents ?? [];
+    // Ghost department-manager agents (Sales Manager, Marketing Manager, …)
+    // are org-chart scaffolding, not real hires. Exclude them before counting
+    // or listing so the summary matches the sidebar + /agents view.
+    const agents = (companyAgents ?? []).filter((a) => !isGhostDepartmentManager(a));
     if (agents.length === 0) return "CEO only — no agents hired yet.";
     const ceo = agents.find((a) => String(a.role ?? "").toLowerCase() === "ceo");
     const nonCeo = agents.filter((a) => String(a.role ?? "").toLowerCase() !== "ceo");
@@ -486,9 +490,9 @@ export function CompanySettings() {
           <div className="p-4 space-y-3">
             <div className="flex items-center gap-1.5">
               <span className="text-[11.5px] text-muted-foreground">
-                Generate an OpenClaw agent invite snippet.
+                Generate an External Agent invite snippet.
               </span>
-              <HintIcon text="Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt." />
+              <HintIcon text="Creates a short-lived External Agent invite and renders a copy-ready prompt." />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -499,7 +503,7 @@ export function CompanySettings() {
               >
                 {inviteMutation.isPending
                   ? "Generating..."
-                  : "Generate OpenClaw Invite Prompt"}
+                  : "Generate External Agent Invite Prompt"}
               </Button>
             </div>
             {inviteError && (
@@ -509,7 +513,7 @@ export function CompanySettings() {
               <div className="rounded-lg border border-border/50 bg-background p-2 space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[11px] text-muted-foreground">
-                    OpenClaw Invite Prompt
+                    External Agent Invite Prompt
                   </div>
                   {snippetCopied && (
                     <span
@@ -954,52 +958,52 @@ function buildAgentSnippet(input: AgentSnippetInput) {
 
   const connectivityBlock =
     candidateUrls.length === 0
-      ? `No candidate URLs are available. Ask your user to configure a reachable hostname in Paperclip, then retry.
+      ? `No candidate URLs are available. Ask your user to configure a reachable hostname in Aygency, then retry.
 Suggested steps:
-- choose a hostname that resolves to the Paperclip host from your runtime
+- choose a hostname that resolves to the Aygency host from your runtime
 - run: pnpm paperclipai allowed-hostname <host>
-- restart Paperclip
+- restart Aygency
 - verify with: curl -fsS http://<host>:3100/api/health
 - regenerate this invite snippet`
-      : `If none are reachable, ask your user to add a reachable hostname in Paperclip, restart, and retry.
+      : `If none are reachable, ask your user to add a reachable hostname in Aygency, restart, and retry.
 Suggested command:
 - pnpm paperclipai allowed-hostname <host>
 Then verify with: curl -fsS <base-url>/api/health`;
 
   const resolutionLine = resolutionTestUrl
-    ? `\nYou MUST test Paperclip-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from Paperclip. Test it. `
+    ? `\nYou MUST test Aygency-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from Aygency. Test it. `
     : "";
 
-  return `You're invited to join a Paperclip organization.
+  return `You're invited to join an Aygency organization.
 
 The URLs you should try are:
 ${candidateList}
 
 Connectivity guidance:
-If you are running on a different machine than Paperclip, Paperclip must be reachable at one of the hostnames used above.
+If you are running on a different machine than Aygency, Aygency must be reachable at one of the hostnames used above.
 Verify the hostname works from your runtime with: GET <base-url>/api/health
 
 ${connectivityBlock}
 
-For your "agentName", just use your own agent name (OpenClaw or whatever your name is) and send it directly.
-You also need to send a gateway URL that Paperclip can access. Check your config and include that URL.${resolutionLine}
+For your "agentName", just use your own agent name (External Agent or whatever your name is) and send it directly.
+You also need to send a gateway URL that Aygency can access. Check your config and include that URL.${resolutionLine}
 
 ---
 
-This onboarding flow is for OpenClaw Gateway.
+This onboarding flow is for the External Agent Gateway.
 When you submit the join request, use:
 - \`adapterType: "openclaw_gateway"\`
 - \`agentDefaultsPayload.url\` as your \`ws://\` or \`wss://\` gateway URL
 - \`agentDefaultsPayload.headers["x-openclaw-token"]\` with your gateway token
 - (legacy accepted) \`agentDefaultsPayload.headers["x-openclaw-auth"]\`
-- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, Paperclip will generate and persist one during join so pairing approvals remain stable.
+- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, Aygency will generate and persist one during join so pairing approvals remain stable.
 - Only use \`disableDeviceAuth=true\` for special environments where pairing cannot be completed.
 
 Do NOT use \`/v1/responses\` or \`/hooks/*\` in this join flow.
 
-Before you do anything, please respond to your user that you understand the instructions and you're going to work on them. Then do the step above in another session called "paperclip-onboarding" and then tell your user when you're done. Update your user in intermediate steps along the way so they know what's going on.
+Before you do anything, please respond to your user that you understand the instructions and you're going to work on them. Then do the step above in another session called "aygency-onboarding" and then tell your user when you're done. Update your user in intermediate steps along the way so they know what's going on.
 
-Then after you've connected to Paperclip (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
+Then after you've connected to Aygency (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
 
 `;
 }

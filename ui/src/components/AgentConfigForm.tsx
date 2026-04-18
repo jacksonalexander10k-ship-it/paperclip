@@ -27,6 +27,7 @@ import { FolderOpen, Heart, ChevronDown, X } from "lucide-react";
 import { cn } from "../lib/utils";
 import { extractModelName, extractProviderId } from "../lib/model-utils";
 import { queryKeys } from "../lib/queryKeys";
+import { formatClockTime } from "../lib/format-time";
 import { useCompany } from "../context/CompanyContext";
 import {
   Field,
@@ -1000,7 +1001,7 @@ function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmentTestRe
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{statusLabel}</span>
         <span className="text-[11px] opacity-80">
-          {new Date(result.testedAt).toLocaleTimeString()}
+          {formatClockTime(result.testedAt)}
         </span>
       </div>
       <div className="mt-2 space-y-1.5">

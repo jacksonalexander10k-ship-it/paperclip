@@ -3,6 +3,7 @@ import { Link } from "@/lib/router";
 import type { Agent } from "@paperclipai/shared";
 import { AGENT_ROLE_LABELS, type AgentRole } from "@paperclipai/shared";
 import { agentUrl } from "../lib/utils";
+import { agentDepartmentLabel, agentInitials } from "../lib/team-grouping";
 
 const AGENT_COLORS = [
   { bg: "#ecfdf5", accent: "#059669", dot: "#10b981" },
@@ -49,8 +50,12 @@ export function AgentStatusCard({
 }: AgentStatusCardProps) {
   const status = deriveStatus(agent, isRunning, pendingApprovals);
   const colors = AGENT_COLORS[index % AGENT_COLORS.length];
-  const initials = agent.name.slice(0, 2).toUpperCase();
+  const initials = agentInitials(agent.name, agent.role);
   const roleLabel = AGENT_ROLE_LABELS[(agent.role ?? "general") as AgentRole] ?? "Agent";
+  // Show the agent's department on the card (Sales / Marketing / Operations / Research / Leadership).
+  // Keeping roleLabel imported for accessibility / tooltip fallback.
+  void roleLabel;
+  const deptLabel = agentDepartmentLabel(agent);
   const isActive = status === "working" || status === "waiting";
 
   const subtitle = useMemo(() => {
@@ -80,13 +85,16 @@ export function AgentStatusCard({
         {initials}
       </div>
 
-      {/* Name + role + subtitle */}
+      {/* Name + department + subtitle */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-foreground leading-tight">{agent.name}</span>
-          <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide">{roleLabel}</span>
+        <div className="text-[13px] font-semibold text-foreground leading-tight truncate">{agent.name}</div>
+        <div
+          className="text-[10.5px] mt-0.5 truncate font-semibold uppercase tracking-wider"
+          style={{ color: colors.accent }}
+        >
+          {deptLabel}
         </div>
-        <div className="text-[11px] text-muted-foreground mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+        <div className="text-[10.5px] text-muted-foreground mt-0.5 truncate">
           {subtitle}
         </div>
       </div>

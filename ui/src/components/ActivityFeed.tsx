@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
+import { formatClockTime } from "../lib/format-time";
 
 // Re-export so callers that build ActivityEntry rows can use the same
 // user-friendly formatter used by LiveActivityPanel (bug 16).
@@ -36,7 +37,7 @@ interface ActivityFeedProps {
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-GB", {
+  return formatClockTime(date, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",

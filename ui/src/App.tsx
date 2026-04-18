@@ -44,6 +44,7 @@ import { KnowledgeBase } from "./pages/KnowledgeBase";
 import { Properties } from "./pages/Properties";
 import { PropertyDetail } from "./pages/PropertyDetail";
 import { Leads } from "./pages/Leads";
+import { LeadDetail } from "./pages/LeadDetail";
 import Landing from "./pages/Landing";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
@@ -65,8 +66,8 @@ function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: b
         <h1 className="text-xl font-semibold">Instance setup required</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {hasActiveInvite
-            ? "No instance admin exists yet. A bootstrap invite is already active. Check your Paperclip startup logs for the first admin invite URL, or run this command to rotate it:"
-            : "No instance admin exists yet. Run this command in your Paperclip environment to generate the first admin invite URL:"}
+            ? "No instance admin exists yet. A bootstrap invite is already active. Check your server startup logs for the first admin invite URL, or run this command to rotate it:"
+            : "No instance admin exists yet. Run this command in your Aygency environment to generate the first admin invite URL:"}
         </p>
         <pre className="mt-4 overflow-x-auto rounded-md border border-border bg-muted/30 p-3 text-xs">
 {`pnpm paperclipai auth bootstrap-ceo`}
@@ -165,6 +166,7 @@ function boardRoutes() {
       <Route path="deliverables" element={<Deliverables />} />
       <Route path="knowledge-base" element={<KnowledgeBase />} />
       <Route path="leads" element={<Leads />} />
+      <Route path="leads/:leadId" element={<LeadDetail />} />
       <Route path="properties" element={<Navigate to="/properties/sales" replace />} />
       <Route path="properties/sales" element={<Properties />} />
       <Route path="properties/sale" element={<Navigate to="/properties/sales" replace />} />
@@ -388,6 +390,7 @@ export function App() {
           <Route path="agents/:agentId/runs/:runId" element={<UnprefixedBoardRedirect />} />
           <Route path="knowledge-base" element={<UnprefixedBoardRedirect />} />
           <Route path="leads" element={<UnprefixedBoardRedirect />} />
+          <Route path="leads/:leadId" element={<UnprefixedBoardRedirect />} />
           <Route path="properties" element={<UnprefixedBoardRedirect />} />
           <Route path="properties/:tab" element={<UnprefixedBoardRedirect />} />
           <Route path="properties/:propertyId" element={<UnprefixedBoardRedirect />} />

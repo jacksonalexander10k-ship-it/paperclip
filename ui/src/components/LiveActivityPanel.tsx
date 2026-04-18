@@ -11,6 +11,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { approvalLabel, typeIcon, defaultTypeIcon } from "./ApprovalPayload";
 import { Button } from "@/components/ui/button";
 import { Shield, Activity, MessageSquare, ArrowRight, Zap, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { agentInitials } from "../lib/team-grouping";
 import type { Agent, ActivityEvent } from "@paperclipai/shared";
 
 interface LiveActivityPanelProps {
@@ -324,7 +325,21 @@ function ActivityTab({ companyId, agentId }: { companyId: string; agentId?: stri
       })
     : (activity ?? []);
 
-  const entries = scoped.slice(0, 30);
+  // Pageview spam — mirror the dashboard recent-activity filter. Hide these
+  // before display so the right-rail stays focused on real agent work.
+  const deNoised = scoped.filter((e) => {
+    const action = String((e as { action?: string }).action ?? "").toLowerCase();
+    const type = String((e as { type?: string }).type ?? "").toLowerCase();
+    const name = String((e as { name?: string }).name ?? "").toLowerCase();
+    if (type === "view" || action === "view") return false;
+    if (/^(view\.|pageview)/.test(action)) return false;
+    // Read-marker events render as "viewed X" — same UX noise.
+    if (/\.read_marked$/.test(action)) return false;
+    if (/^viewed/.test(name)) return false;
+    return true;
+  });
+
+  const entries = deNoised.slice(0, 30);
 
   if (entries.length === 0) {
     return (
@@ -488,8 +503,15 @@ function AgentCommsTab({ companyId }: { companyId: string }) {
     (agentsList as Agent[] | undefined)?.find((a: Agent) => a.id === id)?.name ?? "Agent";
 
   const agentInitial = (id: string) => {
-    const name = agentName(id);
-    return name.charAt(0).toUpperCase();
+    const agent = (agentsList as Agent[] | undefined)?.find((a: Agent) => a.id === id);
+    const name = agent?.name ?? agentName(id);
+    // Collision keys — every other agent's initials so Claire vs Clive differ.
+    const collisionKeys = new Set<string>();
+    for (const other of (agentsList as Agent[] | undefined) ?? []) {
+      if (other.id === id) continue;
+      collisionKeys.add(agentInitials(other.name));
+    }
+    return agentInitials(name, agent?.role, collisionKeys);
   };
 
   const agentColor = (id: string) => {

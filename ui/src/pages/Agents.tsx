@@ -17,7 +17,7 @@ import { PageTabBar } from "../components/PageTabBar";
 import { Button } from "@/components/ui/button";
 import { Bot, Plus, GitBranch, SlidersHorizontal } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
-import { formatDepartment, agentAvatarGradient, agentInitials } from "../lib/team-grouping";
+import { formatDepartment, agentAvatarGradient, agentInitials, isGhostDepartmentManager } from "../lib/team-grouping";
 
 const adapterLabels: Record<string, string> = {
   claude_local: "AI Agent",
@@ -42,29 +42,6 @@ function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean):
   if (tab === "paused") return status === "paused";
   if (tab === "error") return status === "error";
   return true;
-}
-
-/**
- * Ghost "department manager" agents are seeded server-side during company
- * creation (Sales Manager, Operations Manager, Marketing Manager, …). They're
- * cosmetic org-chart scaffolding and do NOT appear in the sidebar, so we also
- * hide them from /agents/all to keep the two views consistent.
- *
- * We match by:
- *   - role = one of the *_manager roles
- *   - metadata.isDepartmentManager = true
- *   - name ending in " Manager" with role = general (the seed shape)
- */
-function isGhostDepartmentManager(a: Agent): boolean {
-  const role = String(a.role ?? "").toLowerCase();
-  if (role === "sales_manager" || role === "operations_manager" || role === "marketing_manager" || role === "intelligence_manager") {
-    return true;
-  }
-  const meta = (a as { metadata?: Record<string, unknown> }).metadata;
-  if (meta && meta.isDepartmentManager === true) return true;
-  const name = (a.name ?? "").trim().toLowerCase();
-  if (role === "general" && (name.endsWith(" manager") || name === "manager")) return true;
-  return false;
 }
 
 function filterAgents(agents: Agent[], tab: FilterTab, showTerminated: boolean): Agent[] {

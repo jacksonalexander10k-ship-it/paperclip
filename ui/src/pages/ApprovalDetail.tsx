@@ -12,7 +12,7 @@ import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } fro
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, ChevronRight, Sparkles } from "lucide-react";
+import { CheckCircle2, Sparkles } from "lucide-react";
 import type { ApprovalComment } from "@paperclipai/shared";
 import { MarkdownBody } from "../components/MarkdownBody";
 
@@ -25,7 +25,7 @@ export function ApprovalDetail() {
   const queryClient = useQueryClient();
   const [commentBody, setCommentBody] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [showRawPayload, setShowRawPayload] = useState(false);
+
 
   const { data: approval, isLoading } = useQuery({
     queryKey: queryKeys.approvals.detail(approvalId!),
@@ -65,8 +65,8 @@ export function ApprovalDetail() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Approvals", href: "/approvals" },
-      { label: approval?.id?.slice(0, 8) ?? approvalId ?? "Approval" },
+      { label: "Inbox", href: "/approvals" },
+      { label: approval ? approvalLabel(approval.type, approval.payload as Record<string, unknown> | null) : approvalId ?? "Approval" },
     ]);
   }, [setBreadcrumbs, approval, approvalId]);
 
@@ -171,7 +171,7 @@ export function ApprovalDetail() {
           };
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-3xl mx-auto px-4 py-6">
       {showApprovedBanner && (
         <div className="border border-green-300 dark:border-green-700/40 bg-green-50 dark:bg-green-900/20 rounded-lg px-4 py-3 animate-in fade-in zoom-in-95 duration-300">
           <div className="flex items-start justify-between gap-3">
@@ -198,45 +198,34 @@ export function ApprovalDetail() {
           </div>
         </div>
       )}
-      <div className="border border-border rounded-lg p-4 space-y-3">
+      <div className="border border-border rounded-xl p-5 space-y-4 bg-card">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TypeIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 shrink-0">
+              <TypeIcon className="h-4.5 w-4.5 text-primary" />
+            </div>
             <div>
-              <h2 className="text-lg font-semibold">{approvalLabel(approval.type, approval.payload as Record<string, unknown> | null)}</h2>
-              <p className="text-xs text-muted-foreground font-mono">{approval.id}</p>
+              <h2 className="text-[15px] font-semibold">{approvalLabel(approval.type, approval.payload as Record<string, unknown> | null)}</h2>
+              {approval.requestedByAgentId && (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-muted-foreground text-[11px]">Requested by</span>
+                  <Identity
+                    name={agentNameById.get(approval.requestedByAgentId) ?? approval.requestedByAgentId.slice(0, 8)}
+                    size="sm"
+                  />
+                </div>
+              )}
             </div>
           </div>
           <StatusBadge status={approval.status} />
         </div>
-        <div className="text-sm space-y-1">
-          {approval.requestedByAgentId && (
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs">Requested by</span>
-              <Identity
-                name={agentNameById.get(approval.requestedByAgentId) ?? approval.requestedByAgentId.slice(0, 8)}
-                size="sm"
-              />
-            </div>
-          )}
-          <ApprovalPayloadRenderer type={approval.type} payload={payload} />
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-2"
-            onClick={() => setShowRawPayload((v) => !v)}
-          >
-            <ChevronRight className={`h-3 w-3 transition-transform ${showRawPayload ? "rotate-90" : ""}`} />
-            See full request
-          </button>
-          {showRawPayload && (
-            <pre className="text-xs bg-muted/40 rounded-md p-3 overflow-x-auto">
-              {JSON.stringify(payload, null, 2)}
-            </pre>
-          )}
-          {approval.decisionNote && (
-            <p className="text-xs text-muted-foreground">Decision note: {approval.decisionNote}</p>
-          )}
-        </div>
+
+        <ApprovalPayloadRenderer type={approval.type} payload={payload} />
+
+        {approval.decisionNote && (
+          <p className="text-xs text-muted-foreground border-t border-border/40 pt-3">Decision note: {approval.decisionNote}</p>
+        )}
+
         {error && <p className="text-sm text-destructive">{error}</p>}
         {linkedIssues && linkedIssues.length > 0 && (
           <div className="pt-2 border-t border-border/60">

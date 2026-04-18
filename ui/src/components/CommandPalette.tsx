@@ -6,7 +6,6 @@ import { useDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
-import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
 import {
   CommandDialog,
@@ -23,14 +22,13 @@ import {
   Hexagon,
   Target,
   LayoutDashboard,
-  Inbox,
   DollarSign,
   History,
   SquarePen,
   Plus,
 } from "lucide-react";
 import { Identity } from "./Identity";
-import { agentUrl, projectUrl } from "../lib/utils";
+import { agentUrl } from "../lib/utils";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -75,16 +73,6 @@ export function CommandPalette() {
     enabled: !!selectedCompanyId && open,
   });
 
-  const { data: allProjects = [] } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!),
-    queryFn: () => projectsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && open,
-  });
-  const projects = useMemo(
-    () => allProjects.filter((p) => !p.archivedAt),
-    [allProjects],
-  );
-
   function go(path: string) {
     setOpen(false);
     navigate(path);
@@ -106,7 +94,7 @@ export function CommandPalette() {
         if (v && isMobile) setSidebarOpen(false);
       }}>
       <CommandInput
-        placeholder="Search issues, agents, projects..."
+        placeholder="Search tasks, agents, pages..."
         value={query}
         onValueChange={setQuery}
       />
@@ -121,7 +109,7 @@ export function CommandPalette() {
             }}
           >
             <SquarePen className="mr-2 h-4 w-4" />
-            Create new issue
+            Create new task
             <span className="ml-auto text-xs text-muted-foreground">C</span>
           </CommandItem>
           <CommandItem
@@ -133,53 +121,53 @@ export function CommandPalette() {
             <Plus className="mr-2 h-4 w-4" />
             Create new agent
           </CommandItem>
-          <CommandItem onSelect={() => go("/projects")}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create new project
-          </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
         <CommandGroup heading="Pages">
+          <CommandItem onSelect={() => go("/ceo-chat")}>
+            <Bot className="mr-2 h-4 w-4" />
+            CEO Chat
+          </CommandItem>
           <CommandItem onSelect={() => go("/dashboard")}>
             <LayoutDashboard className="mr-2 h-4 w-4" />
             Dashboard
           </CommandItem>
-          <CommandItem onSelect={() => go("/inbox")}>
-            <Inbox className="mr-2 h-4 w-4" />
+          <CommandItem onSelect={() => go("/approvals/pending")}>
+            <CircleDot className="mr-2 h-4 w-4" />
             Inbox
           </CommandItem>
-          <CommandItem onSelect={() => go("/issues")}>
-            <CircleDot className="mr-2 h-4 w-4" />
-            Issues
-          </CommandItem>
-          <CommandItem onSelect={() => go("/projects")}>
-            <Hexagon className="mr-2 h-4 w-4" />
-            Projects
-          </CommandItem>
-          <CommandItem onSelect={() => go("/goals")}>
+          <CommandItem onSelect={() => go("/leads")}>
             <Target className="mr-2 h-4 w-4" />
-            Goals
+            Leads
+          </CommandItem>
+          <CommandItem onSelect={() => go("/properties")}>
+            <Hexagon className="mr-2 h-4 w-4" />
+            Properties
           </CommandItem>
           <CommandItem onSelect={() => go("/agents")}>
             <Bot className="mr-2 h-4 w-4" />
-            Agents
+            Team
           </CommandItem>
-          <CommandItem onSelect={() => go("/costs")}>
+          <CommandItem onSelect={() => go("/knowledge-base")}>
             <DollarSign className="mr-2 h-4 w-4" />
-            Costs
+            Knowledge Base
+          </CommandItem>
+          <CommandItem onSelect={() => go("/company/settings")}>
+            <History className="mr-2 h-4 w-4" />
+            Settings
           </CommandItem>
           <CommandItem onSelect={() => go("/activity")}>
             <History className="mr-2 h-4 w-4" />
-            Activity
+            Activity log
           </CommandItem>
         </CommandGroup>
 
         {visibleIssues.length > 0 && (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Issues">
+            <CommandGroup heading="Tasks">
               {visibleIssues.slice(0, 10).map((issue) => (
                 <CommandItem
                   key={issue.id}
@@ -220,19 +208,6 @@ export function CommandPalette() {
           </>
         )}
 
-        {projects.length > 0 && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Projects">
-              {projects.slice(0, 10).map((project) => (
-                <CommandItem key={project.id} onSelect={() => go(projectUrl(project))}>
-                  <Hexagon className="mr-2 h-4 w-4" />
-                  {project.name}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </>
-        )}
       </CommandList>
     </CommandDialog>
   );

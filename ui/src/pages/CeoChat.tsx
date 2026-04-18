@@ -28,6 +28,7 @@ import { WhatsAppConversationDrawer } from "../components/WhatsAppConversationDr
 import { AgentInsightBanner } from "../components/AgentInsightBanner";
 import { agentMessagesApi, type AgentMessage } from "../api/agent-messages";
 import { cn } from "@/lib/utils";
+import { agentInitials } from "../lib/team-grouping";
 import type { IssueComment, Issue } from "@paperclipai/shared";
 
 const CEO_CHAT_PREFIX = "CEO Chat";
@@ -1246,8 +1247,18 @@ export function CeoChat() {
   });
 
   const agentNameMap = new Map<string, string>();
+  const agentRoleMap = new Map<string, string | null | undefined>();
   if (agents) {
-    for (const a of agents) agentNameMap.set(a.id, a.name);
+    for (const a of agents) {
+      agentNameMap.set(a.id, a.name);
+      agentRoleMap.set(a.id, a.role);
+    }
+  }
+  // Initials collision set — every other agent's initials. Let `agentInitials`
+  // de-collide (Claire vs Clive) using role when a match is detected.
+  const agentInitialsCollisionKeys = new Set<string>();
+  if (agents) {
+    for (const a of agents) agentInitialsCollisionKeys.add(agentInitials(a.name));
   }
 
   // ── Progressive reveal for first-run welcome messages ──────────────────────
@@ -1675,7 +1686,7 @@ export function CeoChat() {
                     // Active only keys off the selected conversation id — never
                     // hover — so exactly one pill is ever active at a time.
                     const isActive = convo.id === ceoChatIssue?.id;
-                    const timeLabel = new Date(convo.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+                    const timeLabel = formatClockTime(convo.createdAt, { hour: "2-digit", minute: "2-digit", hour12: false });
                     const dateLabel = new Date(convo.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
                     const label = convo.title === "CEO Chat"
                       ? `Chat ${dateLabel}`
@@ -1741,7 +1752,11 @@ export function CeoChat() {
               const msg = item.data;
               const senderName = agentNameMap.get(msg.fromAgentId) ?? "Agent";
               const recipientName = msg.toAgentId ? (agentNameMap.get(msg.toAgentId) ?? "Team") : "Team";
-              const initials = senderName.slice(0, 2).toUpperCase();
+              const initials = agentInitials(
+                senderName,
+                agentRoleMap.get(msg.fromAgentId),
+                agentInitialsCollisionKeys,
+              );
               const colors = ["bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-purple-500", "bg-rose-500"];
               const colorHash = senderName.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
               const avatarColor = colors[colorHash % colors.length];
@@ -1767,7 +1782,7 @@ export function CeoChat() {
                       <p className="whitespace-pre-wrap">{msg.summary}</p>
                     </div>
                     <span className="mt-[3px] block select-none px-1 text-[11px] text-muted-foreground/60">
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {formatClockTime(msg.createdAt)}
                     </span>
                   </div>
                 </div>

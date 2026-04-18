@@ -366,7 +366,7 @@ export function Approvals() {
   }, []);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Approvals" }]);
+    setBreadcrumbs([{ label: "Inbox" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({

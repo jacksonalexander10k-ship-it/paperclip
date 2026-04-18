@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
 import { heartbeatsApi } from "../api/heartbeats";
+import { formatClockTime } from "../lib/format-time";
 import type { HeartbeatRunEvent } from "@paperclipai/shared";
 import {
   Search, Pencil, MessageCircle, FileText, Check,
@@ -199,7 +200,7 @@ export function ThoughtProcessStream({
                   )}
                 </div>
                 <span className="text-[9px] text-muted-foreground/50 shrink-0 mt-0.5 tabular-nums">
-                  {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  {formatClockTime(entry.ts, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                 </span>
               </div>
             );

@@ -111,9 +111,6 @@ function LiveWidgetPreview({
           <div className="min-w-0">
             <Identity name={runTranscriptFixtureMeta.agentName} size="sm" />
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="rounded-full border border-border/70 bg-background/70 px-2 py-1 font-mono">
-                {runTranscriptFixtureMeta.sourceRunId.slice(0, 8)}
-              </span>
               <StatusBadge status={streaming ? "running" : "succeeded"} />
               <span>{formatDateTime(runTranscriptFixtureMeta.startedAt)}</span>
             </div>
@@ -210,7 +207,7 @@ export function RunTranscriptUxLab() {
               </div>
               <h1 className="mt-4 text-2xl font-semibold tracking-tight">Run Transcript Fixtures</h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Built from a real Paperclip development run, then sanitized so no secrets, local paths, or environment details survive into the fixture.
+                Built from a real development run, then sanitized so no secrets, local paths, or environment details survive into the fixture.
               </p>
             </div>
 
@@ -263,7 +260,7 @@ export function RunTranscriptUxLab() {
 
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.18em]">
-                  Source run {runTranscriptFixtureMeta.sourceRunId.slice(0, 8)}
+                  {runTranscriptFixtureMeta.agentName} &middot; {formatDateTime(runTranscriptFixtureMeta.startedAt)}
                 </Badge>
                 <Badge variant="outline" className="rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.18em]">
                   {runTranscriptFixtureMeta.issueIdentifier}

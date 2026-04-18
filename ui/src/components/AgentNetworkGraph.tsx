@@ -3,6 +3,7 @@ import { agentMessagesApi, type NetworkEdge } from "@/api/agent-messages";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
+import { agentInitials } from "@/lib/team-grouping";
 import type { Agent } from "@paperclipai/shared";
 
 interface AgentNetworkGraphProps {
@@ -152,7 +153,7 @@ export function AgentNetworkGraph({ companyId }: AgentNetworkGraphProps) {
               dominantBaseline="central"
               className="fill-foreground text-[13px] font-bold"
             >
-              {node.name.charAt(0).toUpperCase()}
+              {agentInitials(node.name, node.role)}
             </text>
             {/* Name label below */}
             <text
