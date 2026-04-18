@@ -10,7 +10,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Upload, Trash2, FileText, Image, FileSpreadsheet, File } from "lucide-react";
+import { FolderOpen, Upload, Trash2, FileText, Image, FileSpreadsheet, File, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function formatBytes(bytes: number): string {
@@ -169,10 +169,30 @@ export function KnowledgeBase() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {files.length === 0 ? (
-          <EmptyState
-            icon={FolderOpen}
-            message="No files uploaded yet. Drag and drop files here or click Upload to add brand guides, brochures, and other documents your agents can reference."
-          />
+          <div className="space-y-4">
+            <EmptyState
+              icon={FolderOpen}
+              message="No files uploaded yet. Add brand guides, brochures, and other documents your agents can reference."
+            />
+            <div
+              className="rounded-xl border-2 border-dashed border-border/50 p-10 text-center cursor-pointer hover:border-border/70 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDrop={handleDrop}
+            >
+              <Folder className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+              <div className="text-sm text-muted-foreground">
+                Drop files here, or{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                >
+                  click Upload
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="border border-border rounded-lg overflow-hidden">
             <table className="w-full text-sm">

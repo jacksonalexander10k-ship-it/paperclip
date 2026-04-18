@@ -249,7 +249,7 @@ type AgentDetailView =
   | "runs"               // legacy Activity (reachable via URL only)
   | "budget"
   | "learnings"
-  | "whatsapp"           // → Messages tab
+  | "messages"           // → Messages tab (legacy `/whatsapp` URLs still resolve)
   | "training"           // new
   | "schedule";          // new
 
@@ -260,7 +260,7 @@ function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "budget") return "budget";
   if (value === "runs") return value;
   if (value === "learnings") return "learnings";
-  if (value === "whatsapp" || value === "messages") return "whatsapp";
+  if (value === "messages" || value === "whatsapp") return "messages";
   if (value === "training") return "training";
   if (value === "schedule") return "schedule";
   return "dashboard";
@@ -668,7 +668,7 @@ export function AgentDetail() {
       : activeView === "skills" ? "skills"
       : activeView === "runs" ? "runs"
       : activeView === "budget" ? "budget"
-      : activeView === "whatsapp" ? "whatsapp"
+      : activeView === "messages" ? "messages"
       : activeView === "learnings" ? "learnings"
       : activeView === "training" ? "training"
       : activeView === "schedule" ? "schedule"
@@ -801,7 +801,7 @@ export function AgentDetail() {
         crumbs.push({ label: "History" });
       } else if (activeView === "budget") {
         crumbs.push({ label: "Budget" });
-      } else if (activeView === "whatsapp") {
+      } else if (activeView === "messages") {
         crumbs.push({ label: "Messages" });
       } else if (activeView === "training") {
         crumbs.push({ label: "Training" });
@@ -856,6 +856,14 @@ export function AgentDetail() {
     <div className={cn("flex flex-col h-full", isMobile && showConfigActionBar && "pb-24")}>
       {/* PageHeader with gradient avatar */}
       <div className="h-[50px] shrink-0 flex items-center px-5 border-b border-border/40 gap-3">
+        <Link
+          to="/agents/all"
+          className="md:hidden flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors shrink-0 no-underline"
+          aria-label="Back to Team"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span>Team</span>
+        </Link>
         <div
           className="shrink-0 flex items-center justify-center rounded-[7px] text-white text-[10px] font-bold"
           style={{
@@ -988,7 +996,7 @@ export function AgentDetail() {
               data-testid={t.value === "messages" ? "agent-tab-whatsapp" : undefined}
               className={cn(
                 "py-2.5 px-3 text-sm font-semibold cursor-pointer border-b-2 transition-colors",
-                (activeView === t.value || (t.value === "messages" && activeView === "whatsapp"))
+                activeView === t.value
                   ? "text-primary border-b-primary"
                   : "text-muted-foreground border-transparent hover:text-foreground"
               )}
@@ -1001,7 +1009,7 @@ export function AgentDetail() {
       )}
 
       {/* WhatsApp tab — edge-to-edge, no padding */}
-      {activeView === "whatsapp" && (() => {
+      {activeView === "messages" && (() => {
         const canMessage = agent.role === "sales" || agent.role === "viewing" || agent.role === "content";
         return (
           <div className="flex-1 overflow-hidden">
@@ -1025,7 +1033,7 @@ export function AgentDetail() {
       })()}
 
       {/* Scrollable content area (all tabs except WhatsApp) */}
-      {activeView !== "whatsapp" && (
+      {activeView !== "messages" && (
       <div className="flex-1 overflow-y-auto">
         <div className="px-5 py-4 space-y-6">
           {actionError && <p className="text-sm text-destructive">{actionError}</p>}
@@ -1719,7 +1727,12 @@ function AgentOverview({
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  activeTasks.length >= 1 ? "bg-emerald-500" : "bg-muted-foreground/40"
+                )}
+              />
               <h3 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Active
               </h3>

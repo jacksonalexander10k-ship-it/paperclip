@@ -276,26 +276,32 @@ export function Dashboard() {
     (data?.pendingApprovals ?? 0) + (data?.budgets?.pendingApprovals ?? 0);
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title="Dashboard"
-        actions={
-          <>
-            <button
-              onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-              className="px-2.5 py-1 rounded-lg text-[11.5px] font-semibold bg-transparent text-muted-foreground border border-border/60 hover:border-border cursor-pointer"
-            >
-              ⌘K
-            </button>
-            <Button size="sm" className="text-[11.5px] h-7" onClick={() => openNewIssue()}>
-              + New Task
-            </Button>
-          </>
-        }
-      />
+    <div className="flex flex-col h-full overflow-y-auto">
+      {/* Sticky header — keeps title + ⌘K + New Task visible while scrolling
+          on mobile. `sticky` (not `fixed`) preserves flex-column sizing so
+          desktop layout is unchanged. The parent must be the scroll container
+          (see `overflow-y-auto` on the root above) for `sticky` to anchor. */}
+      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur shrink-0">
+        <PageHeader
+          title="Dashboard"
+          actions={
+            <>
+              <button
+                onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+                className="px-2.5 py-1 rounded-lg text-[11.5px] font-semibold bg-transparent text-muted-foreground border border-border/60 hover:border-border cursor-pointer"
+              >
+                ⌘K
+              </button>
+              <Button size="sm" className="text-[11.5px] h-7" onClick={() => openNewIssue()}>
+                + New Task
+              </Button>
+            </>
+          }
+        />
+      </div>
 
       {/* .cbody — exact from C design: padding:16px 18px, gap:13px */}
-      <div className="flex-1 overflow-y-auto p-[16px_18px] flex flex-col gap-[13px]">
+      <div className="flex-1 p-[16px_18px] flex flex-col gap-[13px]">
         {error && <p className="text-sm text-destructive">{error.message}</p>}
 
         {billingStatus && !billingStatus.active && (
@@ -351,14 +357,17 @@ export function Dashboard() {
               </div>
             )}
 
-            {/* .m3 — 3 metric cards */}
+            {/* .m3 — 3 metric cards. Each tile is a Link (see MetricCard — it
+                renders <Link> when `to` is set). Hover styling lives in the
+                card component; we rely on its border-hover so layout stays
+                identical to the original static grid. */}
             <div className="grid grid-cols-3 gap-[10px]" data-testid="metric-cards">
               <MetricCard
                 icon={Bot}
                 value={data.agents.running}
                 label="Working Now"
                 valueColor="green"
-                to="/agents"
+                to="/agents/all?filter=active"
                 description={
                   <span>
                     of {visibleAgents.length} agents{" "}
@@ -416,6 +425,7 @@ export function Dashboard() {
                     value={learningValue}
                     label="Learnings"
                     valueColor="default"
+                    to="/company/settings#agency-learnings"
                     description={learningDesc}
                   />
                   <div title="Messages agents sent to each other today (excluding CEO chat).">
@@ -423,6 +433,7 @@ export function Dashboard() {
                       icon={MessageSquare}
                       value={(recentMessages ?? []).length}
                       label="Agent Comms"
+                      to="/activity?rail=comms"
                       description={<span>messages today</span>}
                     />
                   </div>
@@ -531,19 +542,34 @@ export function Dashboard() {
                   Performance
                 </h3>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-[10px]">
-                  {/* Task Completion Rate */}
+                  {/* Task Completion Rate.
+                      Denominator policy (shared with desktop "Open Tasks"
+                      tile): completion rate = done / (done + open). The
+                      "open" count comes from the same `dashboardApi.summary()`
+                      payload as the desktop "Open Tasks" tile, so both
+                      surfaces reconcile. `data.tasks.open` counts statuses
+                      ('todo','in_progress') and `data.tasks.done` counts
+                      ('done'). Cancelled/backlog are intentionally excluded
+                      from the denominator — they're not "in flight". */}
                   {(() => {
                     const allIssues = issues ?? [];
-                    const total = allIssues.length;
-                    const done = allIssues.filter((i: Issue) => i.status === "done").length;
-                    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                    const done = data?.tasks.done ?? allIssues.filter((i: Issue) => i.status === "done").length;
+                    const open = data?.tasks.open ?? 0;
+                    const denominator = done + open;
+                    const pct = denominator > 0 ? Math.round((done / denominator) * 100) : 0;
                     return (
                       <MetricCard
                         icon={CheckCircle2}
                         value={pct}
                         label="Completion Rate"
                         valueColor={pct >= 50 ? "green" : "default"}
-                        description={<span>{done} of {total} tasks done</span>}
+                        description={
+                          open > 0 ? (
+                            <span>{done} done · {open} open</span>
+                          ) : (
+                            <span>{done} of {denominator} tasks done</span>
+                          )
+                        }
                       />
                     );
                   })()}

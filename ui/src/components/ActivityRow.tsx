@@ -18,6 +18,14 @@ const ACTION_VERBS: Record<string, string> = {
   "issue.commented": "commented on",
   "issue.deleted": "removed",
   "issue.read_marked": "viewed",
+  // Agent-centric events — translate raw event types so the feed doesn't
+  // render "Claire tool call Claire" or "System agent direct response".
+  "tool_call": "used a tool",
+  "agent.tool_call": "used a tool",
+  "agent.direct_response": "replied to a message",
+  "whatsapp.received": "received a WhatsApp message",
+  "whatsapp.sent": "sent a WhatsApp message",
+  "comment.created": "posted a comment",
   "agent.created": "hired",
   "agent.updated": "updated",
   "agent.paused": "paused",

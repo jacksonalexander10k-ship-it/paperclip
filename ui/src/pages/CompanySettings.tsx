@@ -257,11 +257,8 @@ export function CompanySettings() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([
-      { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
-      { label: "Settings" }
-    ]);
-  }, [setBreadcrumbs, selectedCompany?.name]);
+    setBreadcrumbs([{ label: "Settings" }]);
+  }, [setBreadcrumbs]);
 
   const { permission, subscribed, subscribe, unsubscribe } = usePushNotifications();
 
@@ -274,6 +271,7 @@ export function CompanySettings() {
   }
 
   function handleSaveGeneral() {
+    if (!generalDirty) return;
     generalMutation.mutate({
       name: companyName.trim(),
       description: description.trim() || null,
@@ -387,7 +385,11 @@ export function CompanySettings() {
                 placeholder="Optional — a short description of your agency"
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
+                maxLength={500}
               />
+              <div className="text-right text-[10.5px] text-muted-foreground/80">
+                {description.length} / 500
+              </div>
             </div>
 
             {/* Team summary — read-only, auto-generated from the live roster. */}
@@ -441,29 +443,27 @@ export function CompanySettings() {
               )}
             </div>
 
-            {/* Save button */}
-            {generalDirty && (
-              <div className="flex items-center gap-2 pt-1">
-                <Button
-                  size="sm"
-                  onClick={handleSaveGeneral}
-                  disabled={generalMutation.isPending || !companyName.trim()}
-                  className="text-[11.5px] h-7"
-                >
-                  {generalMutation.isPending ? "Saving..." : "Save changes"}
-                </Button>
-                {generalMutation.isSuccess && (
-                  <span className="text-[11px] text-muted-foreground">Saved</span>
-                )}
-                {generalMutation.isError && (
-                  <span className="text-[11px] text-destructive">
-                    {generalMutation.error instanceof Error
-                      ? generalMutation.error.message
-                      : "Failed to save"}
-                  </span>
-                )}
-              </div>
-            )}
+            {/* Save button — always visible, disabled when form is clean */}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                onClick={handleSaveGeneral}
+                disabled={!generalDirty || generalMutation.isPending || !companyName.trim()}
+                className="text-[11.5px] h-7"
+              >
+                {generalMutation.isPending ? "Saving..." : "Save changes"}
+              </Button>
+              {generalMutation.isSuccess && !generalDirty && (
+                <span className="text-[11px] text-muted-foreground">Saved</span>
+              )}
+              {generalMutation.isError && (
+                <span className="text-[11px] text-destructive">
+                  {generalMutation.error instanceof Error
+                    ? generalMutation.error.message
+                    : "Failed to save"}
+                </span>
+              )}
+            </div>
 
             {/* Hiring toggle */}
             <div className="pt-2 border-t border-border/40">

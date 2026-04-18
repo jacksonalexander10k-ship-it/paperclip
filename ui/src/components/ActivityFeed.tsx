@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import { formatClockTime } from "../lib/format-time";
+import { activityIconAndColor } from "./LiveActivityPanel";
 
 // Re-export so callers that build ActivityEntry rows can use the same
 // user-friendly formatter used by LiveActivityPanel (bug 16).
-export { formatActivityEvent } from "./LiveActivityPanel";
+export { formatActivityEvent, activityIconAndColor } from "./LiveActivityPanel";
 export type { FormattedActivity } from "./LiveActivityPanel";
 
 /** Professional colour palette for agent names in the feed. */
@@ -109,31 +110,43 @@ export function ActivityFeed({ entries, className }: ActivityFeedProps) {
         </div>
       )}
       <div className="flex flex-col gap-px p-2">
-        {visibleEntries.map((entry, i) => (
-          <div
-            key={entry.id}
-            className={cn(
-              "flex items-start gap-2 px-2 py-1 rounded text-xs transition-opacity duration-300",
-              i === visibleEntries.length - 1 && "animate-[fade-in_0.3s_ease-out]",
-            )}
-          >
-            <span className="font-mono text-[10px] text-muted-foreground shrink-0 pt-px w-[60px]">
-              {formatTime(entry.timestamp)}
-            </span>
-            <span
+        {visibleEntries.map((entry, i) => {
+          const { Icon: RowIcon, color: rowColor } = activityIconAndColor(entry.action);
+          return (
+            <div
+              key={entry.id}
               className={cn(
-                "font-medium shrink-0 max-w-[90px] truncate",
-                agentColor(entry.agentId),
+                "flex items-start gap-2 px-2 py-1 rounded text-xs transition-opacity duration-300",
+                i === visibleEntries.length - 1 && "animate-[fade-in_0.3s_ease-out]",
               )}
             >
-              {entry.agentName}
-            </span>
-            <span className="text-foreground/80 min-w-0 break-words">
-              {entry.icon && <span className="mr-1">{entry.icon}</span>}
-              {entry.action}
-            </span>
-          </div>
-        ))}
+              <span className="font-mono text-[10px] text-muted-foreground shrink-0 pt-px w-[60px]">
+                {formatTime(entry.timestamp)}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 w-4 h-4 rounded-full flex items-center justify-center bg-muted/50 mt-px",
+                  rowColor,
+                )}
+                aria-hidden="true"
+              >
+                <RowIcon className="w-3 h-3" />
+              </span>
+              <span
+                className={cn(
+                  "font-medium shrink-0 max-w-[90px] truncate",
+                  agentColor(entry.agentId),
+                )}
+              >
+                {entry.agentName}
+              </span>
+              <span className="text-foreground/80 min-w-0 break-words">
+                {entry.icon && <span className="mr-1">{entry.icon}</span>}
+                {entry.action}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

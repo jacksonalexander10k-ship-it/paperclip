@@ -809,7 +809,10 @@ export function WhatsAppInbox({ agentId }: WhatsAppInboxProps) {
           <span className="text-[16px] font-semibold text-[#111b21] dark:text-[#e9edef] flex-1">Chats</span>
           <div className="flex items-center gap-2">
             {isConnected && (
-              <span className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-1">
+              <span
+                className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-1"
+                title="Connected to WhatsApp. Inbound messages appear here in real time."
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                 Connected
               </span>

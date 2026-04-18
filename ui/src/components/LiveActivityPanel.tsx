@@ -10,7 +10,22 @@ import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { approvalLabel, typeIcon, defaultTypeIcon } from "./ApprovalPayload";
 import { Button } from "@/components/ui/button";
-import { Shield, Activity, MessageSquare, ArrowRight, Zap, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Shield,
+  Activity,
+  MessageSquare,
+  ArrowRight,
+  Zap,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  MessageCircle,
+  Mail,
+  CheckCircle,
+  CircleDot,
+  Circle,
+  type LucideIcon,
+} from "lucide-react";
 import { agentInitials } from "../lib/team-grouping";
 import type { Agent, ActivityEvent } from "@paperclipai/shared";
 
@@ -38,6 +53,25 @@ export interface FormattedActivity {
   label: string;
   icon: string;
   thinking?: string;
+}
+
+/**
+ * Pick a Lucide icon + tailwind colour class for an activity row based on
+ * the event's action/type prefix. Used by LiveActivityPanel's Activity tab
+ * and the dashboard ActivityFeed so every row has consistent iconography.
+ */
+export function activityIconAndColor(action: string): { Icon: LucideIcon; color: string } {
+  const a = (action ?? "").toLowerCase();
+  if (a.startsWith("whatsapp")) return { Icon: MessageCircle, color: "text-green-600" };
+  if (a.startsWith("email") || a.startsWith("mail") || a.startsWith("gmail")) {
+    return { Icon: Mail, color: "text-blue-600" };
+  }
+  if (a.startsWith("approval")) return { Icon: CheckCircle, color: "text-primary" };
+  if (a.startsWith("comment")) return { Icon: MessageSquare, color: "text-primary" };
+  if (a.startsWith("issue") || a.startsWith("task")) {
+    return { Icon: CircleDot, color: "text-muted-foreground" };
+  }
+  return { Icon: Circle, color: "text-muted-foreground" };
 }
 
 /** Event-type → user-friendly string. */
@@ -404,6 +438,10 @@ function ActivityTab({ companyId, agentId }: { companyId: string; agentId?: stri
         const actorName = agent?.name ?? "System";
         const desc = describeEvent(event);
         const isExpanded = expandedIds.has(event.id);
+        const eventAction =
+          ((event as { action?: string }).action ?? "").toString() ||
+          ((event as { type?: string }).type ?? "").toString();
+        const { Icon: RowIcon, color: rowColor } = activityIconAndColor(eventAction);
 
         return (
           <div
@@ -412,7 +450,15 @@ function ActivityTab({ companyId, agentId }: { companyId: string; agentId?: stri
             onClick={() => desc.thinking && toggleExpand(event.id)}
           >
             <div className="flex items-start gap-2">
-              <span className="text-[12px] mt-0.5 shrink-0">{desc.icon}</span>
+              <span
+                className={cn(
+                  "mt-0.5 shrink-0 w-4 h-4 rounded-full flex items-center justify-center bg-muted/50",
+                  rowColor,
+                )}
+                aria-hidden="true"
+              >
+                <RowIcon className="w-3 h-3" />
+              </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11.5px] font-semibold text-foreground">{actorName}</span>

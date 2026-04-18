@@ -45,6 +45,7 @@ import { Properties } from "./pages/Properties";
 import { PropertyDetail } from "./pages/PropertyDetail";
 import { Leads } from "./pages/Leads";
 import { LeadDetail } from "./pages/LeadDetail";
+import { NewProperty } from "./pages/NewProperty";
 import Landing from "./pages/Landing";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
@@ -171,7 +172,7 @@ function boardRoutes() {
       <Route path="properties/sales" element={<Properties />} />
       <Route path="properties/sale" element={<Navigate to="/properties/sales" replace />} />
       <Route path="properties/rental" element={<Properties />} />
-      <Route path="properties/new" element={<Properties />} />
+      <Route path="properties/new" element={<NewProperty />} />
       <Route path="properties/:propertyId" element={<PropertyDetail />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="tests/ux/runs" element={<RunTranscriptUxLab />} />
