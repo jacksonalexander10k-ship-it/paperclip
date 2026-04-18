@@ -112,51 +112,67 @@ export function formatActivityEvent(
   // Detect "same actor and target" so we don't render "Claire … Claire"
   const sameActorTarget = Boolean(target) && target === actor;
 
+  // Tool names can arrive as `mcp_aygent-tools_send_whatsapp`, `agent.tool:foo`
+  // or snake_cased. Strip the runtime prefix + convert to readable words.
+  const humanToolName = (raw?: string): string => {
+    if (!raw) return "a tool";
+    const cleaned = raw
+      .replace(/^mcp[-_][^_]+[-_]/, "")   // drop `mcp_aygent-tools_` style prefix
+      .replace(/^agent[-_.]tool[-_.]/, "")
+      .replace(/[-_]/g, " ")
+      .trim();
+    return cleaned.length > 0 ? cleaned : "a tool";
+  };
+
+  // IMPORTANT: labels returned here are PREDICATES — the consumer renders the
+  // actor name separately, so we must NOT prefix the label with the actor
+  // (that produced "Claire Claire used X" in the right-rail).
+
   switch (type) {
     case "issue.read":
     case "issue.read_marked":
-      return { label: "Marked task read", icon: "📄" };
+      return { label: "marked a task read", icon: "📄" };
 
     case "issue.created":
       return {
-        label: title ? `New task: ${title}` : "New task created",
+        label: title ? `created task: ${title}` : "created a task",
         icon: "📌",
       };
 
     case "agent.direct_response":
       return {
-        label: `${actor} replied to a message`,
+        label: "replied to a message",
         icon: "💬",
         thinking: title,
       };
 
     case "whatsapp.received":
       return {
-        label: `WhatsApp from ${contactName ?? phone ?? "contact"}`,
+        label: `received a WhatsApp from ${contactName ?? phone ?? "a contact"}`,
         icon: "📱",
       };
 
     case "whatsapp.sent":
       return {
-        label: `WhatsApp sent to ${contactName ?? phone ?? "contact"}`,
+        label: `sent a WhatsApp to ${contactName ?? phone ?? "a contact"}`,
         icon: "📤",
       };
 
     case "tool_call":
     case "tool.call":
     case "agent.tool_call": {
-      const tool = toolName ?? "a tool";
+      const tool = humanToolName(toolName);
       if (!target || sameActorTarget) {
-        return { label: `${actor} used ${tool}`, icon: "🛠" };
+        return { label: `used ${tool}`, icon: "🛠" };
       }
-      return { label: `${actor} → ${target}: ${tool}`, icon: "🛠" };
+      return { label: `used ${tool} for ${target}`, icon: "🛠" };
     }
 
     case "comment.created":
-      return { label: `${actor} posted a comment`, icon: "💭" };
+      return { label: "posted a comment", icon: "💭" };
 
     default:
-      // Fall back to a humanised version of the raw type
+      // Fall back to a humanised version of the raw type.
       return {
         label: title ? `${titleCaseRaw(type)} — ${title}` : titleCaseRaw(type),
         icon: "📌",

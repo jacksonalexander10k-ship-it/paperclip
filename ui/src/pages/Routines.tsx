@@ -18,7 +18,7 @@ import { InlineEntitySelector, type InlineEntityOption } from "../components/Inl
 import { MarkdownEditor, type MarkdownEditorRef } from "../components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -245,6 +245,10 @@ export function Routines() {
         }}
       >
         <DialogContent showCloseButton={false} className="max-w-3xl gap-0 overflow-hidden p-0">
+          
+            <DialogTitle className="sr-only">New Routine</DialogTitle>
+            <DialogDescription className="sr-only">Create a new automation routine for your agency.</DialogDescription>
+          
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-3">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">New routine</p>

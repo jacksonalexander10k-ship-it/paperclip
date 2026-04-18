@@ -22,6 +22,8 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -894,6 +896,10 @@ export function NewIssueDialog() {
           }
         }}
       >
+        
+          <DialogTitle className="sr-only">New Task</DialogTitle>
+          <DialogDescription className="sr-only">Create a new task for your agency.</DialogDescription>
+        
         {/* Header bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -951,7 +957,7 @@ export function NewIssueDialog() {
               </PopoverContent>
             </Popover>
             <span className="text-muted-foreground/60">&rsaquo;</span>
-            <span>New issue</span>
+            <span>New task</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -979,7 +985,7 @@ export function NewIssueDialog() {
         <div className="px-4 pt-4 pb-2 shrink-0">
           <textarea
             className="w-full text-lg font-semibold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50"
-            placeholder="Issue title"
+            placeholder="Task title"
             rows={1}
             value={title}
             onChange={(e) => {
@@ -1147,14 +1153,14 @@ export function NewIssueDialog() {
                   <option value="">Choose an existing workspace</option>
                   {deduplicatedReusableWorkspaces.map((workspace) => (
                     <option key={workspace.id} value={workspace.id}>
-                      {workspace.name} · {workspace.status} · {workspace.branchName ?? workspace.cwd ?? workspace.id.slice(0, 8)}
+                      {workspace.name} · {workspace.status}{workspace.branchName ? ` · ${workspace.branchName}` : ""}
                     </option>
                   ))}
                 </select>
               )}
               {executionWorkspaceMode === "reuse_existing" && selectedReusableExecutionWorkspace && (
                 <div className="text-[11px] text-muted-foreground">
-                  Reusing {selectedReusableExecutionWorkspace.name} from {selectedReusableExecutionWorkspace.branchName ?? selectedReusableExecutionWorkspace.cwd ?? "existing execution workspace"}.
+                  Reusing {selectedReusableExecutionWorkspace.name} from {selectedReusableExecutionWorkspace.branchName ?? "existing workspace"}.
                 </div>
               )}
             </div>
@@ -1462,7 +1468,7 @@ export function NewIssueDialog() {
             >
               <span className="inline-flex items-center justify-center gap-1.5">
                 {createIssue.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                <span>{createIssue.isPending ? "Creating..." : "Create Issue"}</span>
+                <span>{createIssue.isPending ? "Creating..." : "Create Task"}</span>
               </span>
             </Button>
           </div>

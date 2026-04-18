@@ -119,6 +119,23 @@ export function ActivityRow({ event, agentMap, entityNameMap, entityTitleMap, cl
   const actor = event.actorType === "agent" ? agentMap.get(event.actorId) : null;
   const actorName = actor?.name ?? (event.actorType === "system" ? "System" : event.actorType === "user" ? "You" : event.actorId || "Unknown");
 
+  // Suppress the trailing entity name when it just repeats the actor
+  // (e.g. a tool_call whose entity is the same agent — avoids
+  // "Claire used a tool Claire"). Also suppress for agent-centric verbs
+  // where the entity reference is internal plumbing, not something the
+  // user cares about seeing repeated.
+  const SELF_EVENT_ACTIONS = new Set([
+    "tool_call",
+    "agent.tool_call",
+    "agent.direct_response",
+    "whatsapp.received",
+    "whatsapp.sent",
+  ]);
+  const trailingName =
+    name && name !== actorName && !SELF_EVENT_ACTIONS.has(event.action)
+      ? name
+      : null;
+
   /* .frow from C design: flex, gap:9px, padding:11px 15px, border-bottom */
   const inner = (
     <div className="flex items-center gap-[8px]">
@@ -127,8 +144,8 @@ export function ActivityRow({ event, agentMap, entityNameMap, entityTitleMap, cl
       {/* .ft */}
       <p className="flex-1 min-w-0 text-[12.5px] text-muted-foreground/80 leading-[1.4]">
         <span className="font-semibold text-foreground">{actorName}</span>{" "}
-        {verb}{" "}
-        {name && <span className="font-medium text-foreground">{name}</span>}
+        {verb}{trailingName ? " " : ""}
+        {trailingName && <span className="font-medium text-foreground">{trailingName}</span>}
       </p>
       {/* .fts */}
       <span className="text-[10.5px] text-muted-foreground shrink-0 ml-auto">{timeAgo(event.createdAt)}</span>
