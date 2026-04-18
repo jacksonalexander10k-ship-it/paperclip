@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "@/lib/router";
 import { cn, relativeTime } from "../lib/utils";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
@@ -10,10 +11,122 @@ import { queryKeys } from "../lib/queryKeys";
 import { approvalLabel, typeIcon, defaultTypeIcon } from "./ApprovalPayload";
 import { Button } from "@/components/ui/button";
 import { Shield, Activity, MessageSquare, ArrowRight, Zap, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
-import type { Agent } from "@paperclipai/shared";
+import type { Agent, ActivityEvent } from "@paperclipai/shared";
 
 interface LiveActivityPanelProps {
   className?: string;
+  /** If set, only show events where actor or subject matches this agent id. */
+  agentId?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Activity event formatter (shared)                                 */
+/*                                                                    */
+/*  Turns raw event rows like { action: "issue.read_marked" } into    */
+/*  user-friendly copy. When actor === target, avoid duplicating      */
+/*  the name (bug 19: "Claire tool call Claire" → "Claire used …").   */
+/* ------------------------------------------------------------------ */
+
+function titleCaseRaw(raw: string): string {
+  const cleaned = raw.replace(/[._]/g, " ").trim();
+  if (!cleaned) return "Activity";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+export interface FormattedActivity {
+  label: string;
+  icon: string;
+  thinking?: string;
+}
+
+/** Event-type → user-friendly string. */
+export function formatActivityEvent(
+  event: Pick<ActivityEvent, "action" | "details" | "actorId" | "entityType" | "entityId"> & {
+    actorName?: string;
+    targetName?: string;
+    type?: string;
+  },
+): FormattedActivity {
+  const type = event.type ?? event.action ?? "";
+  const details = (event.details ?? {}) as Record<string, unknown>;
+  const actor = event.actorName
+    ?? (typeof details.agent === "string" ? (details.agent as string) : undefined)
+    ?? (typeof details.fromAgent === "string" ? (details.fromAgent as string) : undefined)
+    ?? "Agent";
+  const target = event.targetName
+    ?? (typeof details.toAgent === "string" ? (details.toAgent as string) : undefined)
+    ?? (typeof details.targetName === "string" ? (details.targetName as string) : undefined);
+
+  const title = (typeof details.title === "string" ? (details.title as string) : undefined)
+    ?? (typeof details.summary === "string" ? (details.summary as string) : undefined);
+
+  const toolName =
+    (typeof details.tool_name === "string" ? (details.tool_name as string) : undefined)
+    ?? (typeof details.toolName === "string" ? (details.toolName as string) : undefined)
+    ?? (typeof details.tool === "string" ? (details.tool as string) : undefined);
+
+  const contactName =
+    (typeof details.contactName === "string" ? (details.contactName as string) : undefined)
+    ?? (typeof details.contact_name === "string" ? (details.contact_name as string) : undefined)
+    ?? (typeof details.name === "string" ? (details.name as string) : undefined);
+  const phone =
+    (typeof details.phone === "string" ? (details.phone as string) : undefined)
+    ?? (typeof details.phoneNumber === "string" ? (details.phoneNumber as string) : undefined)
+    ?? (typeof details.from === "string" ? (details.from as string) : undefined);
+
+  // Detect "same actor and target" so we don't render "Claire … Claire"
+  const sameActorTarget = Boolean(target) && target === actor;
+
+  switch (type) {
+    case "issue.read":
+    case "issue.read_marked":
+      return { label: "Marked task read", icon: "📄" };
+
+    case "issue.created":
+      return {
+        label: title ? `New task: ${title}` : "New task created",
+        icon: "📌",
+      };
+
+    case "agent.direct_response":
+      return {
+        label: `${actor} replied to a message`,
+        icon: "💬",
+        thinking: title,
+      };
+
+    case "whatsapp.received":
+      return {
+        label: `WhatsApp from ${contactName ?? phone ?? "contact"}`,
+        icon: "📱",
+      };
+
+    case "whatsapp.sent":
+      return {
+        label: `WhatsApp sent to ${contactName ?? phone ?? "contact"}`,
+        icon: "📤",
+      };
+
+    case "tool_call":
+    case "tool.call":
+    case "agent.tool_call": {
+      const tool = toolName ?? "a tool";
+      if (!target || sameActorTarget) {
+        return { label: `${actor} used ${tool}`, icon: "🛠" };
+      }
+      return { label: `${actor} → ${target}: ${tool}`, icon: "🛠" };
+    }
+
+    case "comment.created":
+      return { label: `${actor} posted a comment`, icon: "💭" };
+
+    default:
+      // Fall back to a humanised version of the raw type
+      return {
+        label: title ? `${titleCaseRaw(type)} — ${title}` : titleCaseRaw(type),
+        icon: "📌",
+      };
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -178,11 +291,14 @@ function PendingTab({ companyId }: { companyId: string }) {
 /*  Activity Tab                                                      */
 /* ------------------------------------------------------------------ */
 
-function ActivityTab({ companyId }: { companyId: string }) {
+function ActivityTab({ companyId, agentId }: { companyId: string; agentId?: string }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // Ask the server to scope when possible; fall back to client filter below.
   const { data: activity } = useQuery({
-    queryKey: queryKeys.activity(companyId),
-    queryFn: () => activityApi.list(companyId),
+    queryKey: agentId
+      ? [...queryKeys.activity(companyId), "agent", agentId]
+      : queryKeys.activity(companyId),
+    queryFn: () => activityApi.list(companyId, agentId ? { agentId } : undefined),
     refetchInterval: 3_000,
   });
 
@@ -194,7 +310,21 @@ function ActivityTab({ companyId }: { companyId: string }) {
   const agentMap = new Map<string, Agent>();
   for (const a of agentsList ?? []) agentMap.set(a.id, a);
 
-  const entries = (activity ?? []).slice(0, 30);
+  // Client-side safety net — filter events where the actor or the subject is
+  // the scoped agent (bug 17: some events only record the agent in details).
+  const scoped = agentId
+    ? (activity ?? []).filter((e) => {
+        if (e.actorId === agentId) return true;
+        if (e.agentId === agentId) return true;
+        if (e.entityType === "agent" && e.entityId === agentId) return true;
+        const details = (e.details ?? {}) as Record<string, unknown>;
+        if (details.agentId === agentId) return true;
+        if (details.targetAgentId === agentId) return true;
+        return false;
+      })
+    : (activity ?? []);
+
+  const entries = scoped.slice(0, 30);
 
   if (entries.length === 0) {
     return (
@@ -207,70 +337,39 @@ function ActivityTab({ companyId }: { companyId: string }) {
     );
   }
 
-  // Map raw events to agent thinking/reasoning display
+  // Map raw events → user-friendly strings via the shared formatter.
   function describeEvent(event: typeof entries[0]) {
     const details = (event as { details?: Record<string, unknown> }).details ?? {};
     const action = (event as { action?: string }).action ?? "";
-    const summary = details.summary ?? details.title ?? "";
+    const actorId = (event as { actorId?: string }).actorId;
+    const actorName = actorId ? agentMap.get(actorId)?.name : undefined;
 
-    // Map action types to thinking descriptions
-    if (action === "agent.researching") {
-      return {
-        label: `${String(details.agent ?? "Agent")} is researching...`,
-        icon: "🔍",
-        thinking: String(summary),
-        category: "thinking",
-      };
-    }
-    if (action === "agent.drafting") {
-      return {
-        label: `${String(details.agent ?? "Agent")} is drafting...`,
-        icon: "✏️",
-        thinking: String(summary),
-        category: "thinking",
-      };
-    }
-    if (action === "agent.message_sent") {
-      const from = String(details.fromAgent ?? "Agent");
-      const to = String(details.toAgent ?? "");
-      const msgType = String(details.messageType ?? "");
-      return {
-        label: `${from} messaged ${to}`,
-        icon: "💬",
-        thinking: String(summary).slice(0, 200) || `Sent ${msgType} to ${to}`,
-        category: "communication",
-      };
-    }
-    if (action.includes("approval")) {
-      return {
-        label: action.replace("approval.", "Approval ").replace(/_/g, " "),
-        icon: action.includes("approved") ? "✅" : action.includes("rejected") ? "❌" : "📋",
-        thinking: String(details.type ?? ""),
-        category: "approval",
-      };
-    }
-    if (action.includes("ceo")) {
-      return {
-        label: "CEO Agent",
-        icon: "🧠",
-        thinking: action.includes("plan") ? "Reasoning about the best approach..." : "Preparing response for the owner...",
-        category: "thinking",
-      };
-    }
-    if (action.includes("heartbeat") || action.includes("run")) {
-      return {
-        label: "Agent run",
-        icon: "⚡",
-        thinking: "Processing task...",
-        category: "execution",
-      };
-    }
-    return {
-      label: action.replace(/\./g, " → ").replace(/_/g, " "),
-      icon: "📌",
-      thinking: String(summary),
-      category: "other",
-    };
+    const targetAgentId =
+      typeof details.targetAgentId === "string" ? (details.targetAgentId as string) : undefined;
+    const targetName = targetAgentId
+      ? agentMap.get(targetAgentId)?.name
+      : typeof details.toAgent === "string"
+        ? (details.toAgent as string)
+        : undefined;
+
+    const formatted = formatActivityEvent({
+      type: action,
+      action,
+      details,
+      actorId: actorId ?? "",
+      entityType: (event as { entityType?: string }).entityType ?? "",
+      entityId: (event as { entityId?: string }).entityId ?? "",
+      actorName,
+      targetName,
+    });
+
+    const thinking =
+      formatted.thinking
+      ?? (typeof details.summary === "string" ? (details.summary as string) : undefined)
+      ?? (typeof details.title === "string" ? (details.title as string) : undefined)
+      ?? "";
+
+    return { label: formatted.label, icon: formatted.icon, thinking };
   }
 
   const toggleExpand = (id: string) => {
@@ -403,7 +502,7 @@ function AgentCommsTab({ companyId }: { companyId: string }) {
   if (!messages || messages.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-muted-foreground">
-        No agent chatter yet. Send a message to the CEO to see agents coordinate.
+        Agents will chat here when the CEO delegates a task. Ask the CEO to do something to try it out.
       </div>
     );
   }
@@ -491,9 +590,15 @@ function AgentCommsTab({ companyId }: { companyId: string }) {
 /*  Main Panel                                                        */
 /* ------------------------------------------------------------------ */
 
-export function LiveActivityPanel({ className }: LiveActivityPanelProps) {
+export function LiveActivityPanel({ className, agentId }: LiveActivityPanelProps) {
   const { selectedCompanyId } = useCompany();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<"pending" | "activity" | "comms">("pending");
+
+  // If no agentId was passed, derive it from the URL when on /agents/:id.
+  // Keeps the right rail scoped to the current agent page (bug 17).
+  const routeAgentMatch = /\/agents\/([^/]+)/.exec(location.pathname ?? "");
+  const scopedAgentId = agentId ?? routeAgentMatch?.[1];
 
   const { data: approvals } = useQuery({
     queryKey: queryKeys.approvals.list(selectedCompanyId!),
@@ -511,7 +616,7 @@ export function LiveActivityPanel({ className }: LiveActivityPanelProps) {
   return (
     <div
       className={cn(
-        "flex flex-col bg-sidebar w-[280px] shrink-0",
+        "flex flex-col bg-sidebar w-[300px] shrink-0",
         className,
       )}
     >
@@ -567,7 +672,7 @@ export function LiveActivityPanel({ className }: LiveActivityPanelProps) {
         ) : activeTab === "comms" ? (
           <AgentCommsTab companyId={selectedCompanyId} />
         ) : (
-          <ActivityTab companyId={selectedCompanyId} />
+          <ActivityTab companyId={selectedCompanyId} agentId={scopedAgentId} />
         )}
       </div>
     </div>

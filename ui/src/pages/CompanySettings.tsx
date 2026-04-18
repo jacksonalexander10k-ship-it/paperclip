@@ -7,11 +7,13 @@ import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { agentLearningsApi, type AgentLearning } from "../api/agent-learnings";
+import { agentsApi } from "../api/agents";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Check, Download, Upload, MessageCircle, Mail, Calendar, Camera, Bell, Brain, Trash2, ArrowRight } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { AutoReplyRules } from "../components/AutoReplyRules";
+import { ConnectionsDashboard } from "../components/ConnectionsDashboard";
 import {
   ToggleField,
   HintIcon
@@ -41,14 +43,43 @@ export function CompanySettings() {
   const [logoUrl, setLogoUrl] = useState("");
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
 
-  // Sync local state from selected company
+  // Sync local state from selected company.
+  // NOTE: description is user-editable free text ONLY. We never seed it from
+  // a computed roster/state summary — the live roster is rendered as a
+  // read-only "Team summary" field below. If the DB contains a legacy
+  // auto-populated dump (old onboarding wrote one), we detect and clear it
+  // so the owner sees a genuinely blank textarea.
   useEffect(() => {
     if (!selectedCompany) return;
     setCompanyName(selectedCompany.name);
-    setDescription(selectedCompany.description ?? "");
+    const rawDesc = selectedCompany.description ?? "";
+    // Legacy seeded-dump detection — these patterns only ever came from the
+    // old onboarding flow that dumped agency state into description.
+    const isLegacyDump =
+      /^Agency:\s/m.test(rawDesc) && /Hired agents/i.test(rawDesc);
+    setDescription(isLegacyDump ? "" : rawDesc);
     setBrandColor(selectedCompany.brandColor ?? "");
     setLogoUrl(selectedCompany.logoUrl ?? "");
   }, [selectedCompany]);
+
+  // Live roster — used for the read-only "Team summary" field.
+  const { data: companyAgents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const teamSummary = (() => {
+    const agents = companyAgents ?? [];
+    if (agents.length === 0) return "CEO only — no agents hired yet.";
+    const ceo = agents.find((a) => String(a.role ?? "").toLowerCase() === "ceo");
+    const nonCeo = agents.filter((a) => String(a.role ?? "").toLowerCase() !== "ceo");
+    if (nonCeo.length === 0) return "CEO only — no agents hired yet.";
+    const roster = nonCeo
+      .map((a) => `${a.name}${a.role ? ` (${a.role})` : ""}`)
+      .join(", ");
+    return `${ceo ? "CEO + " : ""}${nonCeo.length} agent${nonCeo.length === 1 ? "" : "s"} — ${roster}`;
+  })();
 
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
@@ -323,7 +354,7 @@ export function CompanySettings() {
                       setBrandColor(v);
                     }
                   }}
-                  placeholder="Auto"
+                  placeholder="Default"
                   className="flex-1 bg-background border border-border rounded-lg p-2 text-[13px] font-mono outline-none focus:border-primary/50 transition-colors"
                 />
                 {brandColor && (
@@ -337,18 +368,33 @@ export function CompanySettings() {
                   </Button>
                 )}
               </div>
+              <p className="text-[10.5px] text-muted-foreground/80">
+                Leave blank to use the default sage palette.
+              </p>
             </div>
 
-            {/* Issue prefix / Description */}
+            {/* Description — user-editable free text ONLY. Never seeded from
+                computed agency state. */}
             <div className="space-y-1.5">
               <label className="text-[11.5px] text-muted-foreground">Description</label>
-              <input
-                className="w-full bg-background border border-border rounded-lg p-2 text-[13px] outline-none focus:border-primary/50 transition-colors"
-                type="text"
+              <textarea
+                className="w-full bg-background border border-border rounded-lg p-2 text-[13px] outline-none focus:border-primary/50 transition-colors whitespace-pre-wrap min-h-[80px] resize-y"
                 value={description}
-                placeholder="Optional agency description"
+                placeholder="Optional — a short description of your agency"
                 onChange={(e) => setDescription(e.target.value)}
+                rows={3}
               />
+            </div>
+
+            {/* Team summary — read-only, auto-generated from the live roster. */}
+            <div className="space-y-1.5">
+              <label className="text-[11.5px] text-muted-foreground">Team summary</label>
+              <div
+                aria-readonly="true"
+                className="w-full bg-muted/30 border border-border/60 rounded-lg p-2 text-[12.5px] text-muted-foreground whitespace-pre-wrap"
+              >
+                {teamSummary}
+              </div>
             </div>
 
             {/* Logo upload */}
@@ -427,42 +473,10 @@ export function CompanySettings() {
           </div>
         </div>
 
-        {/* Integrations section */}
-        <div className="rounded-xl border border-border/50 bg-card/80 overflow-hidden">
-          <div className="px-3.5 py-3 border-b border-border/40 bg-muted/20">
-            <span className="text-[12px] font-bold">Integrations</span>
-          </div>
-          <div>
-            {integrations.map((integration, index) => {
-              const Icon = integration.icon;
-              return (
-                <div
-                  key={integration.name}
-                  className={`flex items-center gap-3 p-3.5 ${
-                    index < integrations.length - 1 ? "border-b border-border/40" : ""
-                  }`}
-                >
-                  <div
-                    className={`w-[28px] h-[28px] rounded-lg flex items-center justify-center shrink-0 ${integration.iconBg}`}
-                  >
-                    <Icon className={`h-3.5 w-3.5 ${integration.iconColor}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold">{integration.name}</div>
-                    <div className="text-[11px] text-muted-foreground">{integration.status}</div>
-                  </div>
-                  <Button
-                    variant={integration.connected ? "outline" : "ghost"}
-                    size="sm"
-                    className="text-[11px] h-7 shrink-0"
-                  >
-                    {integration.connected ? "Disconnect" : "Connect"}
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {/* Connections dashboard — company-wide overview of every agent's
+            connected accounts. The primary UI for connecting things lives
+            on the agent page; this is the overseer's view. */}
+        {selectedCompanyId && <ConnectionsDashboard companyId={selectedCompanyId} />}
 
         {/* Invites section — hidden from non-technical users */}
         <div className="hidden rounded-xl border border-border/50 bg-card/80 overflow-hidden">
@@ -586,7 +600,14 @@ export function CompanySettings() {
               <span className="text-[11px] text-muted-foreground shrink-0">Blocked</span>
             ) : subscribed ? (
               <button
-                onClick={() => void unsubscribe()}
+                onClick={async () => {
+                  try {
+                    await unsubscribe();
+                    pushToast({ title: "Browser notifications disabled", tone: "info" });
+                  } catch (err) {
+                    pushToast({ title: "Couldn't disable notifications", tone: "error" });
+                  }
+                }}
                 className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors shrink-0"
               >
                 Disable
@@ -596,7 +617,26 @@ export function CompanySettings() {
                 variant="ghost"
                 size="sm"
                 className="text-[11px] h-7 shrink-0"
-                onClick={() => void subscribe()}
+                onClick={async () => {
+                  try {
+                    await subscribe();
+                    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+                      pushToast({ title: "Browser notifications enabled", tone: "success" });
+                    } else if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+                      pushToast({
+                        title: "Notifications blocked by browser",
+                        body: "Enable them in your browser settings and try again.",
+                        tone: "error",
+                      });
+                    }
+                  } catch (err) {
+                    pushToast({
+                      title: "Couldn't enable notifications",
+                      body: "Check your browser's notification permission.",
+                      tone: "error",
+                    });
+                  }
+                }}
               >
                 Enable
               </Button>

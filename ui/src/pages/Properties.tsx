@@ -223,8 +223,12 @@ export function Properties() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // URL uses plural form (/properties/sales, /properties/rental). Internal
+  // tab identifier keeps the singular "sale" for code paths like filters and
+  // PropertyCard's listingType prop.
   const pathTab = location.pathname.split("/").pop();
   const tab: "sale" | "rental" = pathTab === "rental" ? "rental" : "sale";
+  const pathSegmentForTab = (t: "sale" | "rental") => (t === "sale" ? "sales" : "rental");
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -281,42 +285,49 @@ export function Properties() {
         <div className="px-5 py-4 space-y-4">
           {/* Tabs */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Tabs value={tab} onValueChange={(v) => navigate(`/properties/${v}`)}>
+            <Tabs
+              value={tab}
+              onValueChange={(v) => navigate(`/properties/${pathSegmentForTab(v as "sale" | "rental")}`)}
+            >
               <PageTabBar
                 items={[
                   { value: "sale", label: "Sales" },
                   { value: "rental", label: "Rentals" },
                 ]}
                 value={tab}
-                onValueChange={(v) => navigate(`/properties/${v}`)}
+                onValueChange={(v) => navigate(`/properties/${pathSegmentForTab(v as "sale" | "rental")}`)}
               />
             </Tabs>
           </div>
 
-          {/* Pipeline status pills */}
-          <div className="flex flex-wrap gap-1.5">
-            {stages.map((stage) => {
-              const count = summary[stage] ?? 0;
-              const isActive = statusFilter === stage;
-              return (
-                <button
-                  key={stage}
-                  onClick={() => setStatusFilter(isActive ? null : stage)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-all border",
-                    isActive
-                      ? cn(getPillClasses(stage), "border-current/30 ring-1 ring-current/20")
-                      : cn(getPillClasses(stage), "border-transparent opacity-70 hover:opacity-100")
-                  )}
-                >
-                  {STAGE_LABELS[stage]}
-                  {count > 0 && (
-                    <span className="font-bold tabular-nums">{count}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          {/* Pipeline status pills — only shown when there is at least one
+              property. An empty pipeline with chips is confusing because
+              every chip reads zero. */}
+          {items.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {stages.map((stage) => {
+                const count = summary[stage] ?? 0;
+                const isActive = statusFilter === stage;
+                return (
+                  <button
+                    key={stage}
+                    onClick={() => setStatusFilter(isActive ? null : stage)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-all border",
+                      isActive
+                        ? cn(getPillClasses(stage), "border-current/30 ring-1 ring-current/20")
+                        : cn(getPillClasses(stage), "border-transparent opacity-70 hover:opacity-100")
+                    )}
+                  >
+                    {STAGE_LABELS[stage]}
+                    {count > 0 && (
+                      <span className="font-bold tabular-nums">{count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Empty state */}
           {items.length === 0 && (

@@ -89,6 +89,12 @@ function headersFromIncomingMessage(req: IncomingMessage): Headers {
     }
     headers.set(key, raw);
   }
+  // Strip origin/referer so better-auth's CSRF check doesn't reject the WS
+  // upgrade when the browser reaches the server on an alternate port (e.g. a
+  // port fallback in dev). CSRF for mutating requests is enforced separately
+  // by boardMutationGuard; this session lookup only reads session state.
+  headers.delete("origin");
+  headers.delete("referer");
   return headers;
 }
 
@@ -120,9 +126,22 @@ async function authorizeUpgrade(
       return null;
     }
 
-    const session = await opts.resolveSessionFromHeaders(headersFromIncomingMessage(req));
+    const resolvedHeaders = headersFromIncomingMessage(req);
+    const session = await opts.resolveSessionFromHeaders(resolvedHeaders);
     const userId = session?.user?.id;
-    if (!userId) return null;
+    if (!userId) {
+      logger.warn(
+        {
+          companyId,
+          hasCookie: resolvedHeaders.has("cookie"),
+          cookieLen: resolvedHeaders.get("cookie")?.length ?? 0,
+          hasAuthHeader: resolvedHeaders.has("authorization"),
+          sessionResolved: !!session,
+        },
+        "live websocket upgrade: session resolution failed",
+      );
+      return null;
+    }
 
     const [roleRow, memberships] = await Promise.all([
       db

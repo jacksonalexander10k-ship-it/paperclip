@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 
+// Re-export so callers that build ActivityEntry rows can use the same
+// user-friendly formatter used by LiveActivityPanel (bug 16).
+export { formatActivityEvent } from "./LiveActivityPanel";
+export type { FormattedActivity } from "./LiveActivityPanel";
+
 /** Professional colour palette for agent names in the feed. */
 const AGENT_COLORS = [
   "text-slate-600 dark:text-slate-400",

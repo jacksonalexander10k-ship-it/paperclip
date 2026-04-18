@@ -1,5 +1,4 @@
 import {
-  Inbox,
   LayoutDashboard,
   DollarSign,
   Search,
@@ -30,7 +29,6 @@ import { approvalsApi } from "../api/approvals";
 import { authApi } from "../api/auth";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
-import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
@@ -41,15 +39,15 @@ function ThemeToggle() {
       onClick={toggleTheme}
       className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:bg-accent/50 hover:text-foreground transition-all duration-150 shrink-0"
       title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
     >
-      {theme === "dark" ? <Sun className="w-[13px] h-[13px]" /> : <Moon className="w-[13px] h-[13px]" />}
+      {theme === "dark" ? <Sun className="w-[13px] h-[13px]" aria-hidden="true" /> : <Moon className="w-[13px] h-[13px]" aria-hidden="true" />}
     </button>
   );
 }
 
 export function Sidebar() {
   const { selectedCompanyId, selectedCompany } = useCompany();
-  const inboxBadge = useInboxBadge(selectedCompanyId);
 
   const { data: sidebarBadges } = useQuery({
     queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
@@ -103,7 +101,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-[205px] h-full min-h-0 border-r border-sidebar-border/60 bg-sidebar/95 backdrop-blur-xl flex flex-col">
+    <aside className="w-[240px] h-full min-h-0 border-r border-sidebar-border/60 bg-sidebar/95 backdrop-blur-xl flex flex-col">
       {/* Header — logo + company name + search */}
       <div className="flex items-center gap-2 px-3 h-[50px] shrink-0 border-b border-sidebar-border/50">
         {selectedCompany?.brandColor ? (
@@ -139,40 +137,18 @@ export function Sidebar() {
           <div data-tour="sidebar-dashboard">
             <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
           </div>
-          <SidebarNavItem
-            to="/inbox"
-            label="Inbox"
-            icon={Inbox}
-            badge={inboxBadge.inbox}
-            badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
-            alert={inboxBadge.failedRuns > 0}
-          />
-          <PluginSlotOutlet
-            slotTypes={["sidebar"]}
-            context={pluginContext}
-            className="flex flex-col gap-0.5"
-            itemClassName="text-[12.5px] font-medium"
-            missingBehavior="placeholder"
-          />
-        </div>
-
-        {/* WORK */}
-        <SidebarSection label="Work">
-          <SidebarNavItem to="/issues" label="Tasks" icon={CheckSquare} />
           <div data-tour="sidebar-approvals">
             <SidebarNavItem
               to="/approvals/pending"
-              label="Approvals"
+              label="Inbox"
               icon={ShieldCheck}
               badge={pendingApprovals}
             />
           </div>
-          <SidebarNavItem to="/routines" label="Automations" icon={Repeat} />
-          <SidebarNavItem to="/deliverables" label="Documents" icon={FileText} />
-        </SidebarSection>
+        </div>
 
-        {/* INVENTORY */}
-        <SidebarSection label="Inventory">
+        {/* PIPELINE */}
+        <SidebarSection label="Pipeline">
           <div data-tour="sidebar-leads">
             <SidebarNavItem to="/leads" label="Leads" icon={UserSearch} />
           </div>
@@ -181,7 +157,7 @@ export function Sidebar() {
 
         {/* TEAM */}
         <SidebarSection label="Team">
-          <SidebarNavItem to="/agents" label="All Agents" icon={Users} />
+          <SidebarNavItem to="/agents" label="Team" icon={Users} />
         </SidebarSection>
 
         {/* Individual agents */}
@@ -189,18 +165,8 @@ export function Sidebar() {
           <SidebarAgents />
         </div>
 
-        {/* AGENCY */}
-        <SidebarSection label="Agency">
-          <div data-tour="sidebar-budget">
-            <SidebarNavItem to="/costs" label="Budget" icon={DollarSign} />
-          </div>
-          <button
-            onClick={toggleActivityPanel}
-            className="flex items-center gap-2.5 px-2 py-1.5 text-[12.5px] font-medium rounded-lg text-muted-foreground/60 hover:bg-accent/50 hover:text-foreground transition-all duration-150 w-full text-left"
-          >
-            <Activity className="w-[13px] h-[13px] shrink-0" />
-            <span className="truncate">Live Activity</span>
-          </button>
+        {/* WORKSPACE */}
+        <SidebarSection label="Workspace">
           <SidebarNavItem to="/knowledge-base" label="Knowledge Base" icon={FolderOpen} />
           <div data-tour="sidebar-settings">
             <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />

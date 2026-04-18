@@ -25,7 +25,6 @@ import { ApprovalDetail } from "./pages/ApprovalDetail";
 import { Costs } from "./pages/Costs";
 import { Activity } from "./pages/Activity";
 import { Deliverables } from "./pages/Deliverables";
-import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { CompanySkills } from "./pages/CompanySkills";
 import { CompanyExport } from "./pages/CompanyExport";
@@ -46,6 +45,8 @@ import { Properties } from "./pages/Properties";
 import { PropertyDetail } from "./pages/PropertyDetail";
 import { Leads } from "./pages/Leads";
 import Landing from "./pages/Landing";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 import { AuthPage } from "./pages/Auth";
 import BillingCheckout from "./pages/BillingCheckout";
 import { BoardClaimPage } from "./pages/BoardClaim";
@@ -55,7 +56,6 @@ import { NotFoundPage } from "./pages/NotFound";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { useDialog } from "./context/DialogContext";
-import { loadLastInboxTab } from "./lib/inbox";
 import { shouldRedirectCompanylessRouteToOnboarding } from "./lib/onboarding-route";
 
 function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: boolean }) {
@@ -77,7 +77,38 @@ function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: b
 }
 
 function CloudAccessGate() {
-  // Bypass all auth gates — go straight to the app
+  const location = useLocation();
+  const { data: health, isLoading: healthLoading } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => healthApi.get(),
+    retry: false,
+  });
+  const { data: session, isLoading: sessionLoading } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    retry: false,
+    enabled: health?.deploymentMode === "authenticated",
+  });
+
+  // In non-authenticated mode, bypass all auth gates
+  if (healthLoading) {
+    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+  }
+  if (health?.deploymentMode !== "authenticated") {
+    return <Outlet />;
+  }
+
+  // Authenticated mode — wait for session check
+  if (sessionLoading) {
+    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+  }
+
+  // No session — redirect to login page
+  if (!session) {
+    const next = location.pathname !== "/" ? `?next=${encodeURIComponent(location.pathname + location.search)}` : "";
+    return <Navigate to={`/auth${next}`} replace />;
+  }
+
   return <Outlet />;
 }
 
@@ -134,27 +165,18 @@ function boardRoutes() {
       <Route path="deliverables" element={<Deliverables />} />
       <Route path="knowledge-base" element={<KnowledgeBase />} />
       <Route path="leads" element={<Leads />} />
-      <Route path="properties" element={<Navigate to="/properties/sale" replace />} />
-      <Route path="properties/sale" element={<Properties />} />
+      <Route path="properties" element={<Navigate to="/properties/sales" replace />} />
+      <Route path="properties/sales" element={<Properties />} />
+      <Route path="properties/sale" element={<Navigate to="/properties/sales" replace />} />
       <Route path="properties/rental" element={<Properties />} />
       <Route path="properties/new" element={<Properties />} />
       <Route path="properties/:propertyId" element={<PropertyDetail />} />
-      <Route path="inbox" element={<InboxRootRedirect />} />
-      <Route path="inbox/mine" element={<Inbox />} />
-      <Route path="inbox/recent" element={<Inbox />} />
-      <Route path="inbox/unread" element={<Inbox />} />
-      <Route path="inbox/all" element={<Inbox />} />
-      <Route path="inbox/new" element={<Navigate to="/inbox/mine" replace />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="tests/ux/runs" element={<RunTranscriptUxLab />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
     </>
   );
-}
-
-function InboxRootRedirect() {
-  return <Navigate to={`/inbox/${loadLastInboxTab()}`} replace />;
 }
 
 function LegacySettingsRedirect() {
@@ -272,11 +294,24 @@ function AygencyOnboardingGate() {
   const { companies, loading } = useCompany();
   const [dismissed, setDismissed] = useState(false);
 
-  // Show onboarding when there are no companies (fresh start)
+  // In authenticated mode, only show if the user has a valid session.
+  const { data: health } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => healthApi.get(),
+    retry: false,
+  });
+  const { data: session, isLoading: sessionLoading } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    retry: false,
+    enabled: health?.deploymentMode === "authenticated",
+  });
+
+  const needsAuth = health?.deploymentMode === "authenticated";
   const forcePreview = typeof window !== "undefined" && window.location.search.includes("onboarding=1");
   const noCompanies = !loading && companies.length === 0;
 
-  // Clear stale localStorage when DB has been wiped
+  // Clear stale localStorage when DB has been wiped — must be called before early returns
   useEffect(() => {
     if (noCompanies) {
       localStorage.removeItem("aygency_onboarding_complete");
@@ -288,6 +323,11 @@ function AygencyOnboardingGate() {
     }
   }, [noCompanies]);
 
+  // All hooks above — safe to return early now
+  const publicPaths = ["/", "/landing", "/privacy", "/terms"];
+  const isLandingPage = typeof window !== "undefined" && publicPaths.includes(window.location.pathname);
+  if (isLandingPage) return null;
+  if (needsAuth && (sessionLoading || !session)) return null;
   if (!forcePreview && !noCompanies) return null;
   if (dismissed) return null;
 
@@ -298,7 +338,11 @@ export function App() {
   return (
     <>
       <Routes>
-        <Route path="/" element={<Navigate to="/ceo-chat" replace />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="app" element={<Navigate to="/ceo-chat" replace />} />
+        <Route path="landing" element={<Landing />} />
+        <Route path="privacy" element={<PrivacyPolicy />} />
+        <Route path="terms" element={<TermsOfService />} />
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
@@ -320,8 +364,6 @@ export function App() {
           <Route path="ceo-chat" element={<UnprefixedBoardRedirect />} />
           <Route path="dashboard" element={<UnprefixedBoardRedirect />} />
           <Route path="companies" element={<UnprefixedBoardRedirect />} />
-          <Route path="inbox" element={<UnprefixedBoardRedirect />} />
-          <Route path="inbox/:tab" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
           <Route path="approvals" element={<UnprefixedBoardRedirect />} />
@@ -344,6 +386,7 @@ export function App() {
           <Route path="agents/:agentId" element={<UnprefixedBoardRedirect />} />
           <Route path="agents/:agentId/:tab" element={<UnprefixedBoardRedirect />} />
           <Route path="agents/:agentId/runs/:runId" element={<UnprefixedBoardRedirect />} />
+          <Route path="knowledge-base" element={<UnprefixedBoardRedirect />} />
           <Route path="leads" element={<UnprefixedBoardRedirect />} />
           <Route path="properties" element={<UnprefixedBoardRedirect />} />
           <Route path="properties/:tab" element={<UnprefixedBoardRedirect />} />
@@ -368,3 +411,4 @@ export function App() {
     </>
   );
 }
+

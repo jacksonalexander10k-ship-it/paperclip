@@ -51,7 +51,10 @@ export function autoReplyRulesRoutes(db: Db) {
           fixedMessage: fixedMessage ?? null,
           emailSubject: emailSubject ?? null,
           delaySecs: delaySecs ?? 60,
-          enabled: enabled ?? "true",
+          // Default to OFF: "Approval before external action" per CLAUDE.md.
+          // Existing rules keep their current enabled value; only new rules
+          // default to disabled. Owner explicitly opts in via the toggle.
+          enabled: enabled ?? "false",
         })
         .returning();
 

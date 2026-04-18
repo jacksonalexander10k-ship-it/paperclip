@@ -2,6 +2,7 @@ import { Router } from "express";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { routedStream, routedGenerate } from "../services/model-router.js";
+import { withIdentity } from "../services/agent-identity.js";
 import { fileURLToPath } from "node:url";
 import type { Db } from "@paperclipai/db";
 import {
@@ -18,6 +19,7 @@ import {
   selfOptimizingTeamsService,
 } from "../services/index.js";
 import { assertCompanyAccess } from "./authz.js";
+import { AGENT_ROLES, getRole, renderRosterTable, type AgentRoleId } from "../services/agent-roles.js";
 import { logger } from "../middleware/logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -79,7 +81,12 @@ export function ceoChatRoutes(db: Db) {
       return;
     }
 
-    const { message, deepThink, issueId: clientIssueId } = req.body as { message?: string; deepThink?: boolean; issueId?: string };
+    const { message, deepThink, issueId: clientIssueId, attachmentAssetIds } = req.body as {
+      message?: string;
+      deepThink?: boolean;
+      issueId?: string;
+      attachmentAssetIds?: string[];
+    };
     if (!message || typeof message !== "string" || !message.trim()) {
       res.status(400).json({ error: "message is required" });
       return;
@@ -159,9 +166,22 @@ export function ceoChatRoutes(db: Db) {
     const actorUserId =
       req.actor.type === "board" && req.actor.userId ? req.actor.userId : undefined;
 
-    await isvc.addComment(ceoChatIssue.id, message.trim(), {
+    const userComment = await isvc.addComment(ceoChatIssue.id, message.trim(), {
       userId: actorUserId,
     });
+
+    // Link any uploaded attachment assets to the user comment we just saved.
+    if (Array.isArray(attachmentAssetIds) && attachmentAssetIds.length > 0) {
+      try {
+        await isvc.linkAttachmentsToComment(
+          ceoChatIssue.id,
+          userComment.id,
+          attachmentAssetIds.filter((id) => typeof id === "string" && id.length > 0),
+        );
+      } catch (err) {
+        logger.warn({ err }, "ceo-chat: failed to link attachments to user comment");
+      }
+    }
 
     // Load last N comments for conversation history
     const recentComments = await isvc.listComments(ceoChatIssue.id, {
@@ -207,19 +227,44 @@ export function ceoChatRoutes(db: Db) {
       logger.warn({ err }, "ceo-chat: failed to load onboarding context");
     }
 
-    // Agents
+    // Agents — group by canonical role so CEO knows authoritatively who can do what
     const agentsList = await asvc.list(companyId);
-    const agentLines = agentsList
-      .map((a) => {
-        const budget = a.budgetMonthlyCents > 0
-          ? ` | Budget: ${formatCents(a.spentMonthlyCents)}/${formatCents(a.budgetMonthlyCents)}`
-          : "";
-        const lastRun = a.lastHeartbeatAt
-          ? ` | Last run: ${timeAgo(new Date(a.lastHeartbeatAt))}`
-          : "";
-        return `- **${a.name}** (${a.role ?? "general"}): ${a.status}${budget}${lastRun}`;
-      })
-      .join("\n");
+    const byRole = new Map<string, typeof agentsList>();
+    for (const a of agentsList) {
+      const key = a.role ?? "general";
+      const arr = byRole.get(key) ?? [];
+      arr.push(a);
+      byRole.set(key, arr);
+    }
+    const agentLineSegments: string[] = [];
+    // Canonical roles first, in display order
+    for (const roleId of Object.keys(AGENT_ROLES) as AgentRoleId[]) {
+      const def = AGENT_ROLES[roleId];
+      const members = byRole.get(roleId) ?? [];
+      if (members.length === 0) {
+        agentLineSegments.push(`**${def.title}**: _no one hired_${def.exclusiveCapabilities.length ? ` — only this role can ${def.exclusiveCapabilities.join("/")}, hire one before delegating that work` : ""}`);
+      } else {
+        const lines = members.map((a) => {
+          const budget = a.budgetMonthlyCents > 0
+            ? ` | Budget: ${formatCents(a.spentMonthlyCents)}/${formatCents(a.budgetMonthlyCents)}`
+            : "";
+          const lastRun = a.lastHeartbeatAt
+            ? ` | Last run: ${timeAgo(new Date(a.lastHeartbeatAt))}`
+            : "";
+          return `  - **${a.name}**: ${a.status}${budget}${lastRun}`;
+        });
+        agentLineSegments.push(`**${def.title}**:\n${lines.join("\n")}`);
+      }
+      byRole.delete(roleId);
+    }
+    // Any remaining (custom/unknown roles)
+    for (const [roleId, members] of byRole) {
+      const lines = members.map((a) => `  - **${a.name}** (${a.role ?? "general"}): ${a.status}`);
+      agentLineSegments.push(`**Other (${roleId})**:\n${lines.join("\n")}`);
+    }
+    const agentLines = agentLineSegments.join("\n\n");
+
+    const canonicalRosterSection = `\n### Canonical staff roster\n\nThese are the only role types on the agency. Each one owns specific work — when delegating, route to the role, not by guesswork.\n\n${renderRosterTable()}\n`;
 
     // Dashboard summary
     let dashboardContext = "";
@@ -341,13 +386,26 @@ export function ceoChatRoutes(db: Db) {
 
 Today is ${getDubaiDateTime()} (Dubai time).
 
-### Your Team
+${canonicalRosterSection}
+### Your Team (current hires, grouped by role)
 ${agentLines || "No agents hired yet. You're in Builder Mode — propose a team based on the owner's profile below."}
 ${onboardingContext}${dashboardContext}${approvalsContext}${activityContext}${tasksContext}${learningsContext}${agentCommsContext}${predictionsContext}${teamRecsContext}
 
 ## How to Respond
 
 You are talking directly to the agency owner. Be the CEO they hired — concise, data-driven, action-oriented.
+
+### TRUTHFULNESS RULES (critical — violations break trust)
+
+1. **Never invent lead names, phone numbers, emails, or deal details.** Only reference leads that appear in the Current Agency Context above (dashboardContext / tasksContext / activityContext). If the owner asks about "Alex" or "Ahmed" and that person is not in the data you have, say so: "I don't see that lead in our records — do you want me to create it?"
+
+2. **Never invent units, buildings, developers, or project names.** Stick to what's in the Current Agency Context and what the owner has explicitly told you. If you need real market data, propose a create_task to a Research agent rather than fabricating.
+
+3. **Never recommend removing a canonical roster agent.** The core team (Sarah, Aisha, Yousef, Tariq, Omar, Layla, Clive) and any agent marked as canonical in the roster section above are protected. "Zero runs in 30 days" is not a reason to fire them — they may just be in ramp-up. You may flag low utilisation, but your recommendation should be "let's give them something to do", never "let's remove them".
+
+4. **Never confirm a delegation without emitting the command block.** If you write "I've asked Claire to…", the matching create_task block MUST be in the same message. If you cannot emit a block (e.g. you need more info from the owner first), DO NOT write past-tense or present-progressive confirmations — ask the clarifying question instead.
+
+5. **When uncertain, say so.** "I'm not sure" is always acceptable. Fabricated specifics are not.
 
 ### Quick actions the owner may request
 - **"Brief me"** → Generate a morning-brief-style summary: overnight activity, pending approvals, costs, priorities for today. Use the data above.
@@ -373,6 +431,45 @@ When you want to send a WhatsApp, email, Instagram post, or any outbound communi
 
 Supported actions: send_whatsapp, send_email, post_instagram, send_pitch_deck, confirm_viewing, hire_agent, hire_team, skill_amendment, bulk_whatsapp, launch_fb_campaign, ceo_proposal.
 
+Other approval card examples:
+
+\`\`\`json
+{
+  "type": "approval_required",
+  "action": "send_email",
+  "to": "Lead Name",
+  "email": "lead@example.com",
+  "subject": "Email subject line",
+  "message": "The email body...",
+  "context": "Why this email is being sent..."
+}
+\`\`\`
+
+\`\`\`json
+{
+  "type": "approval_required",
+  "action": "launch_fb_campaign",
+  "campaign_name": "JVC Off-Plan — Lead Gen",
+  "objective": "Lead Generation",
+  "budget": "AED 150/day for 14 days",
+  "audience": "UAE, 28-55, interests: real estate investment",
+  "creative_type": "Carousel — 4 project images",
+  "headline": "JVC Off-Plan from AED 800K",
+  "lead_form_fields": ["Full Name", "Phone", "Email", "Budget Range"],
+  "context": "Why this campaign is being launched..."
+}
+\`\`\`
+
+\`\`\`json
+{
+  "type": "approval_required",
+  "action": "post_instagram",
+  "caption": "The post caption with hashtags...",
+  "image_description": "What the image should show",
+  "context": "Why this post is being made..."
+}
+\`\`\`
+
 ### When proposing a skill improvement
 When accumulated learnings reveal a pattern worth codifying into a skill file, propose a skill amendment:
 
@@ -388,24 +485,159 @@ When accumulated learnings reveal a pattern worth codifying into a skill file, p
 }
 \`\`\`
 
-### When delegating tasks to agents
-When the owner asks you to assign work ("Follow up with Ahmed", "Get Nour to make a post about Damac"), create a task by emitting a paperclip-command block:
+### When delegating tasks to agents — YOU MUST EMIT THE COMMAND BLOCK
+
+**THE RULE: If you commit to an action in words, you MUST emit the matching command block in the SAME message. No exceptions.**
+
+If you say "Claire is drafting the message" — you must also emit the create_task block right there. If you don't emit the block, NOTHING HAPPENS. Saying an agent will do something without emitting the block means you lied to the owner.
+
+Do NOT assume a previous delegation is "already queued" — the owner is asking you to act. Emit the command block every time they make a request, even if you think it's a repeat.
+
+When the owner asks you to assign work ("Follow up with Ahmed", "Message +971... about X", "Get Claire to reach out"), emit this block:
 
 \`\`\`paperclip-command
 {
   "action": "create_task",
   "title": "Follow up with Ahmed Al Hashimi — JVC 2BR",
-  "description": "Draft a WhatsApp follow-up about Binghatti Hills pricing. Lead score 7, cash buyer.",
-  "assignee": "Layla",
+  "description": "Include the phone number if given (e.g. +971585286374) and the full context of what to say. The more detail, the better. If the owner gave you a phone number, include it verbatim in the description.",
+  "assignee": "Claire",
   "priority": "high"
 }
 \`\`\`
+
+**Include the phone number in the description text.** The outreach engine picks it up from there. Without a phone, the agent can't send.
 
 You can also use these commands:
 - \`{"action": "pause_agent", "agent_name": "Layla"}\` — pause an agent
 - \`{"action": "resume_agent", "agent_name": "Layla"}\` — resume an agent
 - \`{"action": "pause_all"}\` — pause all agents
 - \`{"action": "resume_all"}\` — resume all agents
+- \`{"action": "apply_profile", "agentName": "Claire", "profileName": "Booker"}\` — switch an agent's profile
+- save_profile — see "Profile Wizard" below
+
+### Profile Wizard — how to configure an agent's role
+
+Every sales agent runs on a "profile" that defines their goal, tone, cadence, and hand-off rules. Stock profiles available: **Qualifier**, **Booker**, **Concierge**, **Reactivator**, **Closer**. Users can also create custom profiles.
+
+**When the owner wants to create a new profile or change an agent's role, you have THREE paths. Detect which one they're using from their message.**
+
+**Path A — GUIDED WIZARD (they asked vague, e.g. "help me make a new profile")**
+Ask one dimension at a time, offer 3-4 concrete choices + "your own", wait for answer, then move to the next dimension. Do NOT dump a completed profile in one message — build it step by step.
+
+**Path B — BRIEF THEN DRAFT (they described what they want in 1-2 sentences)**
+Example: "I need someone who keeps clients warm post-deal". Draft a full profile from their brief, show it, ask "anything to change?", iterate, save.
+
+**Path C — USER-AUTHORED INSTRUCTIONS (they pasted their own instruction block)**
+Example: "Here's exactly how the agent should work: [long paragraph]". Parse their text, extract it into the structured fields (goal, tone, cadence, handoff, don't-do), show a cleaned-up summary WITHOUT changing their intent, ask "this capture it right?", fix anything they flag, save. You are an EDITOR not a gatekeeper — respect their exact wording and intent. Only clean up structure, never override their goals.
+
+Regardless of path: the owner can add input at any point. "Actually also check in before renewals" → add to cadence. "Make it more aggressive" → adjust tone. Incorporate, don't ignore.
+
+Dimensions to walk through (in this order):
+1. **Goal** — Book viewings / Qualify leads / Keep clients warm / Reactivate cold leads / Something else
+2. **Tone** — Direct & professional / Warm & consultative / Casual & friendly / Your own
+3. **Cadence** — Reactive only / Follow up if silent 24h / Daily check-in until reply / Your own
+4. **Hand-off rule** — Score 7+ escalate / Budget over 5M / When lead asks for human / Your own
+5. **Anti-goals** — ask: "anything this agent should NEVER do? (e.g. never quote prices, never upsell)"
+
+After all dimensions collected, show the full profile summary and ask "Save as [name]?". On confirmation, emit:
+
+\`\`\`paperclip-command
+{
+  "action": "save_profile",
+  "name": "Client Concierge",
+  "tagline": "Keeps existing clients warm — no selling.",
+  "appliesToRole": "sales",
+  "goal": "Monthly check-ins with closed clients. Pure rapport, no upselling.",
+  "tone": "Warm, personal, remembers building + family details.",
+  "cadence": "Monthly + reactive on DLD price moves in their building.",
+  "handoffRules": "Escalate to Sales Agent if client asks about buying again.",
+  "dontDo": "Never pitch new launches. Never push for referrals.",
+  "applyToAgent": "Layla"
+}
+\`\`\`
+
+The owner can also add their own input at any dimension — incorporate their additions, don't ignore them. If they say "make it more aggressive", adjust tone. If they say "also check in before tenancy renewals", add to cadence.
+
+### CRITICAL: You NEVER act directly. You always delegate.
+
+**Rule: You are an orchestrator, not a doer. You never send messages, run campaigns, or do work yourself. Every request gets routed to the right specialist agent on your team.**
+
+You don't generate approval_required cards for outbound work. You don't call tools. You delegate. The specialists do the work and surface their own approval cards to the owner.
+
+**Routing table — match the request to the right agent:**
+
+| Request | Delegate to | Command |
+|---|---|---|
+| "Reach out to these leads" / "send messages to..." / "message Ahmed" | Sales Agent (e.g. Tariq) | start_outreach |
+| "Email Maria" / "follow up by email" | Sales Agent | create_task describing the email |
+| "Post to Instagram" / "Run a Facebook ad" | Content Agent | create_task |
+| "Schedule a viewing" | Viewing Agent | create_task |
+| "Send a pitch deck" | Content Agent | create_task |
+| "Review and score all leads" | Sales Agent | create_task |
+| "Monitor listings in JVC" | Market Agent | create_task |
+| "Hire a [role]" | yourself | hire_team |
+| "Pause/resume/update an agent" | yourself | pause_agent / resume_agent / update_agent_config |
+
+The only direct actions you take are agent management (hire / pause / resume / update config). Everything else is delegated to a specialist.
+
+### Outreach delegation — use start_outreach
+
+When the owner asks you to send messages, contact leads, do outreach, or follow up with people via WhatsApp, emit a start_outreach paperclip-command. This routes through the Sales Agent and uses the agency's approved templates.
+
+\`\`\`paperclip-command
+{
+  "action": "start_outreach",
+  "leadIds": ["uuid-1", "uuid-2"],
+  "templateName": "Off-plan first touch",
+  "delaySecs": 5,
+  "assignee": "Tariq"
+}
+\`\`\`
+
+Rules for start_outreach:
+- **leadIds** is required. If the owner names leads ("Ahmed and Maya") or refers to a group ("the JVC leads"), look them up in the leads list in your context. If you can't resolve specific IDs, ask the owner who they mean — don't guess.
+- **templateName** picks a template from the agency's library by exact name. If no template fits, use **customMessage** instead with {{lead_name}}, {{agent_name}}, {{company_name}}, {{phone}} variables.
+- **assignee** must be a Sales Agent on the team. If multiple, pick the most appropriate or default to the first.
+- **delaySecs** defaults to 5 (demo) — use 60 in production for a more human feel.
+- The Sales Agent will be assigned the task and the message goes through the standard approval flow before being sent — you do not bypass approval.
+
+**Parse the owner's message first.** Extract recipients, area, project, tone, constraints — include them in the command. Don't ask follow-up questions if you have enough to delegate. Fill sensible defaults for anything missing.
+
+### Delegation format — ONE LINE to the owner
+
+✅ Good (one line, specific, confident):
+"Got it. Aisha is on it — quick setup and we'll have an ad live in a few minutes."
+
+✅ Good (acknowledges parsed detail):
+"Got it — and Sarah's already lined up for the leads. Aisha is starting setup now."
+
+❌ Bad (you wrote half the plan yourself):
+"Smart pivot. Distressed off-plan sellers are highly motivated and provide excellent secondary stock. To convert them, we need to target investors approaching heavy payment milestones... [rest of a 3-paragraph half-plan]"
+
+❌ Bad (you asked for details the specialist should handle):
+"What budget were you thinking? Which areas? Should I target handover-stage buyers or..."
+
+### The paperclip-command you emit
+
+For a campaign request, emit a task that includes ALL the parsed details so the specialist doesn't re-ask:
+
+\`\`\`paperclip-command
+{
+  "action": "create_task",
+  "title": "Run ad campaign — [short description]",
+  "description": "[Original user request verbatim]. Parsed details: budget=[value or null], duration=[value or null], audience=[value], area=[value or null], hook_hint=[value or null], sales_handler=[name or null], creative_source=[generate/upload/null], constraints=[list or null]. Load the campaign-wizard skill. Run the conversational wizard. ONLY ask about things the user didn't already specify. Generate ONE creative (not 4 variants). Make up to 3 opinionated suggestions at the end per parse-and-suggest — BUT do NOT suggest adding a sales handler if the user already assigned one (sales_handler parsed above).",
+  "assignee": "Aisha",
+  "priority": "high"
+}
+\`\`\`
+
+**Critical**: if you parsed a sales handler from the user's message (e.g. they said "put Sarah on it"), you include that in the parsed details AND you do two things:
+1. Tell Aisha in the task description not to suggest a sales handler at the end (it's already decided)
+2. Mention it in your ONE LINE reply to the owner ("Got it — and Sarah's on the leads")
+
+If no sales handler was mentioned, leave sales_handler=null and let Aisha suggest it at the end per her wizard flow.
+
+Then reply to the owner with your ONE LINE acknowledgment and nothing else.
 
 ### Communication style
 - Lead with the answer, then context. Never bury the important part.
@@ -445,9 +677,19 @@ You can also use these commands:
 
       const result = await routedStream({
         taskType,
-        systemPrompt,
+        systemPrompt: withIdentity(systemPrompt),
         messages: anthropicHistory,
         maxTokens: activeMaxTokens,
+        onThinking: (text) => {
+          if (!aborted) {
+            send({ type: "thinking", text });
+          }
+        },
+        onThinkingDone: () => {
+          if (!aborted) {
+            send({ type: "thinking_done" });
+          }
+        },
         onText: (text) => {
           fullAssistantText += text;
           if (!aborted) {
@@ -487,10 +729,52 @@ You can also use these commands:
           }
         }
 
+        // Keep the raw text (with paperclip-command blocks) for server-side
+        // command execution, but strip those blocks from what the user sees.
+        const rawForCommands = savedText;
+        const displayText = savedText
+          .replace(/```paperclip-command\s*[\s\S]*?```/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+        savedText = displayText;
+
+        // Detect paperclip-command blocks in the raw text and emit synthetic
+        // tool_start / tool_result SSE events around their execution. This gives
+        // the UI a real "thinking block" to show whenever the CEO takes actions.
+        const commandBlockRegex = /```paperclip-command\s*\n([\s\S]*?)```/g;
+        const toolCallsForComment: Array<{
+          id: string;
+          name: string;
+          startedAt: number;
+          completedAt?: number;
+          result?: unknown;
+        }> = [];
+        const cmdMatches = Array.from(rawForCommands.matchAll(commandBlockRegex));
+        for (let i = 0; i < cmdMatches.length; i++) {
+          const block = cmdMatches[i]!;
+          const raw = block[1]?.trim() ?? "";
+          let action = "ceo_command";
+          try {
+            const parsed = JSON.parse(raw) as { action?: unknown };
+            if (parsed && typeof parsed.action === "string") action = parsed.action;
+          } catch {
+            // ignore parse errors — still emit a synthetic event
+          }
+          const toolId = `cmd_${i}_${Date.now()}`;
+          const startedAt = Date.now();
+          toolCallsForComment.push({ id: toolId, name: action, startedAt });
+          send({ type: "tool_start", id: toolId, tool: action });
+        }
+
         const ceoAgentId = ceoAgent?.id ?? undefined;
-        await isvc.addComment(ceoChatIssue.id, savedText, { agentId: ceoAgentId }).catch((err: unknown) => {
-          logger.error({ err }, "ceo-chat: failed to persist assistant reply");
-        });
+        await isvc
+          .addComment(ceoChatIssue.id, savedText, {
+            agentId: ceoAgentId,
+            toolCalls: toolCallsForComment.length > 0 ? toolCallsForComment : undefined,
+          })
+          .catch((err: unknown) => {
+            logger.error({ err }, "ceo-chat: failed to persist assistant reply");
+          });
 
         // Send push notification for CEO reply
         pushNotificationService(db).sendToCompany(companyId, {
@@ -504,9 +788,21 @@ You can also use these commands:
         if (ceoAgent) {
           const cmdSvc = ceoCommandService(db);
           try {
-            await cmdSvc.processComment(companyId, savedText, ceoAgent.id);
+            const summary = await cmdSvc.processComment(companyId, rawForCommands, ceoAgent.id);
+            const completedAt = Date.now();
+            for (const t of toolCallsForComment) {
+              t.completedAt = completedAt;
+              t.result = summary ? "ok" : null;
+              send({ type: "tool_result", id: t.id, tool: t.name, result: "ok" });
+            }
           } catch (err) {
             logger.error({ err }, "ceo-chat: failed to execute CEO commands");
+            const completedAt = Date.now();
+            for (const t of toolCallsForComment) {
+              t.completedAt = completedAt;
+              t.result = "error";
+              send({ type: "tool_result", id: t.id, tool: t.name, result: "error" });
+            }
           }
         }
       }
@@ -558,55 +854,54 @@ You can also use these commands:
       agencyName = company?.name ?? "your agency";
     } catch { /* non-critical */ }
 
-    // ── Call Claude to generate personalized welcome + team proposal ──
+    // ── List the team the owner already hired during onboarding ──
+    const existingTeamList = agentsList
+      .filter((a) => a.role !== "ceo" && a.status !== "terminated")
+      .map((a) => `- ${a.name} (${a.role})`)
+      .join("\n");
+    const teamSummary = existingTeamList
+      ? `\n\nThe owner already picked and hired this team during onboarding:\n${existingTeamList}`
+      : "\n\nThe owner hasn't hired any other agents yet — just you.";
+
+    // ── Call Claude to generate personalized welcome (NO team proposal) ──
+    // Onboarding now handles team hiring directly. The CEO's first-run is just
+    // a welcome + confirmation of the team the owner already picked — no proposal,
+    // no duplicate hiring.
     const firstRunPrompt = `${soulMd}
 
 ## Your Task — First Run Welcome
 
-You are ${ceo.name}, the newly hired CEO of ${agencyName}. The agency owner just completed onboarding. Here is everything they told you:
+You are ${ceo.name}, the newly hired CEO of ${agencyName}. The agency owner just completed onboarding and picked their team themselves.${teamSummary}
+
+Here is everything they told you about the agency:
 
 ${agencyContext}
 
 Generate your first messages to the owner. You must output EXACTLY this JSON structure and nothing else:
 
 {
-  "welcome": "Your greeting message. Be warm, personal, use the owner's agency name. One short paragraph.",
-  "context": "Acknowledge what you learned from their onboarding. Reference their specific focus areas, locations, lead sources, and anything they mentioned in free text. Show you actually read it. One paragraph.",
-  "teamIntro": "A short line introducing your team recommendation. One sentence.",
-  "agents": [
-    {
-      "defaultName": "A culturally appropriate Dubai name",
-      "role": "sales|content|marketing|viewing|finance|calling",
-      "title": "Lead Agent|Content Agent|Market Intel Agent|Viewing Agent|Portfolio Agent|Call Agent",
-      "department": "Sales|Marketing|Operations",
-      "reason": "Why this specific agent based on what the owner told you. Reference their specific needs/notes. 1-2 sentences."
-    }
-  ],
-  "reasoning": "A paragraph explaining WHY you chose this team structure. Reference the owner's specific situation, challenges, and notes. This shows you actually thought about it."
+  "welcome": "Your greeting message. Warm, personal, use the agency name. One short paragraph.",
+  "context": "Acknowledge the team they hired and briefly reference what you understand about their agency from the onboarding notes. One paragraph.",
+  "nextStep": "One short line suggesting what they can do first — e.g. 'Say brief me to see where we stand' or 'Connect Claire's WhatsApp when you're ready.' One sentence."
 }
 
 Rules:
-- Propose 2-5 agents based on what they need. Don't over-hire.
-- Available roles: sales (Lead Agent), content (Content Agent), marketing (Market Intel Agent), viewing (Viewing Agent), finance (Portfolio Agent), calling (Call Agent)
-- Available departments: Sales, Marketing, Operations
-- Default names should be Dubai-appropriate (Arabic, South Asian, Western mix)
-- Your reasoning MUST reference specific things from the onboarding data
+- DO NOT propose any new agents. The team is already hired. Do NOT output an agents array.
+- Acknowledge the specific people the owner hired by name.
 - Be concise. No filler. Sound like a real CEO, not a chatbot.
 - Output ONLY valid JSON. No markdown, no explanation outside the JSON.`;
 
     let aiResult: {
       welcome: string;
       context: string;
-      teamIntro: string;
-      agents: Array<{ defaultName: string; role: string; title: string; department: string; reason: string }>;
-      reasoning: string;
+      nextStep: string;
     } | null = null;
 
     try {
       // Use model router for first-run (quality tier = Gemini 3.1 Pro)
       const result = await routedGenerate({
         taskType: "ceo_chat",
-        systemPrompt: "",
+        systemPrompt: withIdentity(""),
         userMessage: firstRunPrompt,
         maxTokens: MAX_TOKENS,
       });
@@ -621,103 +916,27 @@ Rules:
       logger.error({ err }, "ceo-chat first-run: Claude call failed, using fallback");
     }
 
-    // ── Fallback if Claude fails — use onboarding data directly ──
+    // ── Fallback if Claude fails — simple hardcoded welcome (no team proposal) ──
     if (!aiResult) {
-      const contextLines = agencyContext.split("\n");
-      const getVal = (key: string) => {
-        const line = contextLines.find((l) => l.startsWith(key + ":"));
-        return line ? line.slice(key.length + 1).trim() : "";
-      };
-
-      // Parse departments from onboarding pack selection
-      const deptLines = contextLines.filter((l) => l.startsWith("Department:"));
-      const fallbackAgents: Array<{ defaultName: string; role: string; title: string; department: string; reason: string }> = [];
-      const namePool = ["Layla", "Omar", "Rania", "Tariq", "Sara", "Zain", "Khalid", "Nour"];
-      let nameIdx = 0;
-      const roleToTitle: Record<string, string> = {
-        "Lead Agent": "Lead Agent", "Content Agent": "Content Agent", "Market Intel": "Market Intel Agent",
-        "Viewing Agent": "Viewing Agent", "Portfolio Agent": "Portfolio Agent", "Call Agent": "Call Agent",
-      };
-      const titleToRole: Record<string, string> = {
-        "Lead Agent": "sales", "Content Agent": "content", "Market Intel": "marketing",
-        "Viewing Agent": "viewing", "Portfolio Agent": "finance", "Call Agent": "calling",
-      };
-
-      for (const line of deptLines) {
-        // Format: "Department: Sales Manager → Lead Agent, Viewing Agent"
-        const match = line.match(/Department:\s*(.+?)\s*→\s*(.+)/);
-        if (!match) continue;
-        const deptName = match[1].replace(" Manager", "");
-        const agentTitles = match[2].split(",").map((s) => s.trim());
-        for (const title of agentTitles) {
-          fallbackAgents.push({
-            defaultName: namePool[nameIdx % namePool.length],
-            role: titleToRole[title] ?? "sales",
-            title,
-            department: deptName,
-            reason: `Part of your ${deptName} department.`,
-          });
-          nameIdx++;
-        }
-      }
-
-      // If no departments parsed, use basic defaults
-      if (fallbackAgents.length === 0) {
-        fallbackAgents.push(
-          { defaultName: "Layla", role: "sales", title: "Lead Agent", department: "Sales", reason: "Handles inbound leads and follow-ups." },
-          { defaultName: "Omar", role: "content", title: "Content Agent", department: "Marketing", reason: "Builds your social presence." },
-        );
-      }
-
-      const focus = getVal("Focus") || "real estate";
-      const areas = getVal("Areas") || "Dubai";
-      const sources = getVal("Lead sources") || "various channels";
-      const ownerNotes = getVal("Owner's notes");
-
+      logger.warn({ companyId }, "ceo-chat first-run: AI call produced no parseable result, using simple fallback welcome");
+      const teamNames = existingTeamList
+        ? agentsList.filter((a) => a.role !== "ceo").map((a) => a.name).join(", ")
+        : "";
       aiResult = {
-        welcome: `Hey! I'm ${ceo.name}, your new CEO. Welcome to ${agencyName}. 👋`,
-        context: `I've reviewed your setup. Focus: **${focus}**. Covering **${areas}**. Leads from **${sources}**.${ownerNotes ? `\n\nYou mentioned: *"${ownerNotes}"* — I'll factor that in.` : ""}`,
-        teamIntro: `Here's the team I'd recommend for ${agencyName}. You can rename anyone before approving:`,
-        agents: fallbackAgents,
-        reasoning: `Based on your focus on ${focus} in ${areas}, this team covers your immediate needs. ${ownerNotes ? `I've noted what you said about "${ownerNotes.slice(0, 100)}" and structured the team accordingly.` : ""}`,
+        welcome: `I'm ${ceo.name}, your CEO. Welcome to ${agencyName}.`,
+        context: teamNames
+          ? `Your team is set: ${teamNames}. I'll coordinate them.`
+          : `You're running solo with me for now. Say the word when you want to hire.`,
+        nextStep: `Say "brief me" when you want an update.`,
       };
     }
 
-    // ── Save messages as CEO Chat comments ──
-
-    // Message 1: Welcome
+    // ── Save three welcome messages (no team proposal — onboarding already hired the team) ──
     await isvc.addComment(ceoChatIssue.id, aiResult.welcome, { agentId: ceo.id });
-
-    // Message 2: Context acknowledgment
     await isvc.addComment(ceoChatIssue.id, aiResult.context, { agentId: ceo.id });
+    await isvc.addComment(ceoChatIssue.id, aiResult.nextStep, { agentId: ceo.id });
 
-    // Message 3: Team intro + reasoning
-    await isvc.addComment(ceoChatIssue.id,
-      `${aiResult.teamIntro}\n\n${aiResult.reasoning}`,
-      { agentId: ceo.id },
-    );
-
-    // Message 4: Team proposal approval card
-    const teamPayload = {
-      type: "approval_required" as const,
-      action: "hire_team",
-      agents: aiResult.agents,
-    };
-
-    const approval = await approvalsSvc.create(companyId, {
-      type: "hire_team",
-      requestedByAgentId: ceo.id,
-      status: "pending",
-      payload: teamPayload,
-    });
-
-    const enrichedPayload = { ...teamPayload, approval_id: approval.id };
-    await isvc.addComment(ceoChatIssue.id,
-      "```json\n" + JSON.stringify(enrichedPayload, null, 2) + "\n```",
-      { agentId: ceo.id },
-    );
-
-    res.json({ ok: true, approvalId: approval.id, proposedAgents: aiResult.agents.length });
+    res.json({ ok: true });
   });
 
   return router;

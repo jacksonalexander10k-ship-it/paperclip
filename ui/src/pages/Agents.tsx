@@ -17,6 +17,7 @@ import { PageTabBar } from "../components/PageTabBar";
 import { Button } from "@/components/ui/button";
 import { Bot, Plus, GitBranch, SlidersHorizontal } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { formatDepartment, agentAvatarGradient, agentInitials } from "../lib/team-grouping";
 
 const adapterLabels: Record<string, string> = {
   claude_local: "AI Agent",
@@ -32,17 +33,6 @@ const adapterLabels: Record<string, string> = {
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
-const AGENT_GRADIENTS = [
-  "linear-gradient(135deg, #064e3b, #047857)",
-  "linear-gradient(135deg, #3730a3, #4f46e5)",
-  "linear-gradient(135deg, #0c4a6e, #0369a1)",
-  "linear-gradient(135deg, #78350f, #b45309)",
-  "linear-gradient(135deg, #7f1d1d, #b91c1c)",
-  "linear-gradient(135deg, #1e3a5f, #1d4ed8)",
-  "linear-gradient(135deg, #134e4a, #0f766e)",
-  "linear-gradient(135deg, #500724, #9d174d)",
-] as const;
-
 type FilterTab = "all" | "active" | "paused" | "error";
 
 function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean): boolean {
@@ -54,8 +44,32 @@ function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean):
   return true;
 }
 
+/**
+ * Ghost "department manager" agents are seeded server-side during company
+ * creation (Sales Manager, Operations Manager, Marketing Manager, …). They're
+ * cosmetic org-chart scaffolding and do NOT appear in the sidebar, so we also
+ * hide them from /agents/all to keep the two views consistent.
+ *
+ * We match by:
+ *   - role = one of the *_manager roles
+ *   - metadata.isDepartmentManager = true
+ *   - name ending in " Manager" with role = general (the seed shape)
+ */
+function isGhostDepartmentManager(a: Agent): boolean {
+  const role = String(a.role ?? "").toLowerCase();
+  if (role === "sales_manager" || role === "operations_manager" || role === "marketing_manager" || role === "intelligence_manager") {
+    return true;
+  }
+  const meta = (a as { metadata?: Record<string, unknown> }).metadata;
+  if (meta && meta.isDepartmentManager === true) return true;
+  const name = (a.name ?? "").trim().toLowerCase();
+  if (role === "general" && (name.endsWith(" manager") || name === "manager")) return true;
+  return false;
+}
+
 function filterAgents(agents: Agent[], tab: FilterTab, showTerminated: boolean): Agent[] {
   return agents
+    .filter((a) => !isGhostDepartmentManager(a))
     .filter((a) => matchesFilter(a.status, tab, showTerminated))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -147,7 +161,7 @@ export function Agents() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title="Your Team"
+        title="Team"
         actions={
           <>
             <Button
@@ -227,11 +241,24 @@ export function Agents() {
           )}
 
           {/* Agent cards */}
-          {filtered.length > 0 && (
+          {filtered.length > 0 && (() => {
+            // Build collision set: which naive initials (first two letters of name)
+            // are claimed by multiple agents. Each agent on that list needs the
+            // differentiated variant.
+            const naive = new Map<string, number>();
+            for (const a of filtered) {
+              const key = agentInitials(a.name).toUpperCase();
+              naive.set(key, (naive.get(key) ?? 0) + 1);
+            }
+            const collisions = new Set<string>();
+            for (const [k, v] of naive) {
+              if (v > 1) collisions.add(k);
+            }
+            return (
             <div className="space-y-2">
-              {filtered.map((agent, index) => {
-                const gradient = AGENT_GRADIENTS[index % AGENT_GRADIENTS.length];
-                const initials = agent.name.slice(0, 2).toUpperCase();
+              {filtered.map((agent) => {
+                const gradient = agentAvatarGradient(agent.id || agent.name);
+                const initials = agentInitials(agent.name, agent.role, collisions);
                 const isWorking = liveRunByAgent.has(agent.id);
                 const effectiveStatus = isWorking ? "running" : agent.status;
                 const liveInfo = liveRunByAgent.get(agent.id);
@@ -261,7 +288,7 @@ export function Agents() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[13px] font-bold truncate">{agent.name}</span>
                           <span className="text-[10.5px] text-muted-foreground">
-                            {roleLabels[agent.role] ?? agent.role}
+                            {formatDepartment(roleLabels[agent.role] ?? agent.role)}
                           </span>
                           <span className="hidden sm:inline text-[10.5px] text-muted-foreground">
                             {adapterLabels[agent.adapterType] ?? agent.adapterType}
@@ -274,8 +301,8 @@ export function Agents() {
                         {/* Current action */}
                         {isWorking && liveInfo && (
                           <p className="text-[11.5px] text-muted-foreground truncate mt-0.5">
-                            Running task {liveInfo.runId.slice(0, 8)}
-                            {liveInfo.liveCount > 1 ? ` (+${liveInfo.liveCount - 1} more)` : ""}
+                            Working...
+                            {liveInfo.liveCount > 1 ? ` (${liveInfo.liveCount} tasks)` : ""}
                           </p>
                         )}
 
@@ -291,7 +318,8 @@ export function Agents() {
                 );
               })}
             </div>
-          )}
+            );
+          })()}
 
           {agents && agents.length > 0 && filtered.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">

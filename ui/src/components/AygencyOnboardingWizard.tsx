@@ -1,39 +1,57 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@/lib/router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 import { companiesApi } from "../api/companies";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
+import { authApi } from "../api/auth";
+import { queryKeys } from "../lib/queryKeys";
 
 interface AygencyOnboardingWizardProps {
   onComplete: () => void;
 }
 
 // ── Data shape ─────────────────────────────────────────────────────
+interface PickedAgent {
+  role: HirableRole;
+  name: string;
+  // Sales-only fields (optional — agent can be created without them and wired later)
+  whatsappNumber?: string;
+  email?: string;
+}
+
 interface OnboardingData {
   agencyName: string;
-  focus: string[];
-  areas: string[];
-  teamSize: string;
-  leadSources: string[];
-  needs: string[];
-  freeText: string;
-  selectedPack: string;
+  pickedAgents: PickedAgent[];
   ceoName: string;
 }
 
 const INITIAL: OnboardingData = {
   agencyName: "",
-  focus: [],
-  areas: [],
-  teamSize: "",
-  leadSources: [],
-  needs: [],
-  freeText: "",
-  selectedPack: "",
+  pickedAgents: [],
   ceoName: "",
 };
+
+// ── Canonical roles (non-CEO — CEO is hired implicitly) ──────────────
+type HirableRole = "sales" | "content" | "marketing" | "intelligence" | "operations" | "finance";
+
+interface RoleOption {
+  id: HirableRole;
+  title: string;
+  tagline: string;
+  defaultName: string;
+  needsComms: boolean; // if true, show WhatsApp + email fields when picked
+}
+
+const ROLE_OPTIONS: RoleOption[] = [
+  { id: "sales",        title: "Sales Agent",          tagline: "The only agent who messages leads. Owns the pipeline.",       defaultName: "Sarah",  needsComms: true  },
+  { id: "content",      title: "Social Media Manager", tagline: "Instagram/LinkedIn content, captions, reels, brand voice.",   defaultName: "Aisha",  needsComms: false },
+  { id: "marketing",    title: "Marketing Manager",    tagline: "Runs paid ad campaigns — Meta, Google. CPL and ROAS.",        defaultName: "Khaled", needsComms: false },
+  { id: "intelligence", title: "Data Analyst",         tagline: "Monitors DLD, listings, competitors. Surfaces opportunities.",defaultName: "Tariq",  needsComms: false },
+  { id: "operations",   title: "Operations Agent",     tagline: "Schedules viewings, confirmations, reminders. Admin + inbox.",defaultName: "Layla",  needsComms: false },
+  { id: "finance",      title: "Finance Officer",      tagline: "Invoices, commissions, rent cheques, RERA/DLD fees.",         defaultName: "Mariam", needsComms: false },
+];
 
 // ── Options ────────────────────────────────────────────────────────
 
@@ -239,7 +257,7 @@ function PackCard({ pack, selected, onClick }: { pack: Pack; selected: boolean; 
   );
 }
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 3;
 
 // ── Reusable components ────────────────────────────────────────────
 
@@ -292,37 +310,47 @@ function OptionCard({ selected, onClick, label, desc }: {
 export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardProps) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
-  const [data, setData] = useState<OnboardingData>(INITIAL);
-  const [error, setError] = useState<string | null>(null);
-  const packs = useMemo(() => buildPacks(data.needs), [data.needs]);
+  const [data, setData] = useState<OnboardingData>(() => {
+    let agencyName = "";
+    try {
+      agencyName = localStorage.getItem("aygency_pending_agency_name") ?? "";
+      if (agencyName) localStorage.removeItem("aygency_pending_agency_name");
+    } catch { /* non-critical */ }
+    return { ...INITIAL, agencyName };
+  });
 
-  function toggleArray(field: keyof OnboardingData, value: string) {
-    setData((prev) => {
-      const arr = prev[field] as string[];
-      return {
-        ...prev,
-        [field]: arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value],
-      };
-    });
-  }
+  // Fallback: if localStorage was empty (e.g. user was auto-created via API,
+  // or they already logged in once), use the better-auth user's name as the agency name.
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    retry: false,
+  });
+  useEffect(() => {
+    if (!data.agencyName && session?.user?.name) {
+      setData((d) => ({ ...d, agencyName: session.user!.name! }));
+    }
+  }, [session, data.agencyName]);
+  const [error, setError] = useState<string | null>(null);
+  // packs removed — agent picker in step 7 replaces pack selection
+
+  // toggleArray removed — steps 2-6 (focus/areas/teamSize/leadSources/needs) were cut.
+
+  const canContinueRef = useRef(canContinue);
+  const nextRef = useRef(next);
 
   function canContinue(): boolean {
     switch (step) {
       case 1: return data.agencyName.trim().length > 0;
-      case 2: return data.focus.length > 0;
-      case 3: return data.areas.length > 0;
-      case 4: return data.teamSize !== "";
-      case 5: return data.leadSources.length > 0;
-      case 6: return data.needs.length > 0;
-      case 7: return data.selectedPack !== "";
-      case 8: return data.ceoName.trim().length > 0;
+      case 2: return data.pickedAgents.length > 0 && data.pickedAgents.every((a) => a.name.trim().length > 0);
+      case 3: return data.ceoName.trim().length > 0;
       default: return false;
     }
   }
 
   function next() {
     if (!canContinue()) return;
-    if (step === 8) {
+    if (step === 3) {
       launch();
     } else {
       setStep((s) => s + 1);
@@ -333,22 +361,18 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
     if (step > 1) setStep((s) => s - 1);
   }
 
+  // Keep refs current so the keydown handler never has a stale closure
+  canContinueRef.current = canContinue;
+  nextRef.current = next;
+
   function buildAgencyContext(): string {
     const lines: string[] = [];
     lines.push(`Agency: ${data.agencyName}`);
-    lines.push(`Focus: ${data.focus.join(", ")}`);
-    lines.push(`Areas: ${data.areas.join(", ")}`);
-    lines.push(`Team size: ${data.teamSize}`);
-    lines.push(`Lead sources: ${data.leadSources.join(", ")}`);
-    lines.push(`Needs help with: ${data.needs.join(", ")}`);
-    if (data.freeText.trim()) {
-      lines.push(`Owner's notes: ${data.freeText.trim()}`);
-    }
-    const selectedPack = packs.find((p) => p.id === data.selectedPack);
-    if (selectedPack) {
-      lines.push(`Selected pack: ${data.selectedPack} (${selectedPack.tagline})`);
-      for (const dept of selectedPack.departments) {
-        lines.push(`Department: ${dept.manager} → ${dept.agents.map((a) => a.title).join(", ")}`);
+    if (data.pickedAgents.length > 0) {
+      lines.push(`Hired agents (in addition to CEO):`);
+      for (const a of data.pickedAgents) {
+        const meta = a.role === "sales" ? `${a.whatsappNumber ? ` | WhatsApp: ${a.whatsappNumber}` : ""}${a.email ? ` | Email: ${a.email}` : ""}` : "";
+        lines.push(`- ${a.name} (${a.role})${meta}`);
       }
     }
     return lines.join("\n");
@@ -357,12 +381,17 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
   // Create company + CEO + call AI to generate welcome + team proposal during loading screen
   const createMutation = useMutation({
     mutationFn: async () => {
-      const agencyContext = buildAgencyContext();
+      // Description is user-editable free text on the company. The roster
+      // is rendered live as a read-only "Team summary" in Settings, so we
+      // no longer dump the hired agents into description during onboarding.
+      // This prevents the Description textarea from showing a backend-state
+      // dump the moment the owner opens Settings for the first time.
+      void buildAgencyContext;
 
       // Step 1: Create company
       const company = await companiesApi.create({
         name: data.agencyName.trim(),
-        description: agencyContext,
+        description: null,
       });
 
       // Step 2: Create only the CEO agent (no heartbeat, no wakeup)
@@ -388,12 +417,37 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
         // May already exist
       }
 
-      // Step 4: AI generates welcome messages + team proposal (this is the slow part)
+      // Step 4: Create every picked agent. Uniqueness is enforced server-side when credentials attach.
+      for (const picked of data.pickedAgents) {
+        const roleDef = ROLE_OPTIONS.find((r) => r.id === picked.role);
+        const metadata: Record<string, unknown> = {};
+        if (picked.role === "sales") {
+          if (picked.whatsappNumber && picked.whatsappNumber.trim()) metadata.pendingWhatsappNumber = picked.whatsappNumber.trim();
+          if (picked.email && picked.email.trim()) metadata.pendingEmail = picked.email.trim();
+        }
+        try {
+          await agentsApi.create(company.id, {
+            name: picked.name.trim(),
+            role: picked.role,
+            title: roleDef?.title ?? picked.role,
+            adapterType: "claude_local",
+            // dangerouslySkipPermissions: agents run autonomously — no interactive
+            // permission prompts can be answered. Role-scoped MCP is the actual gate.
+            adapterConfig: { model: "claude-sonnet-4-20250514", dangerouslySkipPermissions: true },
+            metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+          });
+        } catch (err) {
+          console.warn(`Failed to create ${picked.role} agent:`, err);
+        }
+      }
+
+      // Step 5: AI generates welcome messages + team proposal (this is the slow part)
       // The user sees the loading screen while this runs
       try {
         await fetch(`/api/companies/${company.id}/ceo-chat/first-run`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
         });
       } catch {
         // Non-critical — CEO Chat will still work, just without pre-seeded messages
@@ -416,7 +470,7 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
   });
 
   function launch() {
-    setStep(9); // creating/loading state
+    setStep(4); // creating/loading state (one past TOTAL_STEPS)
     setError(null);
     createMutation.mutate();
   }
@@ -436,11 +490,11 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter" && canContinue() && step <= 8) next();
+      if (e.key === "Enter" && canContinueRef.current() && step <= TOTAL_STEPS) nextRef.current();
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [step, data]);
+  }, [step]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#080808] overflow-y-auto">
@@ -481,114 +535,119 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
           </StepShell>
         )}
 
-        {/* ── Step 2: Focus ── */}
+        {/* ── Step 2: Pick your agents ── */}
         {step === 2 && (
-          <StepShell title="What does your agency do?" subtitle="Select all that apply" onNext={next} onBack={back} canContinue={canContinue()}>
-            <div className="flex flex-col gap-2.5">
-              {FOCUS_OPTIONS.map((opt) => (
-                <OptionCard
-                  key={opt.id}
-                  selected={data.focus.includes(opt.id)}
-                  onClick={() => toggleArray("focus", opt.id)}
-                  label={opt.label}
-                  desc={opt.desc}
-                />
-              ))}
-            </div>
-          </StepShell>
-        )}
-
-        {/* ── Step 3: Areas ── */}
-        {step === 3 && (
-          <StepShell title="Which areas do you cover?" subtitle="Select your main areas" onNext={next} onBack={back} canContinue={canContinue()}>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {AREA_OPTIONS.map((area) => (
-                <ToggleChip key={area} selected={data.areas.includes(area)} onClick={() => toggleArray("areas", area)}>
-                  {area}
-                </ToggleChip>
-              ))}
-            </div>
-          </StepShell>
-        )}
-
-        {/* ── Step 4: Team size ── */}
-        {step === 4 && (
-          <StepShell title="How big is your current team?" onNext={next} onBack={back} canContinue={canContinue()}>
-            <div className="flex flex-col gap-2.5">
-              {TEAM_OPTIONS.map((opt) => (
-                <OptionCard
-                  key={opt.id}
-                  selected={data.teamSize === opt.id}
-                  onClick={() => setData((d) => ({ ...d, teamSize: opt.id }))}
-                  label={opt.label}
-                  desc={opt.desc}
-                />
-              ))}
-            </div>
-          </StepShell>
-        )}
-
-        {/* ── Step 5: Lead sources ── */}
-        {step === 5 && (
-          <StepShell title="Where do your leads come from?" subtitle="Select all that apply" onNext={next} onBack={back} canContinue={canContinue()}>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {SOURCE_OPTIONS.map((opt) => (
-                <ToggleChip key={opt.id} selected={data.leadSources.includes(opt.id)} onClick={() => toggleArray("leadSources", opt.id)}>
-                  {opt.label}
-                </ToggleChip>
-              ))}
-            </div>
-          </StepShell>
-        )}
-
-        {/* ── Step 6: What they need + free text ── */}
-        {step === 6 && (
-          <StepShell title="What do you need help with?" subtitle="Your CEO will build a team based on this" onNext={next} onBack={back} canContinue={canContinue()}>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap gap-2 justify-center">
-                {NEED_OPTIONS.map((opt) => (
-                  <ToggleChip
-                    key={opt.id}
-                    selected={data.needs.includes(opt.id)}
-                    onClick={() => toggleArray("needs", opt.id)}
-                  >
-                    {opt.label}
-                  </ToggleChip>
-                ))}
-              </div>
-
-              <textarea
-                placeholder="Tell your CEO anything else — e.g. We're launching a new project next month, need to generate 200 leads fast, our brokers speak Arabic and Russian…"
-                value={data.freeText}
-                onChange={(e) => setData((d) => ({ ...d, freeText: e.target.value }))}
-                rows={3}
-                className="w-full bg-zinc-900/40 border border-zinc-800 focus:border-[#10b981] rounded-xl px-4 py-3 text-[14px] text-white placeholder-zinc-600 outline-none transition-colors resize-none"
-              />
-            </div>
-          </StepShell>
-        )}
-
-        {/* ── Step 7: Choose your setup (animated org chart packs) ── */}
-        {step === 7 && (
-          <StepShell title="Choose your setup" subtitle="Your CEO will manage these departments" onNext={next} onBack={back} canContinue={canContinue()}>
+          <StepShell
+            title="Hire your team"
+            subtitle="Each agent is a real person with their own name, number, and email. Pick who you need."
+            onNext={next}
+            onBack={back}
+            canContinue={canContinue()}
+          >
             <div className="flex flex-col gap-3">
-              {packs.map((pack) => (
-                <PackCard
-                  key={pack.id}
-                  pack={pack}
-                  selected={data.selectedPack === pack.id}
-                  onClick={() => setData((d) => ({ ...d, selectedPack: pack.id }))}
-                />
-              ))}
+              {ROLE_OPTIONS.map((opt) => {
+                const picked = data.pickedAgents.find((a) => a.role === opt.id);
+                const togglePicked = () => {
+                  setData((d) => {
+                    const exists = d.pickedAgents.some((a) => a.role === opt.id);
+                    if (exists) {
+                      return { ...d, pickedAgents: d.pickedAgents.filter((a) => a.role !== opt.id) };
+                    }
+                    return { ...d, pickedAgents: [...d.pickedAgents, { role: opt.id, name: opt.defaultName }] };
+                  });
+                };
+                const updatePicked = (patch: Partial<PickedAgent>) => {
+                  setData((d) => ({
+                    ...d,
+                    pickedAgents: d.pickedAgents.map((a) => (a.role === opt.id ? { ...a, ...patch } : a)),
+                  }));
+                };
+                return (
+                  <div
+                    key={opt.id}
+                    className={`rounded-xl border transition-all ${
+                      picked ? "border-[#10b981] bg-[#10b981]/5" : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={togglePicked}
+                      className="w-full flex items-start justify-between gap-3 px-4 py-3 text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[14px] font-medium text-white">{opt.title}</div>
+                        <div className="text-[12px] text-zinc-400 mt-0.5">{opt.tagline}</div>
+                      </div>
+                      <div
+                        className={`h-5 w-5 rounded-full border-2 flex-shrink-0 mt-0.5 transition-colors ${
+                          picked ? "border-[#10b981] bg-[#10b981]" : "border-zinc-700"
+                        }`}
+                      >
+                        {picked && (
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="text-white">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+
+                    {picked && (
+                      <div className="px-4 pb-4 pt-1 flex flex-col gap-2.5 border-t border-[#10b981]/20">
+                        <div>
+                          <label className="text-[11px] uppercase tracking-wider text-zinc-500">Name</label>
+                          <input
+                            type="text"
+                            value={picked.name}
+                            onChange={(e) => updatePicked({ name: e.target.value })}
+                            placeholder={opt.defaultName}
+                            className="w-full bg-transparent border-b border-zinc-800 focus:border-[#10b981] px-0 py-1.5 text-[14px] text-white placeholder-zinc-700 outline-none transition-colors"
+                          />
+                        </div>
+                        {opt.needsComms && (
+                          <>
+                            <div>
+                              <label className="text-[11px] uppercase tracking-wider text-zinc-500">
+                                WhatsApp number <span className="text-zinc-600 normal-case">(optional — connect now or later)</span>
+                              </label>
+                              <input
+                                type="tel"
+                                value={picked.whatsappNumber ?? ""}
+                                onChange={(e) => updatePicked({ whatsappNumber: e.target.value })}
+                                placeholder="+971 50 123 4567"
+                                className="w-full bg-transparent border-b border-zinc-800 focus:border-[#10b981] px-0 py-1.5 text-[14px] text-white placeholder-zinc-700 outline-none transition-colors"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[11px] uppercase tracking-wider text-zinc-500">
+                                Email <span className="text-zinc-600 normal-case">(optional — connect now or later)</span>
+                              </label>
+                              <input
+                                type="email"
+                                value={picked.email ?? ""}
+                                onChange={(e) => updatePicked({ email: e.target.value })}
+                                placeholder={`${picked.name.toLowerCase() || opt.defaultName.toLowerCase()}@yourdomain.ae`}
+                                className="w-full bg-transparent border-b border-zinc-800 focus:border-[#10b981] px-0 py-1.5 text-[14px] text-white placeholder-zinc-700 outline-none transition-colors"
+                              />
+                            </div>
+                            <p className="text-[11px] text-zinc-500 leading-relaxed">
+                              Each sales agent is a distinct person. Two agents can't share the same number or email — same as hiring two real staff.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </StepShell>
         )}
 
-        {/* ── Step 8: Name CEO ── */}
-        {step === 8 && (
+        {/* ── Step 3: Name CEO ── */}
+        {step === 3 && (
           <StepShell
             title="Name your CEO"
-            subtitle={`${data.ceoName || "Your CEO"} will run ${data.agencyName} with ${packs.find((p) => p.id === data.selectedPack)?.departments.length ?? 0} departments`}
+            subtitle={`${data.ceoName || "Your CEO"} will run ${data.agencyName} with a team of ${data.pickedAgents.length}`}
             onNext={next}
             onBack={back}
             canContinue={canContinue()}
@@ -606,8 +665,8 @@ export function AygencyOnboardingWizard({ onComplete }: AygencyOnboardingWizardP
           </StepShell>
         )}
 
-        {/* ── Step 9: Creating (AI reasons during this screen) ── */}
-        {step === 9 && (
+        {/* ── Step 4: Creating (AI reasons during this screen) ── */}
+        {step === 4 && (
           <LoadingScreen
             ceoName={data.ceoName}
             agencyName={data.agencyName}

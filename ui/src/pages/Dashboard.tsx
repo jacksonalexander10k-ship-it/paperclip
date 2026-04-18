@@ -17,6 +17,8 @@ import { MetricCard } from "../components/MetricCard";
 import { EmptyState } from "../components/EmptyState";
 import { ActivityRow } from "../components/ActivityRow";
 import { AgentStatusCard } from "../components/AgentStatusCard";
+import { DepartmentCard } from "../components/DepartmentCard";
+import { groupTeam } from "../lib/team-grouping";
 import { PageHeader } from "../components/PageHeader";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle, Brain, MessageSquare, TrendingUp, Clock, Target, CheckCircle2 } from "lucide-react";
@@ -104,6 +106,15 @@ export function Dashboard() {
     staleTime: 60_000,
   });
 
+  // Full list — needed to split active learnings into "Ready" (never applied)
+  // vs "Applied". Stats only exposes totals, not per-learning applied counts.
+  const { data: learningsList } = useQuery({
+    queryKey: queryKeys.agentLearnings.list(selectedCompanyId!),
+    queryFn: () => agentLearningsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 60_000,
+  });
+
   const { data: recentMessages } = useQuery({
     queryKey: queryKeys.agentMessages.recent(selectedCompanyId!),
     queryFn: () => agentMessagesApi.listRecent(selectedCompanyId!, 5),
@@ -111,7 +122,21 @@ export function Dashboard() {
     staleTime: 30_000,
   });
 
-  const recentActivity = useMemo(() => (activity ?? []).slice(0, 8), [activity]);
+  const recentActivity = useMemo(() => {
+    // pageview events are noise in the business log, hide them here
+    const isPageview = (e: { type?: string; action?: string; name?: string }) => {
+      const action = (e.action ?? "").toLowerCase();
+      const type = (e.type ?? "").toLowerCase();
+      const name = (e.name ?? "").toLowerCase();
+      if (type === "view" || action === "view") return true;
+      if (action.startsWith("view.") || action.startsWith("pageview")) return true;
+      if (name.startsWith("viewed")) return true;
+      return false;
+    };
+    return (activity ?? [])
+      .filter((e) => !isPageview(e as { type?: string; action?: string; name?: string }))
+      .slice(0, 8);
+  }, [activity]);
 
   const runByAgentId = useMemo(() => {
     const map = new Map<string, NonNullable<typeof liveRuns>[number]>();
@@ -315,14 +340,19 @@ export function Dashboard() {
             )}
 
             {/* .m3 — 3 metric cards */}
-            <div className="grid grid-cols-3 gap-[10px]">
+            <div className="grid grid-cols-3 gap-[10px]" data-testid="metric-cards">
               <MetricCard
                 icon={Bot}
                 value={data.agents.running}
                 label="Working Now"
                 valueColor="green"
                 to="/agents"
-                description={<span>agents running</span>}
+                description={
+                  <span>
+                    of {(agents ?? []).length} agents{" "}
+                    {data.agents.running > 0 ? "running" : "idle"}
+                  </span>
+                }
               />
               <MetricCard
                 icon={ShieldCheck}
@@ -346,58 +376,92 @@ export function Dashboard() {
               />
             </div>
 
-            {/* Agent Intelligence — learning + comms stats */}
-            {(learningStats?.active ?? 0) > 0 || (recentMessages ?? []).length > 0 ? (
-              <div className="grid grid-cols-2 gap-[10px]">
-                <MetricCard
-                  icon={Brain}
-                  value={learningStats?.active ?? 0}
-                  label="Active Learnings"
-                  valueColor="default"
-                  description={
-                    <span>
-                      {learningStats?.totalApplied ?? 0} times applied
-                    </span>
-                  }
-                />
-                <MetricCard
-                  icon={MessageSquare}
-                  value={(recentMessages ?? []).length}
-                  label="Agent Comms"
-                  description={
-                    <span>messages today</span>
-                  }
-                />
-              </div>
-            ) : null}
-
-            {/* Your Team — org chart grid */}
-            {(agents ?? []).length > 0 && (
-              <div>
-                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-3">
-                  Your Team
-                </h3>
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                  {(agents ?? []).filter((a: Agent) => a.status !== "terminated").map((agent: Agent, index: number) => {
-                    const run = runByAgentId.get(agent.id);
-                    const currentAction = run?.issueId
-                      ? (issueById.get(run.issueId)?.title ?? null)
-                      : null;
-                    return (
-                      <AgentStatusCard
-                        key={agent.id}
-                        agent={agent}
-                        index={index}
-                        isRunning={runByAgentId.has(agent.id)}
-                        pendingApprovals={pendingApprovalsByAgentId.get(agent.id) ?? 0}
-                        currentAction={currentAction}
-                        lastActionAt={run?.startedAt ?? null}
-                      />
-                    );
-                  })}
+            {/* Agent Intelligence — learning + comms stats.
+                Learnings tile is split: "Ready" (active learnings that have
+                never been applied yet) vs "Applied" (total applications
+                across all learnings). If one side is 0 we collapse to the
+                non-zero side. */}
+            {(learningStats?.active ?? 0) > 0 || (recentMessages ?? []).length > 0 ? (() => {
+              const activeLearnings = (learningsList ?? []).filter((l) => l.active);
+              const readyCount = activeLearnings.filter((l) => (l.appliedCount ?? 0) === 0).length;
+              const appliedTotal = learningStats?.totalApplied ?? 0;
+              const learningValue =
+                readyCount > 0 && appliedTotal > 0
+                  ? `${readyCount} / ${appliedTotal}`
+                  : readyCount > 0
+                    ? `${readyCount}`
+                    : `${appliedTotal}`;
+              const learningDesc =
+                readyCount > 0 && appliedTotal > 0
+                  ? <span>Ready: {readyCount} · Applied: {appliedTotal}</span>
+                  : readyCount > 0
+                    ? <span>Ready: {readyCount}</span>
+                    : <span>Applied: {appliedTotal}</span>;
+              return (
+                <div className="grid grid-cols-2 gap-[10px]">
+                  <MetricCard
+                    icon={Brain}
+                    value={learningValue}
+                    label="Learnings"
+                    valueColor="default"
+                    description={learningDesc}
+                  />
+                  <div title="Messages agents sent to each other today (excluding CEO chat).">
+                    <MetricCard
+                      icon={MessageSquare}
+                      value={(recentMessages ?? []).length}
+                      label="Agent Comms"
+                      description={<span>messages today</span>}
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })() : null}
+
+            {/* Your Team — one card per department, click to expand and see agents */}
+            {(agents ?? []).length > 0 && (() => {
+              const sections = groupTeam(agents ?? []);
+              // Pre-compute status for every agent (used inside expanded dept cards)
+              const statusByAgent = new Map<string, { status: "idle" | "working" | "waiting" | "paused" | "error"; subtitle: string }>();
+              for (const a of agents ?? []) {
+                const run = runByAgentId.get(a.id);
+                const pending = pendingApprovalsByAgentId.get(a.id) ?? 0;
+                const currentAction = run?.issueId ? (issueById.get(run.issueId)?.title ?? null) : null;
+                let status: "idle" | "working" | "waiting" | "paused" | "error" = "idle";
+                if (a.status === "paused") status = "paused";
+                else if (a.status === "error") status = "error";
+                else if (runByAgentId.has(a.id)) status = "working";
+                else if (pending > 0) status = "waiting";
+                let subtitle = "Standing by";
+                if (status === "working" && currentAction) subtitle = currentAction;
+                else if (status === "waiting") subtitle = `${pending} pending approval${pending !== 1 ? "s" : ""}`;
+                else if (status === "paused") subtitle = "Paused";
+                else if (status === "error") subtitle = "Needs attention";
+                statusByAgent.set(a.id, { status, subtitle });
+              }
+              return (
+                <div>
+                  <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-3">
+                    Your Team
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-start" data-testid="team-grid">
+                    {sections.map((section) => {
+                      const members = [...section.managers, ...section.agents];
+                      if (members.length === 0) return null;
+                      return (
+                        <DepartmentCard
+                          key={section.key}
+                          deptKey={section.key}
+                          label={section.label}
+                          members={members}
+                          statusByAgent={statusByAgent}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             <PluginSlotOutlet
               slotTypes={["dashboardWidget"]}
@@ -409,7 +473,7 @@ export function Dashboard() {
             {/* What Just Happened — .sec header + activity rows */}
             {recentActivity.length > 0 && (
               <div>
-                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]">
+                <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.12em] mb-[9px]" data-testid="activity-header">
                   Recent Activity
                 </h3>
                 <div className="flex flex-col gap-px">

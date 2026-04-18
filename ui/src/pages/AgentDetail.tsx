@@ -25,10 +25,15 @@ import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { AgentConfigForm } from "../components/AgentConfigForm";
+import { AgentTrainingTab } from "../components/agent/AgentTrainingTab";
+import { AgentScheduleTab } from "../components/agent/AgentScheduleTab";
+import { AgentSettingsSimplified } from "../components/agent/AgentSettingsSimplified";
 import { ThoughtProcessStream } from "../components/ThoughtProcessStream";
 import { ConnectedAppsGrid } from "../components/ConnectedAppsGrid";
+import { AgentConnectionsPanel } from "../components/AgentConnectionsPanel";
 import { AgentLearningsTab } from "../components/AgentLearningsTab";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
+import { agentAvatarGradient, agentInitials } from "../lib/team-grouping";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { assetsApi } from "../api/assets";
 import { getUIAdapter, buildTranscript } from "../adapters";
@@ -81,6 +86,7 @@ import { Input } from "@/components/ui/input";
 // import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
 import { RunTranscriptView, type TranscriptMode } from "../components/transcript/RunTranscriptView";
 import { WhatsAppConnect } from "../components/WhatsAppConnect";
+import { WhatsAppInbox } from "../components/WhatsAppInbox";
 import { GmailConnect } from "../components/GmailConnect";
 import {
   isUuidLike,
@@ -92,6 +98,7 @@ import {
   type HeartbeatRun,
   type HeartbeatRunEvent,
   type AgentRuntimeState,
+  type Issue,
   type LiveEvent,
   type WorkspaceOperation,
 } from "@paperclipai/shared";
@@ -112,16 +119,10 @@ const runStatusIcons: Record<string, { icon: typeof CheckCircle2; color: string 
   cancelled: { icon: Slash, color: "text-neutral-500 dark:text-neutral-400" },
 };
 
-const DETAIL_AGENT_GRADIENTS = [
-  "linear-gradient(135deg, #064e3b, #047857)",
-  "linear-gradient(135deg, #3730a3, #4f46e5)",
-  "linear-gradient(135deg, #0c4a6e, #0369a1)",
-  "linear-gradient(135deg, #78350f, #b45309)",
-  "linear-gradient(135deg, #7f1d1d, #b91c1c)",
-  "linear-gradient(135deg, #1e3a5f, #1d4ed8)",
-  "linear-gradient(135deg, #134e4a, #0f766e)",
-  "linear-gradient(135deg, #500724, #9d174d)",
-] as const;
+// Avatar gradients are now computed per-agent from agent.id via
+// agentAvatarGradient() — see ../lib/team-grouping. This preserves the
+// previous "distinct palette per agent" feel but makes collisions impossible
+// between two agents that happen to share initials.
 
 const REDACTED_ENV_VALUE = "***REDACTED***";
 const SECRET_ENV_KEY_RE =
@@ -239,15 +240,28 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "learnings";
+type AgentDetailView =
+  | "dashboard"          // → Home tab
+  | "instructions"       // legacy, still routable
+  | "configuration"      // → Settings tab
+  | "skills"             // legacy, still routable
+  | "runs"               // legacy Activity (reachable via URL only)
+  | "budget"
+  | "learnings"
+  | "whatsapp"           // → Messages tab
+  | "training"           // new
+  | "schedule";          // new
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "instructions" || value === "prompts") return "instructions";
-  if (value === "configure" || value === "configuration") return "configuration";
+  if (value === "configure" || value === "configuration" || value === "settings") return "configuration";
   if (value === "skills") return "skills";
   if (value === "budget") return "budget";
   if (value === "runs") return value;
   if (value === "learnings") return "learnings";
+  if (value === "whatsapp" || value === "messages") return "whatsapp";
+  if (value === "training") return "training";
+  if (value === "schedule") return "schedule";
   return "dashboard";
 }
 
@@ -407,7 +421,7 @@ function WorkspaceOperationLogViewer({
             <div className="text-xs text-muted-foreground">No persisted log lines.</div>
           )}
           {chunks.length > 0 && (
-            <div className="max-h-64 overflow-y-auto rounded bg-neutral-100 p-2 font-mono text-xs dark:bg-neutral-950">
+            <div className="max-h-64 overflow-y-auto rounded bg-neutral-100 p-2 text-xs dark:bg-neutral-950">
               {chunks.map((chunk, index) => (
                 <div key={`${chunk.ts}-${index}`} className="flex gap-2">
                   <span className="shrink-0 text-neutral-500">
@@ -415,7 +429,7 @@ function WorkspaceOperationLogViewer({
                   </span>
                   <span
                     className={cn(
-                      "shrink-0 w-14",
+                      "shrink-0 w-4",
                       chunk.stream === "stderr"
                         ? "text-red-600 dark:text-red-300"
                         : chunk.stream === "system"
@@ -423,7 +437,7 @@ function WorkspaceOperationLogViewer({
                           : "text-muted-foreground",
                     )}
                   >
-                    [{chunk.stream}]
+                    {chunk.stream === "stderr" ? "!" : ""}
                   </span>
                   <span className="whitespace-pre-wrap break-all">{redactPathText(chunk.chunk, censorUsernameInLogs)}</span>
                 </div>
@@ -466,13 +480,13 @@ function WorkspaceOperationsSection({
               {operation.command && (
                 <div className="text-xs break-all">
                   <span className="text-muted-foreground">Command: </span>
-                  <span className="font-mono">{operation.command}</span>
+                  <span>{operation.command}</span>
                 </div>
               )}
               {operation.cwd && (
                 <div className="text-xs break-all">
                   <span className="text-muted-foreground">Working dir: </span>
-                  <span className="font-mono">{operation.cwd}</span>
+                  <span>{operation.cwd}</span>
                 </div>
               )}
               {(asNonEmptyString(metadata?.branchName)
@@ -482,19 +496,19 @@ function WorkspaceOperationsSection({
                 || asNonEmptyString(metadata?.cleanupAction)) && (
                 <div className="grid gap-1 text-xs sm:grid-cols-2">
                   {asNonEmptyString(metadata?.branchName) && (
-                    <div><span className="text-muted-foreground">Branch: </span><span className="font-mono">{metadata?.branchName as string}</span></div>
+                    <div><span className="text-muted-foreground">Branch: </span><span>{metadata?.branchName as string}</span></div>
                   )}
                   {asNonEmptyString(metadata?.baseRef) && (
-                    <div><span className="text-muted-foreground">Base ref: </span><span className="font-mono">{metadata?.baseRef as string}</span></div>
+                    <div><span className="text-muted-foreground">Base ref: </span><span>{metadata?.baseRef as string}</span></div>
                   )}
                   {asNonEmptyString(metadata?.worktreePath) && (
-                    <div className="break-all"><span className="text-muted-foreground">Worktree: </span><span className="font-mono">{metadata?.worktreePath as string}</span></div>
+                    <div className="break-all"><span className="text-muted-foreground">Worktree: </span><span>{metadata?.worktreePath as string}</span></div>
                   )}
                   {asNonEmptyString(metadata?.repoRoot) && (
-                    <div className="break-all"><span className="text-muted-foreground">Repo root: </span><span className="font-mono">{metadata?.repoRoot as string}</span></div>
+                    <div className="break-all"><span className="text-muted-foreground">Repo root: </span><span>{metadata?.repoRoot as string}</span></div>
                   )}
                   {asNonEmptyString(metadata?.cleanupAction) && (
-                    <div><span className="text-muted-foreground">Cleanup: </span><span className="font-mono">{metadata?.cleanupAction as string}</span></div>
+                    <div><span className="text-muted-foreground">Cleanup: </span><span>{metadata?.cleanupAction as string}</span></div>
                   )}
                 </div>
               )}
@@ -504,19 +518,8 @@ function WorkspaceOperationsSection({
                 </div>
               )}
               {operation.stderrExcerpt && operation.stderrExcerpt.trim() && (
-                <div>
-                  <div className="mb-1 text-xs text-red-700 dark:text-red-300">stderr excerpt</div>
-                  <pre className="rounded-md bg-red-50 p-2 text-xs whitespace-pre-wrap break-all text-red-800 dark:bg-neutral-950 dark:text-red-100">
-                    {redactPathText(operation.stderrExcerpt, censorUsernameInLogs)}
-                  </pre>
-                </div>
-              )}
-              {operation.stdoutExcerpt && operation.stdoutExcerpt.trim() && (
-                <div>
-                  <div className="mb-1 text-xs text-muted-foreground">stdout excerpt</div>
-                  <pre className="rounded-md bg-neutral-100 p-2 text-xs whitespace-pre-wrap break-all dark:bg-neutral-950">
-                    {redactPathText(operation.stdoutExcerpt, censorUsernameInLogs)}
-                  </pre>
+                <div className="text-xs text-red-600 dark:text-red-400">
+                  Agent encountered an issue during this operation.
                 </div>
               )}
               {operation.logRef && (
@@ -658,18 +661,17 @@ export function AgentDetail() {
       }
       return;
     }
-    const canonicalTab =
-      activeView === "instructions"
-        ? "instructions"
-        : activeView === "configuration"
-          ? "configuration"
-          : activeView === "skills"
-            ? "skills"
-            : activeView === "runs"
-              ? "runs"
-              : activeView === "budget"
-                ? "budget"
-              : "dashboard";
+    const canonicalTab: string =
+      activeView === "instructions" ? "instructions"
+      : activeView === "configuration" ? "configuration"
+      : activeView === "skills" ? "skills"
+      : activeView === "runs" ? "runs"
+      : activeView === "budget" ? "budget"
+      : activeView === "whatsapp" ? "whatsapp"
+      : activeView === "learnings" ? "learnings"
+      : activeView === "training" ? "training"
+      : activeView === "schedule" ? "schedule"
+      : "dashboard";
     if (routeAgentRef !== canonicalAgentRef || urlTab !== canonicalTab) {
       navigate(`/agents/${canonicalAgentRef}/${canonicalTab}`, { replace: true });
       return;
@@ -774,14 +776,20 @@ export function AgentDetail() {
     const crumbs: { label: string; href?: string }[] = [
       { label: "Agents", href: "/agents" },
     ];
-    const agentName = agent?.name ?? routeAgentRef ?? "Agent";
+    // Prefer the resolved agent display name; only fall back to the URL slug
+    // when we haven't fetched the agent yet. Always capitalize the first letter
+    // so the browser tab title doesn't flash a lowercase slug like "saif".
+    const rawName = agent?.name ?? routeAgentRef ?? "Agent";
+    const agentName = rawName.length > 0
+      ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
+      : rawName;
     if (activeView === "dashboard" && !urlRunId) {
       crumbs.push({ label: agentName });
     } else {
       crumbs.push({ label: agentName, href: `/agents/${canonicalAgentRef}/dashboard` });
       if (urlRunId) {
         crumbs.push({ label: "History", href: `/agents/${canonicalAgentRef}/runs` });
-        crumbs.push({ label: `Run ${urlRunId.slice(0, 8)}` });
+        crumbs.push({ label: "Run Details" });
       } else if (activeView === "instructions") {
         crumbs.push({ label: "Instructions" });
       } else if (activeView === "configuration") {
@@ -799,6 +807,20 @@ export function AgentDetail() {
     setBreadcrumbs(crumbs);
   }, [setBreadcrumbs, agent, routeAgentRef, canonicalAgentRef, activeView, urlRunId]);
 
+  // Browser tab title — wait for the agent to load so we never flash the raw
+  // lowercase URL slug (e.g. "saif · Agents · Aygency World"). Setting
+  // document.title here runs AFTER the breadcrumb effect above, so this wins.
+  useEffect(() => {
+    if (!agent?.name) return;
+    const name = agent.name;
+    const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
+    const prev = document.title;
+    document.title = `${capitalized} · Agents · Aygency World`;
+    return () => {
+      document.title = prev;
+    };
+  }, [agent?.name]);
+
   useEffect(() => {
     closePanel();
     return () => closePanel();
@@ -812,15 +834,6 @@ export function AgentDetail() {
     }, [configDirty]),
   );
 
-  const agentGradientIndex = useMemo(() => {
-    const name = agent?.name ?? "";
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-    }
-    return Math.abs(hash) % DETAIL_AGENT_GRADIENTS.length;
-  }, [agent?.name]);
-
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
   if (!agent) return null;
@@ -830,8 +843,14 @@ export function AgentDetail() {
   const isPendingApproval = agent.status === "pending_approval";
   const showConfigActionBar = (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
 
-  const agentGradient = DETAIL_AGENT_GRADIENTS[agentGradientIndex];
-  const agentInitials = agent.name.slice(0, 2).toUpperCase();
+  // Avatar gradient + initials are derived from a stable per-agent key (agent.id)
+  // so two agents with the same initials (e.g. "Claire" + "Clive" → "CL") get
+  // distinct colours, and initials themselves differentiate when there's a
+  // collision in the broader roster. For a single-agent detail view we can't
+  // detect collisions, so we pass the role as a disambiguator always — initials
+  // fall back to first-letter-of-name + first-letter-of-role only on collision.
+  const agentGradient = agentAvatarGradient(agent.id || agent.name);
+  const agentInitialsText = agentInitials(agent.name, agent.role);
   const isAgentWorking = agent.status === "running" || agent.status === "active" || !!mobileLiveRun;
   const isAgentPaused = agent.status === "paused" || agent.status === "error";
 
@@ -847,7 +866,7 @@ export function AgentDetail() {
             background: agentGradient,
           }}
         >
-          {agentInitials}
+          {agentInitialsText}
         </div>
         <h1 className="text-[14px] font-bold tracking-[-0.02em] text-foreground truncate">
           {agent.name}
@@ -893,7 +912,9 @@ export function AgentDetail() {
             onClick={() => openNewIssue({ assigneeAgentId: agent.id })}
           >
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
-            <span className="hidden sm:inline">Assign Task</span>
+            <span className="hidden sm:inline">
+              Assign task
+            </span>
           </Button>
           {/* Overflow menu */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
@@ -951,15 +972,20 @@ export function AgentDetail() {
       {/* Tab bar */}
       {!urlRunId && (
         <div className="flex border-b border-border/40 px-5 gap-0.5">
-          {([
-            { value: "dashboard", label: "Overview" },
-            { value: "runs", label: "Activity" },
-            { value: "learnings", label: "Learnings" },
-            { value: "instructions", label: "Instructions" },
-            { value: "configuration", label: "Settings" },
-          ] as const).map((t) => (
+          {(((): readonly { value: string; label: string }[] => {
+            const base: { value: string; label: string }[] = [{ value: "dashboard", label: "Home" }];
+            // Show Messages tab for ALL agents so the tab set is uniform across
+            // the roster. Agents without messaging capability render an empty
+            // state inside the tab — see `canMessage` check below.
+            base.push({ value: "whatsapp", label: "Messages" });
+            base.push({ value: "training", label: "Training" });
+            base.push({ value: "schedule", label: "Schedule" });
+            base.push({ value: "configuration", label: "Settings" });
+            return base;
+          })()).map((t) => (
             <button
               key={t.value}
+              data-testid={t.value === "whatsapp" ? "agent-tab-whatsapp" : undefined}
               className={cn(
                 "py-2.5 px-3 text-sm font-semibold cursor-pointer border-b-2 transition-colors",
                 activeView === t.value
@@ -974,7 +1000,32 @@ export function AgentDetail() {
         </div>
       )}
 
-      {/* Scrollable content area */}
+      {/* WhatsApp tab — edge-to-edge, no padding */}
+      {activeView === "whatsapp" && (() => {
+        const canMessage = agent.role === "sales" || agent.role === "viewing" || agent.role === "content";
+        return (
+          <div className="flex-1 overflow-hidden">
+            {canMessage ? (
+              <WhatsAppInbox agentId={agent.id} />
+            ) : (
+              <div className="h-full flex items-center justify-center px-6">
+                <div className="max-w-sm text-center">
+                  <p className="text-[13px] font-semibold text-foreground/80">
+                    This agent doesn't send messages.
+                  </p>
+                  <p className="mt-1 text-[12px] text-muted-foreground leading-[1.5]">
+                    Only sales, viewing, and content agents use the Messages inbox.
+                    {" "}This {agent.role ?? "agent"} works through other channels.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Scrollable content area (all tabs except WhatsApp) */}
+      {activeView !== "whatsapp" && (
       <div className="flex-1 overflow-y-auto">
         <div className="px-5 py-4 space-y-6">
           {actionError && <p className="text-sm text-destructive">{actionError}</p>}
@@ -1063,16 +1114,25 @@ export function AgentDetail() {
             />
           )}
 
-          {activeView === "configuration" && (
-            <AgentConfigurePage
-              agent={agent}
+          {activeView === "training" && resolvedCompanyId && (
+            <AgentTrainingTab
               agentId={agent.id}
+              companyId={resolvedCompanyId}
+              agentRole={agent.role}
+            />
+          )}
+
+          {activeView === "schedule" && resolvedCompanyId && (
+            <AgentScheduleTab
+              agentId={agent.id}
+              companyId={resolvedCompanyId}
+            />
+          )}
+
+          {activeView === "configuration" && (
+            <AgentSettingsSimplified
+              agent={agent}
               companyId={resolvedCompanyId ?? undefined}
-              onDirtyChange={setConfigDirty}
-              onSaveActionChange={setSaveConfigAction}
-              onCancelActionChange={setCancelConfigAction}
-              onSavingChange={setConfigSaving}
-              updatePermissions={updatePermissions}
             />
           )}
 
@@ -1113,6 +1173,7 @@ export function AgentDetail() {
           ) : null}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -1192,7 +1253,7 @@ function LatestRunCard({ runs, agentId }: { runs: HeartbeatRun[]; agentId: strin
         <div className="flex items-center gap-2">
           <StatusIcon className={cn("h-3.5 w-3.5", statusInfo.color, run.status === "running" && "animate-spin")} />
           <StatusBadge status={run.status} />
-          <span className="font-mono text-xs text-muted-foreground">{run.id.slice(0, 8)}</span>
+          <span className="text-xs text-muted-foreground">{new Date(run.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
           <span className={cn(
             "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
             run.invocationSource === "timer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
@@ -1259,6 +1320,200 @@ function AgentStatsCard({ companyId, agentId }: { companyId: string; agentId: st
   );
 }
 
+function AutoApproveToggle({ agent }: { agent: AgentDetailRecord }) {
+  const queryClient = useQueryClient();
+  const meta = (agent.metadata ?? {}) as Record<string, unknown>;
+  const current = meta.autoApprove === true;
+
+  const mutation = useMutation({
+    mutationFn: (enabled: boolean) => agentsApi.setAutoApprove(agent.id, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent", agent.id] });
+      queryClient.invalidateQueries({ queryKey: ["agents", agent.companyId] });
+    },
+  });
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm px-4 py-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="text-[13px] font-semibold">Auto-reply mode</div>
+          <div className="text-[11.5px] text-muted-foreground mt-0.5">
+            {current
+              ? "Outbound messages send automatically without approval."
+              : "Every outbound message waits for your approval in CEO Chat."}
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={current}
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate(!current)}
+          className={cn(
+            "relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0",
+            current ? "bg-primary" : "bg-muted",
+            mutation.isPending && "opacity-50 cursor-wait",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+              current ? "translate-x-6" : "translate-x-1",
+            )}
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface ProfileTemplate {
+  id: string;
+  name: string;
+  tagline: string;
+  appliesToRole: string;
+  config: {
+    goal: string;
+    tone?: string;
+    cadence?: string;
+    handoffRules?: string;
+    dontDo?: string;
+  };
+  isStock: boolean;
+}
+
+function ProfileCard({ agentId, companyId }: { agentId: string; companyId: string }) {
+  // Fetch current profile
+  const { data: current } = useQuery<{ profile: ProfileTemplate | null }>({
+    queryKey: ["agent-profile", agentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/companies/${companyId}/agents/${agentId}/profile`, { credentials: "include" });
+      if (!res.ok) return { profile: null };
+      return res.json();
+    },
+  });
+  // Fetch available templates for sales
+  const { data: templates } = useQuery<ProfileTemplate[]>({
+    queryKey: ["profile-templates", companyId, "sales"],
+    queryFn: async () => {
+      const res = await fetch(`/api/companies/${companyId}/profile-templates?role=sales`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const queryClient = useQueryClient();
+  const [picking, setPicking] = useState(false);
+  const applyMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      const res = await fetch(`/api/companies/${companyId}/agents/${agentId}/profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ templateId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent-profile", agentId] });
+      setPicking(false);
+    },
+  });
+
+  const profile = current?.profile;
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm px-4 py-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-semibold">Profile</div>
+          {profile ? (
+            <div className="mt-1">
+              <div className="text-[12.5px] font-medium">{profile.name}</div>
+              <div className="text-[11.5px] text-muted-foreground mt-0.5">{profile.tagline}</div>
+              <div className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+                <span className="font-medium">Goal:</span> {profile.config.goal}
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11.5px] text-muted-foreground mt-0.5">
+              Using role defaults. Ask CEO to set up a profile, or pick one below.
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPicking((p) => !p)}
+          className="text-[11px] font-medium px-2.5 py-1 rounded-md border border-border hover:bg-accent/50 shrink-0"
+        >
+          {picking ? "Cancel" : profile ? "Switch" : "Pick one"}
+        </button>
+      </div>
+      {picking && templates && templates.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border/40 space-y-1.5">
+          {templates.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              disabled={applyMutation.isPending}
+              onClick={() => applyMutation.mutate(t.id)}
+              className={cn(
+                "w-full text-left px-3 py-2 rounded-md border border-border/40 hover:border-primary/50 hover:bg-accent/30 transition-colors",
+                profile?.id === t.id && "border-primary bg-primary/5",
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[12px] font-medium">{t.name}</div>
+                {t.isStock && <span className="text-[10px] text-muted-foreground">stock</span>}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">{t.tagline}</div>
+            </button>
+          ))}
+          <div className="text-[11px] text-muted-foreground mt-2 px-1">
+            Want a custom profile? Ask the CEO in chat — they'll walk you through it.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClearQueueButton({ agentId, agentName, companyId }: { agentId: string; agentName: string; companyId: string }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/companies/${companyId}/agents/${agentId}/clear-queue`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<{ approvalsDeclined: number; tasksCancelled: number }>;
+    },
+    onSuccess: () => {
+      // Refresh anything that might be showing stale counts.
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const k = q.queryKey[0];
+        return k === "agents" || k === "approvals" || k === "issues" || k === "sidebar-badges";
+      }});
+    },
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (confirm(`Clear everything in ${agentName}'s queue? This cancels pending tasks and declines pending approvals.`)) {
+          mutation.mutate();
+        }
+      }}
+      disabled={mutation.isPending}
+      className="text-[11px] font-medium text-muted-foreground hover:text-destructive transition-colors"
+    >
+      {mutation.isPending ? "Clearing..." : "Clear queue"}
+    </button>
+  );
+}
+
 function AgentOverview({
   agent,
   runs,
@@ -1269,19 +1524,21 @@ function AgentOverview({
 }: {
   agent: AgentDetailRecord;
   runs: HeartbeatRun[];
-  assignedIssues: { id: string; title: string; status: string; priority: string; identifier?: string | null; createdAt: Date }[];
+  assignedIssues: Issue[];
   runtimeState?: AgentRuntimeState;
   agentId: string;
   agentRouteId: string;
 }) {
-  // Compute overview metrics
-  const sorted = useMemo(
+  const [showRecentTasks, setShowRecentTasks] = useState(false);
+
+  // ── Runs / heartbeat stats ──
+  const sortedRuns = useMemo(
     () => [...runs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [runs],
   );
-  const liveRun = sorted.find((r) => r.status === "running" || r.status === "queued");
-  const currentRun = liveRun ?? sorted[0];
-  const isLive = currentRun && (currentRun.status === "running" || currentRun.status === "queued");
+  const liveRun = sortedRuns.find((r) => r.status === "running" || r.status === "queued");
+  const currentRun = liveRun ?? sortedRuns[0];
+  const isLiveRun = currentRun && (currentRun.status === "running" || currentRun.status === "queued");
 
   const thirtyDayRuns = useMemo(() => {
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -1296,6 +1553,89 @@ function AgentOverview({
     [thirtyDayRuns],
   );
 
+  // ── Task bucketing — the new core of this page ──
+  // Active   = in_progress or in_review
+  // Queued   = todo, backlog, or blocked
+  // Recent   = done or cancelled (completed work)
+  const { activeTasks, queuedTasks, recentTasks, doneThisWeek } = useMemo(() => {
+    const active: Issue[] = [];
+    const queued: Issue[] = [];
+    const recent: Issue[] = [];
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let doneThisWeekCount = 0;
+
+    for (const issue of assignedIssues) {
+      switch (issue.status) {
+        case "in_progress":
+        case "in_review":
+          active.push(issue);
+          break;
+        case "todo":
+        case "backlog":
+        case "blocked":
+          queued.push(issue);
+          break;
+        case "done":
+        case "cancelled":
+          recent.push(issue);
+          if (issue.status === "done" && issue.completedAt) {
+            const completed = new Date(issue.completedAt).getTime();
+            if (completed > oneWeekAgo) doneThisWeekCount += 1;
+          }
+          break;
+      }
+    }
+
+    // Active: most recently started / updated first
+    active.sort((a, b) => {
+      const aTime = a.startedAt ? new Date(a.startedAt).getTime() : new Date(a.updatedAt).getTime();
+      const bTime = b.startedAt ? new Date(b.startedAt).getTime() : new Date(b.updatedAt).getTime();
+      return bTime - aTime;
+    });
+    // Queued: priority first, then newest
+    const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+    queued.sort((a, b) => {
+      const pa = priorityOrder[a.priority] ?? 4;
+      const pb = priorityOrder[b.priority] ?? 4;
+      if (pa !== pb) return pa - pb;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    // Recent: most recently completed first
+    recent.sort((a, b) => {
+      const aTime = a.completedAt
+        ? new Date(a.completedAt).getTime()
+        : a.cancelledAt
+          ? new Date(a.cancelledAt).getTime()
+          : new Date(a.updatedAt).getTime();
+      const bTime = b.completedAt
+        ? new Date(b.completedAt).getTime()
+        : b.cancelledAt
+          ? new Date(b.cancelledAt).getTime()
+          : new Date(b.updatedAt).getTime();
+      return bTime - aTime;
+    });
+
+    return {
+      activeTasks: active,
+      queuedTasks: queued,
+      recentTasks: recent,
+      doneThisWeek: doneThisWeekCount,
+    };
+  }, [assignedIssues]);
+
+  // Which task is currently "live" — correlate heartbeat run to the task it's working on
+  const liveRunIssueId = useMemo(() => {
+    if (!isLiveRun || !currentRun) return null;
+    // HeartbeatRun may have taskId / issueId field; defensive access
+    const runRecord = currentRun as unknown as { taskId?: string | null; issueId?: string | null };
+    return runRecord.taskId ?? runRecord.issueId ?? null;
+  }, [currentRun, isLiveRun]);
+
+  // ── Status header line ──
+  const agentFirstName = agent.name?.split(/\s+/)[0] ?? agent.name ?? "this agent";
+  const spendThisMonthCents = agent.spentMonthlyCents ?? 0;
+
+  // ── Current run excerpt (kept for the demoted current run strip) ──
   const currentRunSummary = useMemo(() => {
     if (!currentRun) return "";
     const raw = currentRun.resultJson
@@ -1319,30 +1659,282 @@ function AgentOverview({
 
   return (
     <div className="space-y-6">
-      {/* Current run card */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* 1. Agent Status Summary — the "what's this agent doing" line */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm px-4 py-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isLiveRun ? (
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+          ) : activeTasks.length > 0 ? (
+            <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-muted-foreground/30 shrink-0" />
+          )}
+          <span className="text-[13px] font-semibold">{agent.name ?? "Agent"}</span>
+          <span className="text-[11px] text-muted-foreground">·</span>
+          {activeTasks.length > 0 ? (
+            <>
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 tabular-nums">{activeTasks.length} active</span>
+              <span className="text-[11px] text-muted-foreground">·</span>
+            </>
+          ) : (
+            <>
+              <span className="text-[11px] text-muted-foreground">Idle</span>
+              <span className="text-[11px] text-muted-foreground">·</span>
+            </>
+          )}
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {queuedTasks.length} queued
+          </span>
+          <span className="text-[11px] text-muted-foreground">·</span>
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {doneThisWeek} done this week
+          </span>
+          {spendThisMonthCents > 0 && (
+            <>
+              <span className="text-[11px] text-muted-foreground">·</span>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                ${(spendThisMonthCents / 100).toFixed(2)} this month
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Auto-reply toggle — only visible for sales agents */}
+      {agent.role === "sales" && <AutoApproveToggle agent={agent} />}
+
+      {/* Profile card — current role configuration */}
+      {agent.role === "sales" && <ProfileCard agentId={agentId} companyId={agent.companyId} />}
+
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* 2. Active Work — the 3 bucketed task sections                 */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        {/* 2a. Active bucket */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Active
+              </h3>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {activeTasks.length}
+              </span>
+            </div>
+            {activeTasks.length > 5 && (
+              <Link
+                to={`/issues?participantAgentId=${agentId}&filter=active`}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors no-underline"
+              >
+                Show all {activeTasks.length}
+              </Link>
+            )}
+          </div>
+          {activeTasks.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/50 px-4 py-5 text-[12px] text-muted-foreground text-center">
+              Nothing active — {agentFirstName} is idle
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border/50 overflow-hidden">
+              {activeTasks.slice(0, 5).map((issue) => {
+                const isLiveOnThisTask = liveRunIssueId === issue.id;
+                // Dead-man switch (read-time): if this issue hasn't been touched
+                // in 15+ minutes AND we don't have a live run on it, surface a
+                // "stale" subtitle so operators know the in_progress status is
+                // probably lying. A background reconciliation should eventually
+                // flip it to failed — until then, at least tell the user.
+                const lastTouchMs = new Date(issue.updatedAt).getTime();
+                const ageMs = Date.now() - lastTouchMs;
+                const isStale = !isLiveOnThisTask && ageMs > 15 * 60 * 1000;
+                return (
+                  <Link
+                    key={issue.id}
+                    to={`/issues/${issue.identifier ?? issue.id}`}
+                    className="flex flex-col gap-0.5 px-4 py-2.5 border-b border-border/50 last:border-b-0 hover:bg-accent/20 transition-colors no-underline text-inherit"
+                  >
+                    <div className="flex items-center gap-3">
+                      {isLiveOnThisTask ? (
+                        <span className="relative flex h-2 w-2 shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                        </span>
+                      ) : (
+                        <span className={cn(
+                          "h-2 w-2 rounded-full shrink-0",
+                          isStale ? "bg-amber-400/70" : "bg-emerald-500/60",
+                        )} />
+                      )}
+                      <span className="text-[13px] truncate flex-1">{issue.title}</span>
+                      <StatusBadge status={issue.status} />
+                      <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
+                        {relativeTime(issue.startedAt ?? issue.updatedAt)}
+                      </span>
+                    </div>
+                    {isStale && (
+                      <span className="pl-5 text-[10.5px] text-amber-600 dark:text-amber-400">
+                        (stale — may not be running)
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 2b. Queued bucket */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Queued
+              </h3>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {queuedTasks.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              {queuedTasks.length > 0 && (
+                <ClearQueueButton agentId={agentId} agentName={agent.name} companyId={agent.companyId} />
+              )}
+              {queuedTasks.length > 5 && (
+                <Link
+                  to={`/issues?participantAgentId=${agentId}&filter=queued`}
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors no-underline"
+                >
+                  Show all {queuedTasks.length}
+                </Link>
+              )}
+            </div>
+          </div>
+          {queuedTasks.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/50 px-4 py-5 text-[12px] text-muted-foreground text-center">
+              Nothing queued
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border/50 overflow-hidden">
+              {queuedTasks.slice(0, 5).map((issue) => (
+                <Link
+                  key={issue.id}
+                  to={`/issues/${issue.identifier ?? issue.id}`}
+                  className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-b-0 hover:bg-accent/20 transition-colors no-underline text-inherit"
+                >
+                  <span className={cn(
+                    "h-2 w-2 rounded-full shrink-0",
+                    issue.priority === "critical" ? "bg-red-500" :
+                    issue.priority === "high" ? "bg-amber-500" :
+                    "bg-muted-foreground/40",
+                  )} />
+                  <span className="text-[13px] truncate flex-1">{issue.title}</span>
+                  {issue.priority === "critical" || issue.priority === "high" ? (
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      {issue.priority}
+                    </span>
+                  ) : null}
+                  <StatusBadge status={issue.status} />
+                  <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
+                    {relativeTime(issue.createdAt)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 2c. Recent bucket — collapsed by default */}
+        {recentTasks.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowRecentTasks((v) => !v)}
+              className="flex items-center gap-2 px-1 w-full text-left hover:opacity-80 transition-opacity"
+            >
+              <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Recent
+              </h3>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {recentTasks.length}
+              </span>
+              <span className="text-[11px] text-muted-foreground ml-auto">
+                {showRecentTasks ? "Hide" : "Show"}
+              </span>
+            </button>
+            {showRecentTasks && (
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                {recentTasks.slice(0, 10).map((issue) => {
+                  const finishedAt = issue.completedAt ?? issue.cancelledAt ?? issue.updatedAt;
+                  return (
+                    <Link
+                      key={issue.id}
+                      to={`/issues/${issue.identifier ?? issue.id}`}
+                      className="flex items-center gap-3 px-4 py-2 border-b border-border/50 last:border-b-0 hover:bg-accent/20 transition-colors no-underline text-inherit opacity-70 hover:opacity-100"
+                    >
+                      <span className={cn(
+                        "h-2 w-2 rounded-full shrink-0",
+                        issue.status === "done" ? "bg-emerald-500/50" : "bg-muted-foreground/30",
+                      )} />
+                      <span className="text-[13px] truncate flex-1">{issue.title}</span>
+                      <StatusBadge status={issue.status} />
+                      <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
+                        {relativeTime(finishedAt)}
+                      </span>
+                    </Link>
+                  );
+                })}
+                {recentTasks.length > 10 && (
+                  <div className="px-4 py-2 text-[11px] text-muted-foreground text-center border-t border-border/50">
+                    +{recentTasks.length - 10} more
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* 3. Connected Accounts — editable panel                       */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <AgentConnectionsPanel
+        agentId={agentId}
+        agentName={agent.name ?? "this agent"}
+        companyId={agent.companyId}
+      />
+
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* 4. Current Run (demoted — only shown if live or recent)     */}
+      {/* ──────────────────────────────────────────────────────────── */}
       {currentRun && (
         <Link
           to={`/agents/${agentRouteId}/runs/${currentRun.id}`}
           className={cn(
             "block rounded-xl p-4 no-underline text-inherit transition-colors",
-            isLive
+            isLiveRun
               ? "bg-primary/5 border border-primary/20 hover:bg-primary/10"
               : "bg-card/80 border border-border/50 hover:bg-accent/30"
           )}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              {isLive && (
+              {isLiveRun && (
                 <span className="relative flex h-2 w-2 shrink-0">
                   <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
                 </span>
               )}
               <span className="text-[13px] font-semibold">
-                {isLive ? "Current Run" : "Latest Run"}
+                {isLiveRun ? "Current Run" : "Latest Run"}
               </span>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {currentRun.id.slice(0, 8)}
+              <span className="text-[11px] text-muted-foreground">
+                {new Date(currentRun.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
             <StatusBadge status={currentRun.status} />
@@ -1352,7 +1944,7 @@ function AgentOverview({
               {currentRunSummary}
             </p>
           )}
-          {isLive && (
+          {isLiveRun && (
             <div className="mt-3">
               <div className="h-1 rounded-full bg-primary/10 overflow-hidden">
                 <div className="h-full bg-primary/40 rounded-full animate-pulse" style={{ width: "60%" }} />
@@ -1362,35 +1954,10 @@ function AgentOverview({
         </Link>
       )}
 
-      {/* Thought process stream — real-time agent activity */}
-      <ThoughtProcessStream agentId={agentId} companyId={agent.companyId} />
-
-      {/* Metric cards — exact same as Budget page TopStatCard */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Runs (30d)</div>
-          <div className="mt-2 text-2xl font-bold tabular-nums">{totalRuns30d}</div>
-        </div>
-        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Success rate</div>
-          <div className="mt-2 text-2xl font-bold tabular-nums">{successRate}%</div>
-        </div>
-        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Spend (30d)</div>
-          <div className="mt-2 text-2xl font-bold tabular-nums">
-            ${totalSpend30d > 0 ? totalSpend30d.toFixed(2) : "0.00"}
-          </div>
-        </div>
-      </div>
-
-      {/* Connected integrations */}
-      <ConnectedAppsGrid agentId={agentId} />
-
-      {/* Task completion stats */}
-      <AgentStatsCard companyId={agent.companyId} agentId={agentId} />
-
-      {/* Recent Activity list */}
-      {sorted.length > 0 && (
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* 5. Recent Activity list                                      */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {sortedRuns.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-[13px] font-semibold">Recent Activity</h3>
@@ -1402,7 +1969,7 @@ function AgentOverview({
             </Link>
           </div>
           <div className="rounded-xl border border-border/50 overflow-hidden">
-            {sorted.slice(0, 8).map((run) => {
+            {sortedRuns.slice(0, 8).map((run) => {
               const metrics = runMetrics(run);
               const statusInfo = runStatusIcons[run.status] ?? { icon: Clock, color: "text-neutral-400" };
               const StatusIcon = statusInfo.icon;
@@ -1413,8 +1980,8 @@ function AgentOverview({
                   className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-b-0 hover:bg-accent/20 transition-colors no-underline text-inherit"
                 >
                   <StatusIcon className={cn("h-3.5 w-3.5 shrink-0", statusInfo.color, run.status === "running" && "animate-spin")} />
-                  <span className="font-mono text-[11px] text-muted-foreground shrink-0">
-                    {run.id.slice(0, 8)}
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    {new Date(run.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </span>
                   <StatusBadge status={run.status} />
                   <span className="flex-1" />
@@ -1433,38 +2000,29 @@ function AgentOverview({
         </div>
       )}
 
-      {/* Recent Tasks */}
-      {assignedIssues.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-[13px] font-semibold">Recent Tasks</h3>
-            <Link
-              to={`/issues?participantAgentId=${agentId}`}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors no-underline"
-            >
-              See all
-            </Link>
-          </div>
-          <div className="rounded-xl border border-border/50 overflow-hidden">
-            {assignedIssues.slice(0, 6).map((issue) => (
-              <EntityRow
-                key={issue.id}
-                identifier={issue.identifier ?? issue.id.slice(0, 8)}
-                title={issue.title}
-                to={`/issues/${issue.identifier ?? issue.id}`}
-                trailing={<StatusBadge status={issue.status} />}
-              />
-            ))}
-            {assignedIssues.length > 6 && (
-              <div className="px-3 py-2 text-xs text-muted-foreground text-center border-t border-border/50">
-                +{assignedIssues.length - 6} more
-              </div>
-            )}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* 6. Metric cards — demoted from top, mobile-responsive grid  */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Runs · last 30 days</div>
+          <div className="mt-2 text-2xl font-bold tabular-nums">{totalRuns30d}</div>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Success rate</div>
+          <div className="mt-2 text-2xl font-bold tabular-nums">{successRate}%</div>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/50">Spend · last 30 days</div>
+          <div className="mt-2 text-2xl font-bold tabular-nums">
+            ${totalSpend30d > 0 ? totalSpend30d.toFixed(2) : "0.00"}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Costs */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* 7. Cost Breakdown (unchanged)                                */}
+      {/* ──────────────────────────────────────────────────────────── */}
       {runtimeState && (
         <div className="space-y-3">
           <h3 className="text-[13px] font-semibold">Cost Breakdown</h3>
@@ -1541,7 +2099,7 @@ function CostsSection({
                 .sort((a, b) => b.costCents - a.costCents)
                 .map((row) => (
                   <tr key={row.model} className="border-b border-border last:border-b-0">
-                    <td className="px-3 py-2 font-mono">{row.model}</td>
+                    <td className="px-3 py-2">{row.model}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatTokens(row.inputTokens)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatTokens(row.outputTokens)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatCents(row.costCents)}</td>
@@ -1569,7 +2127,7 @@ function CostsSection({
                 return (
                   <tr key={run.id} className="border-b border-border last:border-b-0">
                     <td className="px-3 py-2">{formatDate(run.createdAt)}</td>
-                    <td className="px-3 py-2 font-mono">{run.id.slice(0, 8)}</td>
+                    <td className="px-3 py-2">{new Date(run.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatTokens(metrics.input)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatTokens(metrics.output)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
@@ -1668,8 +2226,6 @@ function AgentConfigurePage({
                   <div key={revision.id} className="border border-border/70 rounded-md p-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-xs text-muted-foreground">
-                        <span className="font-mono">{revision.id.slice(0, 8)}</span>
-                        <span className="mx-1">·</span>
                         <span>{formatDate(revision.createdAt)}</span>
                         <span className="mx-1">·</span>
                         <span>{revision.source}</span>
@@ -3066,8 +3622,8 @@ function RunListItem({ run, isSelected, agentId }: { run: HeartbeatRun; isSelect
     >
       <div className="flex items-center gap-2">
         <StatusIcon className={cn("h-3.5 w-3.5 shrink-0", statusInfo.color, run.status === "running" && "animate-spin")} />
-        <span className="font-mono text-xs text-muted-foreground">
-          {run.id.slice(0, 8)}
+        <span className="text-xs text-muted-foreground">
+          {new Date(run.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
         </span>
         <span className={cn(
           "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0",
@@ -3385,7 +3941,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
             )}
             {startTime && (
               <div className="space-y-0.5">
-                <div className="text-sm font-mono">
+                <div className="text-sm">
                   {startTime}
                   {endTime && <span className="text-muted-foreground"> &rarr; </span>}
                   {endTime}
@@ -3441,14 +3997,14 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                 {claudeLoginResult && (
                   <>
                     {!!claudeLoginResult.stdout && (
-                      <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-3 text-xs font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
-                        {claudeLoginResult.stdout}
-                      </pre>
+                      <div className="text-xs text-muted-foreground py-1">
+                        Setup completed successfully.
+                      </div>
                     )}
                     {!!claudeLoginResult.stderr && (
-                      <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-3 text-xs font-mono text-red-700 dark:text-red-300 overflow-x-auto whitespace-pre-wrap">
-                        {claudeLoginResult.stderr}
-                      </pre>
+                      <div className="text-xs text-red-600 dark:text-red-400 py-1">
+                        Agent encountered an issue during setup.
+                      </div>
                     )}
                   </>
                 )}
@@ -3456,8 +4012,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
             )}
             {hasNonZeroExit && (
               <div className="text-xs text-red-600 dark:text-red-400">
-                Exit code {run.exitCode}
-                {run.signal && <span className="text-muted-foreground ml-1">(signal: {run.signal})</span>}
+                {run.signal === "SIGTERM" ? "Was stopped" : run.signal === "SIGKILL" ? "Was force-stopped" : run.signal ? "Encountered an issue" : "Stopped unexpectedly"}
               </div>
             )}
           </div>
@@ -3467,19 +4022,19 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
             <div className="border-t sm:border-t-0 sm:border-l border-border p-4 grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-3 content-center tabular-nums">
               <div>
                 <div className="text-xs text-muted-foreground">Input</div>
-                <div className="text-sm font-medium font-mono">{formatTokens(metrics.input)}</div>
+                <div className="text-sm font-medium tabular-nums">{formatTokens(metrics.input)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Output</div>
-                <div className="text-sm font-medium font-mono">{formatTokens(metrics.output)}</div>
+                <div className="text-sm font-medium tabular-nums">{formatTokens(metrics.output)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Cached</div>
-                <div className="text-sm font-medium font-mono">{formatTokens(metrics.cached)}</div>
+                <div className="text-sm font-medium tabular-nums">{formatTokens(metrics.cached)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Cost</div>
-                <div className="text-sm font-medium font-mono">{metrics.cost > 0 ? `$${metrics.cost.toFixed(4)}` : "-"}</div>
+                <div className="text-sm font-medium tabular-nums">{metrics.cost > 0 ? `$${metrics.cost.toFixed(4)}` : "-"}</div>
               </div>
             </div>
           )}
@@ -3501,13 +4056,13 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                 {run.sessionIdBefore && (
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground w-12">{sessionChanged ? "Before" : "ID"}</span>
-                    <CopyText text={run.sessionIdBefore} className="font-mono" />
+                    <CopyText text={run.sessionIdBefore} />
                   </div>
                 )}
                 {sessionChanged && run.sessionIdAfter && (
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground w-12">After</span>
-                    <CopyText text={run.sessionIdAfter} className="font-mono" />
+                    <CopyText text={run.sessionIdAfter} />
                   </div>
                 )}
                 {touchedIssueIds.length > 0 && (
@@ -3559,26 +4114,17 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                   <StatusBadge status={issue.status} />
                   <span className="truncate">{issue.title}</span>
                 </div>
-                <span className="font-mono text-muted-foreground shrink-0 ml-2">{issue.identifier ?? issue.issueId.slice(0, 8)}</span>
+                <span className="text-muted-foreground shrink-0 ml-2">{issue.identifier ?? ""}</span>
               </Link>
             ))}
           </div>
         </div>
       )}
 
-      {/* stderr excerpt for failed runs */}
+      {/* Error message for failed runs */}
       {run.stderrExcerpt && (
-        <div className="space-y-1">
-          <span className="text-xs font-medium text-red-600 dark:text-red-400">stderr</span>
-          <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-3 text-xs font-mono text-red-700 dark:text-red-300 overflow-x-auto whitespace-pre-wrap">{run.stderrExcerpt}</pre>
-        </div>
-      )}
-
-      {/* stdout excerpt when no log is available */}
-      {run.stdoutExcerpt && !run.logRef && (
-        <div className="space-y-1">
-          <span className="text-xs font-medium text-muted-foreground">stdout</span>
-          <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-3 text-xs font-mono text-foreground overflow-x-auto whitespace-pre-wrap">{run.stdoutExcerpt}</pre>
+        <div className="text-xs text-red-600 dark:text-red-400 py-2">
+          Agent encountered an issue during this run.
         </div>
       )}
 
@@ -4070,28 +4616,9 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
               {redactPathText(run.error, censorUsernameInLogs)}
             </div>
           )}
-          {run.stderrExcerpt && run.stderrExcerpt.trim() && (
-            <div>
-              <div className="text-xs text-red-700 dark:text-red-300 mb-1">stderr excerpt</div>
-              <pre className="bg-red-50 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap text-red-800 dark:text-red-100">
-                {redactPathText(run.stderrExcerpt, censorUsernameInLogs)}
-              </pre>
-            </div>
-          )}
-          {run.resultJson && (
-            <div>
-              <div className="text-xs text-red-700 dark:text-red-300 mb-1">adapter result JSON</div>
-              <pre className="bg-red-50 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap text-red-800 dark:text-red-100">
-                {JSON.stringify(redactPathValue(run.resultJson, censorUsernameInLogs), null, 2)}
-              </pre>
-            </div>
-          )}
-          {run.stdoutExcerpt && run.stdoutExcerpt.trim() && !run.resultJson && (
-            <div>
-              <div className="text-xs text-red-700 dark:text-red-300 mb-1">stdout excerpt</div>
-              <pre className="bg-red-50 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap text-red-800 dark:text-red-100">
-                {redactPathText(run.stdoutExcerpt, censorUsernameInLogs)}
-              </pre>
+          {(run.stderrExcerpt?.trim() || run.resultJson) && (
+            <div className="text-xs text-red-600 dark:text-red-400">
+              Agent encountered an issue during this run.
             </div>
           )}
         </div>
@@ -4100,7 +4627,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
       {events.length > 0 && (
         <div>
           <div className="mb-2 text-xs font-medium text-muted-foreground">Events ({events.length})</div>
-          <div className="bg-neutral-100 dark:bg-neutral-950 rounded-lg p-3 font-mono text-xs space-y-0.5">
+          <div className="bg-neutral-100 dark:bg-neutral-950 rounded-lg p-3 text-xs space-y-0.5">
             {events.map((evt) => {
               const color = evt.color
                 ?? (evt.level ? levelColors[evt.level] : null)
@@ -4112,14 +4639,14 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
                   <span className="text-neutral-400 dark:text-neutral-600 shrink-0 select-none w-16">
                     {new Date(evt.createdAt).toLocaleTimeString("en-US", { hour12: false })}
                   </span>
-                  <span className={cn("shrink-0 w-14", evt.stream ? (streamColors[evt.stream] ?? "text-neutral-500") : "text-neutral-500")}>
-                    {evt.stream ? `[${evt.stream}]` : ""}
+                  <span className={cn("shrink-0 w-4", evt.stream ? (streamColors[evt.stream] ?? "text-neutral-500") : "text-neutral-500")}>
+                    {evt.stream === "stderr" ? "!" : ""}
                   </span>
                   <span className={cn("break-all", color)}>
                     {evt.message
                       ? redactPathText(evt.message, censorUsernameInLogs)
                       : evt.payload
-                        ? JSON.stringify(redactPathValue(evt.payload, censorUsernameInLogs))
+                        ? "Event processed"
                         : ""}
                   </span>
                 </div>

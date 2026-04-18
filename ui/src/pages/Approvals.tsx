@@ -70,7 +70,7 @@ function LayoutCApprovalCard({
   const [editedMessage, setEditedMessage] = useState(messagePreview ?? "");
 
   return (
-    <div className={cn("rounded-xl border overflow-hidden transition-all", isSelected ? "border-primary/60 ring-1 ring-primary/20" : "border-border/50 hover:border-border")}>
+    <div data-testid="approval-card" className={cn("rounded-xl border overflow-hidden transition-all", isSelected ? "border-primary/60 ring-1 ring-primary/20" : "border-border/50 hover:border-border")}>
       {/* Header strip */}
       <div className="bg-primary/5 px-3.5 py-2.5 border-b border-border/40">
         <div className="flex items-center gap-2.5">
@@ -226,6 +226,7 @@ function LayoutCApprovalCard({
                 {/* Primary: Send Now */}
                 <Button
                   size="sm"
+                  data-testid="approval-send-now"
                   className="flex-1 h-8 bg-green-700 hover:bg-green-600 text-white text-[12px] font-medium gap-1"
                   onClick={onApprove}
                   disabled={isPending}
@@ -288,6 +289,7 @@ function LayoutCApprovalCard({
                 <Button
                   variant="ghost"
                   size="sm"
+                  data-testid="approval-decline"
                   className="h-8 px-3 text-[12px] border border-destructive/30 text-destructive hover:bg-destructive/10"
                   onClick={onReject}
                   disabled={isPending}
@@ -446,7 +448,7 @@ export function Approvals() {
     <div className="flex flex-col h-full">
       {/* PageHeader */}
       <PageHeader
-        title="Approvals"
+        title="Inbox"
         badge={
           pendingCount > 0 ? (
             <span className="inline-flex items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white min-w-[20px]">
