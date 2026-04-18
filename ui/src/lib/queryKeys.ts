@@ -120,6 +120,8 @@ export const queryKeys = {
   whatsapp: {
     messages: (companyId: string, chatJid: string, agentId?: string) =>
       ["whatsapp", "messages", companyId, chatJid, agentId] as const,
+    conversations: (companyId: string, agentId?: string) =>
+      ["whatsapp", "conversations", companyId, agentId] as const,
   },
   knowledgeBase: {
     list: (companyId: string) => ["knowledge-base", companyId] as const,

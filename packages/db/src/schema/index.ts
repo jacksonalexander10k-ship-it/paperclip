@@ -94,3 +94,4 @@ export { aygentBrokerCards } from "./aygent-broker-cards.js";
 export { aygentRentCheques } from "./aygent-rent-cheques.js";
 export { aygentMaintenanceRequests } from "./aygent-maintenance-requests.js";
 export { aygentAutoReplyQueue, aygentAutoReplyRules } from "./aygent-auto-reply-queue.js";
+export { aygentProfileTemplates } from "./aygent-profile-templates.js";
