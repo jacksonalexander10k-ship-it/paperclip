@@ -49,6 +49,9 @@ import { NewProperty } from "./pages/NewProperty";
 import Landing from "./pages/Landing";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
+import About from "./pages/About";
+import Contact from "./pages/Contact";
+import Pricing from "./pages/Pricing";
 import { AuthPage } from "./pages/Auth";
 import BillingCheckout from "./pages/BillingCheckout";
 import { BoardClaimPage } from "./pages/BoardClaim";
@@ -327,7 +330,7 @@ function AygencyOnboardingGate() {
   }, [noCompanies]);
 
   // All hooks above — safe to return early now
-  const publicPaths = ["/", "/landing", "/privacy", "/terms"];
+  const publicPaths = ["/", "/landing", "/privacy", "/terms", "/about", "/contact", "/pricing"];
   const isLandingPage = typeof window !== "undefined" && publicPaths.includes(window.location.pathname);
   if (isLandingPage) return null;
   if (needsAuth && (sessionLoading || !session)) return null;
@@ -346,6 +349,9 @@ export function App() {
         <Route path="landing" element={<Landing />} />
         <Route path="privacy" element={<PrivacyPolicy />} />
         <Route path="terms" element={<TermsOfService />} />
+        <Route path="about" element={<About />} />
+        <Route path="contact" element={<Contact />} />
+        <Route path="pricing" element={<Pricing />} />
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
