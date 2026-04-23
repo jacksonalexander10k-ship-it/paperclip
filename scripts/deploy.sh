@@ -55,27 +55,27 @@ case "${1:-deploy}" in
     ;;
 
   ssl)
-    echo "Obtaining SSL certificate for aygencyworld.com..."
-    echo "Make sure DNS A record points to this server first."
+    echo "Obtaining SSL certificate for aygentis.com..."
+    echo "Make sure DNS A records for aygentis.com and www.aygentis.com point to this server first."
     echo ""
 
     # Start nginx without SSL first (for ACME challenge)
     docker compose -f "$COMPOSE_FILE" up -d nginx
 
-    # Get certificate
+    # Get certificate for aygentis.com
     docker compose -f "$COMPOSE_FILE" run --rm certbot \
       certbot certonly \
       --webroot \
       --webroot-path=/var/www/certbot \
-      --email admin@aygencyworld.com \
+      --email hello@aygentis.com \
       --agree-tos \
       --no-eff-email \
-      -d aygencyworld.com \
-      -d www.aygencyworld.com
+      -d aygentis.com \
+      -d www.aygentis.com
 
     # Restart nginx with SSL
     docker compose -f "$COMPOSE_FILE" restart nginx
-    echo "SSL certificate installed."
+    echo "SSL certificate installed for aygentis.com."
     ;;
 
   seed)
