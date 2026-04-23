@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { COMPANY_INFO } from "@/lib/company-info";
+import QovesShell from "./_QovesShell";
 
 const TIERS = [
   {
@@ -14,7 +14,7 @@ const TIERS = [
       "Approval queue and morning briefs",
       "Email support",
     ],
-    cta: { label: "Start 14-day trial", href: "/signup" },
+    cta: "Start trial",
     featured: false,
   },
   {
@@ -24,12 +24,12 @@ const TIERS = [
     summary: "For growing agencies with 2–5 brokers.",
     features: [
       "CEO agent + 5 specialist agents",
-      "All Starter integrations + Property Finder, Bayut, Dubizzle",
+      "All Starter integrations + PF, Bayut, Dubizzle",
       "Up to 2,000 leads in pipeline",
       "Multilingual lead handling (EN/AR/RU)",
-      "Priority support & onboarding call",
+      "Priority support & onboarding",
     ],
-    cta: { label: "Start 14-day trial", href: "/signup" },
+    cta: "Start trial",
     featured: true,
   },
   {
@@ -44,7 +44,7 @@ const TIERS = [
       "Per-broker WhatsApp numbers",
       "Dedicated success manager",
     ],
-    cta: { label: "Start 14-day trial", href: "/signup" },
+    cta: "Start trial",
     featured: false,
   },
   {
@@ -57,156 +57,110 @@ const TIERS = [
       "Custom domain and branding",
       "Private AI infrastructure",
       "SLA-backed uptime",
-      "Dedicated Dubai-based account team",
+      "Dedicated Dubai account team",
     ],
-    cta: { label: "Contact sales", href: "/contact" },
+    cta: "Contact sales",
     featured: false,
   },
 ];
 
+const FAQS = [
+  { q: "Do I need a RERA licence?", a: "Yes. Aygentis is software. All brokerage activity is performed by you under your own RERA licence." },
+  { q: "What about WhatsApp fees?", a: "Meta charges per-conversation fees (~$0.03–$0.08). A typical agency spends AED 150–250/month." },
+  { q: "Can I change plans?", a: "Yes. Upgrade or downgrade anytime. Changes apply on your next billing cycle." },
+  { q: "Do you offer annual billing?", a: "Yes — two months free when paid annually. Contact sales for details." },
+];
+
 export default function Pricing() {
-  useEffect(() => {
-    document.body.style.overflow = "auto";
-    document.body.style.height = "auto";
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.height = "";
-    };
-  }, []);
+  useEffect(() => { document.title = "Pricing — Aygentis"; }, []);
 
   return (
-    <>
-      <style>{styles}</style>
-      <div className="legal-root">
-        <nav className="legal-nav">
-          <div className="legal-nav-inner">
-            <a href="/landing" className="legal-logo">
-              <div className="legal-logo-mark" />
-              <span>{COMPANY_INFO.name}</span>
-            </a>
-            <div className="legal-nav-links">
-              <a href="/about">About</a>
-              <a href="/pricing" className="active">Pricing</a>
-              <a href="/contact">Contact</a>
-              <a href="/login" className="nav-login">Log in</a>
-            </div>
-          </div>
-        </nav>
+    <QovesShell>
+      <section className="border-b border-[var(--hairline)]">
+        <div className="mx-auto max-w-[1240px] px-8 py-20 text-center md:py-24">
+          <p className="text-[11px] uppercase tracking-[0.28em] text-[var(--muted)]">Pricing</p>
+          <h1 className="mt-5 [font-family:'Hanken_Grotesk',system-ui] text-[clamp(2.4rem,5vw,4.5rem)] font-[600] leading-[1.04] tracking-[-0.028em]">
+            Flat monthly rate.
+            <br />
+            <span className="text-[var(--ink-20)]">No per-message fees.</span>
+          </h1>
+          <p className="mx-auto mt-7 max-w-[52ch] text-[17px] font-[400] leading-[1.55] text-[var(--muted)]">
+            No per-agent metering. Cancel anytime. Every plan includes the full Dubai real-estate
+            tool library and role-scoped permissions.
+          </p>
+        </div>
+      </section>
 
-        <main className="pricing-content">
-          <div className="pricing-header">
-            <h1>Pricing</h1>
-            <p>Flat monthly rate. No per-message fees. No per-agent metering. Cancel anytime.</p>
-          </div>
-
-          <div className="tier-grid">
+      <section className="border-b border-[var(--hairline)] bg-[var(--surface)]">
+        <div className="mx-auto max-w-[1240px] px-8 py-16 md:py-20">
+          <div className="grid gap-5 md:grid-cols-4">
             {TIERS.map((t) => (
-              <div key={t.name} className={`tier ${t.featured ? "tier-featured" : ""}`}>
-                {t.featured && <div className="tier-badge">Most popular</div>}
-                <h2>{t.name}</h2>
-                <div className="tier-price">
-                  <span className="tier-price-main">{t.price}</span>
-                  <span className="tier-price-cadence">{t.cadence}</span>
+              <div
+                key={t.name}
+                className={`relative flex flex-col rounded-md border p-7 ${t.featured ? "border-[var(--ink)] bg-white" : "border-[var(--hairline)] bg-white"}`}
+              >
+                {t.featured && (
+                  <span className="absolute -top-3 left-6 rounded bg-[var(--ink)] px-2.5 py-1 text-[10px] font-[600] uppercase tracking-[0.12em] text-white">
+                    Most popular
+                  </span>
+                )}
+                <p className="text-[11px] uppercase tracking-[0.28em] text-[var(--muted)]">{t.name}</p>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="[font-family:'Hanken_Grotesk',system-ui] text-[32px] font-[600] leading-[1] tracking-[-0.02em] text-[var(--ink)]">
+                    {t.price}
+                  </span>
+                  <span className="text-[12px] text-[var(--muted)]">{t.cadence}</span>
                 </div>
-                <p className="tier-summary">{t.summary}</p>
-                <ul className="tier-features">
+                <p className="mt-3 text-[14px] font-[400] leading-[1.55] text-[var(--muted)]">{t.summary}</p>
+                <ul className="mt-6 flex-1 space-y-3 border-t border-[var(--hairline)] pt-6">
                   {t.features.map((f) => (
-                    <li key={f}>{f}</li>
+                    <li key={f} className="grid grid-cols-[16px_1fr] items-start gap-3 text-[14px] leading-[1.5] text-[var(--muted)]">
+                      <span className="mt-[7px] inline-block h-[1.5px] w-[10px] bg-[var(--ink)]" />
+                      <span>{f}</span>
+                    </li>
                   ))}
                 </ul>
-                <a href={t.cta.href} className="tier-cta">{t.cta.label}</a>
+                <a
+                  href="/contact"
+                  className={`mt-8 inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 text-[14px] font-[500] transition ${
+                    t.featured
+                      ? "bg-[var(--ink)] text-white hover:bg-black"
+                      : "border border-[var(--hairline)] text-[var(--ink)] hover:border-[var(--ink)]"
+                  }`}
+                >
+                  {t.cta} →
+                </a>
               </div>
             ))}
           </div>
+        </div>
+      </section>
 
-          <div className="pricing-notes">
-            <h3>What's included in every plan</h3>
-            <ul>
-              <li>Full Dubai real-estate tool library: DLD transactions, RERA rent calculator, payment-plan generator</li>
-              <li>Role-scoped permissions — a Content agent can never send a WhatsApp</li>
-              <li>Encrypted at rest, multi-tenant isolation, UAE PDPA compliant</li>
-              <li>Every outbound message requires your approval</li>
-            </ul>
+      <section className="border-b border-[var(--hairline)]">
+        <div className="mx-auto grid max-w-[1240px] gap-16 px-8 py-16 md:grid-cols-[0.4fr_1fr] md:py-20">
+          <p className="text-[11px] uppercase tracking-[0.28em] text-[var(--muted)]">What&apos;s included</p>
+          <ul className="space-y-4 text-[16px] font-[400] leading-[1.6] text-[var(--muted)]">
+            <li>Full Dubai real-estate tool library: DLD transactions, RERA rent calculator, payment-plan generator.</li>
+            <li>Role-scoped permissions — a Content agent can never send a WhatsApp.</li>
+            <li>Encrypted at rest, multi-tenant isolation, UK GDPR compliant.</li>
+            <li>Every outbound message requires your approval.</li>
+          </ul>
+        </div>
+      </section>
 
-            <h3>Frequently asked</h3>
-            <dl className="pricing-faq">
-              <dt>Do I need a RERA licence?</dt>
-              <dd>Yes. Aygentis is a software platform. All real-estate brokerage activity is performed by you under your own RERA licence.</dd>
-
-              <dt>What about WhatsApp fees?</dt>
-              <dd>Meta charges per-conversation fees (~$0.03–$0.08 USD) billed separately. A typical agency spends AED 150–250/month.</dd>
-
-              <dt>Can I change plans?</dt>
-              <dd>Yes. Upgrade or downgrade anytime. Changes apply on your next billing cycle.</dd>
-
-              <dt>Do you offer annual billing?</dt>
-              <dd>Yes — two months free when you pay annually. <a href="/contact">Contact sales</a>.</dd>
-            </dl>
-          </div>
-        </main>
-
-        <footer className="legal-footer">
-          <p>&copy; {new Date().getFullYear()} {COMPANY_INFO.name}. All rights reserved.</p>
-        </footer>
-      </div>
-    </>
+      <section>
+        <div className="mx-auto grid max-w-[1240px] gap-16 px-8 py-16 md:grid-cols-[0.4fr_1fr] md:py-20">
+          <p className="text-[11px] uppercase tracking-[0.28em] text-[var(--muted)]">Frequently asked</p>
+          <dl className="space-y-7">
+            {FAQS.map((f) => (
+              <div key={f.q}>
+                <dt className="text-[17px] font-[500] leading-[1.4] text-[var(--ink)]">{f.q}</dt>
+                <dd className="mt-2 max-w-[62ch] text-[15.5px] font-[400] leading-[1.65] text-[var(--muted)]">{f.a}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+    </QovesShell>
   );
 }
-
-const styles = `
-.legal-root {
-  --l-bg: #09090b;
-  --l-text: #e8e8ec;
-  --l-text-dim: #7a7a88;
-  --l-text-muted: #4a4a55;
-  --l-accent: #7c9a8e;
-  --l-border: #1a1a22;
-  --l-font: 'Outfit', -apple-system, sans-serif;
-  background: var(--l-bg); color: var(--l-text); font-family: var(--l-font);
-  min-height: 100vh; -webkit-font-smoothing: antialiased;
-}
-.legal-nav { border-bottom: 1px solid var(--l-border); backdrop-filter: blur(20px); background: rgba(9,9,11,0.8); position: sticky; top: 0; z-index: 10; }
-.legal-nav-inner { max-width: 1200px; margin: 0 auto; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-.legal-logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--l-text); text-decoration: none; }
-.legal-logo-mark { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--l-accent), #5a7a6e); }
-.legal-nav-links { display: flex; align-items: center; gap: 24px; }
-.legal-nav-links a { color: var(--l-text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
-.legal-nav-links a:hover, .legal-nav-links a.active { color: var(--l-text); }
-.legal-nav-links .nav-login { padding: 8px 16px; border: 1px solid var(--l-border); border-radius: 8px; color: var(--l-text); }
-
-.pricing-content { max-width: 1200px; margin: 0 auto; padding: 60px 32px 80px; }
-.pricing-header { text-align: center; margin-bottom: 56px; }
-.pricing-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -0.03em; margin: 0 0 12px; }
-.pricing-header p { font-size: 17px; color: var(--l-text-dim); margin: 0; }
-
-.tier-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 72px; }
-@media (max-width: 1100px) { .tier-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 640px) { .tier-grid { grid-template-columns: 1fr; } }
-.tier { position: relative; padding: 28px 24px; border: 1px solid var(--l-border); border-radius: 14px; background: #0c0c10; display: flex; flex-direction: column; }
-.tier-featured { border-color: var(--l-accent); background: linear-gradient(180deg, rgba(124,154,142,0.06), #0c0c10); }
-.tier-badge { position: absolute; top: -11px; left: 20px; padding: 3px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; background: var(--l-accent); color: #09090b; border-radius: 999px; }
-.tier h2 { font-size: 20px; font-weight: 700; margin: 0 0 8px; }
-.tier-price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px; }
-.tier-price-main { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: var(--l-text); }
-.tier-price-cadence { font-size: 13px; color: var(--l-text-muted); }
-.tier-summary { font-size: 14px; color: var(--l-text-dim); margin: 0 0 20px; line-height: 1.5; }
-.tier-features { list-style: none; margin: 0 0 24px; padding: 0; flex: 1; }
-.tier-features li { font-size: 14px; color: var(--l-text-dim); padding: 6px 0 6px 22px; position: relative; line-height: 1.5; }
-.tier-features li::before { content: ''; position: absolute; left: 0; top: 13px; width: 12px; height: 2px; background: var(--l-accent); border-radius: 1px; }
-.tier-cta { display: block; text-align: center; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; text-decoration: none; border: 1px solid var(--l-border); color: var(--l-text); transition: background 0.15s, border-color 0.15s; }
-.tier-cta:hover { background: #15151a; border-color: var(--l-accent); }
-.tier-featured .tier-cta { background: var(--l-accent); color: #09090b; border-color: var(--l-accent); }
-.tier-featured .tier-cta:hover { background: #8aab9e; }
-
-.pricing-notes { max-width: 760px; margin: 0 auto; }
-.pricing-notes h3 { font-size: 18px; font-weight: 700; margin: 32px 0 14px; color: var(--l-text); }
-.pricing-notes ul { margin: 0 0 8px; padding-left: 24px; }
-.pricing-notes li { font-size: 15px; line-height: 1.7; color: var(--l-text-dim); margin-bottom: 6px; }
-.pricing-faq dt { font-size: 15px; font-weight: 600; color: var(--l-text); margin-top: 18px; }
-.pricing-faq dd { font-size: 15px; color: var(--l-text-dim); margin: 6px 0 0; line-height: 1.7; }
-.pricing-faq a { color: var(--l-accent); text-decoration: none; }
-.pricing-faq a:hover { text-decoration: underline; }
-
-.legal-footer { border-top: 1px solid var(--l-border); padding: 32px; text-align: center; }
-.legal-footer p { font-size: 13px; color: var(--l-text-muted); }
-`;
